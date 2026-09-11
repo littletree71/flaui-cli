@@ -7,8 +7,9 @@ using FlauiCli.Core.Protocol;
 namespace FlauiCli.Core.Daemon;
 
 /// <summary>
-/// 常駐程序：透過 Named Pipe 接收指令（每個連線一行 JSON 請求、一行 JSON 回應），
-/// 所有 UIA 操作都在單一專用執行緒上依序執行。閒置超過設定時間自動結束。
+/// Long-running process that receives commands over a named pipe (one JSON request line and one JSON
+/// response line per connection). Every UIA operation runs sequentially on a single dedicated thread.
+/// Exits automatically after the configured idle time.
 /// </summary>
 public static class DaemonHost
 {
@@ -17,7 +18,7 @@ public static class DaemonHost
     public static int Run(string sessionName, Func<IUiDriver> driverFactory)
     {
         using var mutex = new Mutex(true, DaemonPaths.MutexName(sessionName), out var created);
-        if (!created) return 0; // 同名 session 的 daemon 已在執行
+        if (!created) return 0; // A daemon for this session is already running
 
         Directory.CreateDirectory(DaemonPaths.SessionsDir);
         Directory.CreateDirectory(DaemonPaths.LogsDir);
@@ -35,7 +36,7 @@ public static class DaemonHost
         }
         catch (Exception ex)
         {
-            Log($"無法建立 session：{ex}");
+            Log($"cannot create session: {ex}");
             return ExitCodes.Error;
         }
 
@@ -43,7 +44,7 @@ public static class DaemonHost
         var sessionFile = DaemonPaths.SessionFile(sessionName);
         File.WriteAllText(sessionFile, ProtocolJson.Serialize(
             new SessionInfo(sessionName, Environment.ProcessId, DaemonPaths.PipeName(sessionName), DateTime.Now)));
-        Log($"daemon 啟動：session={sessionName} pid={Environment.ProcessId} driver={session.Driver.Description}");
+        Log($"daemon started: session={sessionName} pid={Environment.ProcessId} driver={session.Driver.Description}");
 
         using var shutdown = new CancellationTokenSource();
         var state = new ActivityState();
@@ -56,7 +57,7 @@ public static class DaemonHost
                 catch (OperationCanceledException) { break; }
                 if (state.IsIdleLongerThan(idleLimit) && session.InputCapture?.IsRunning != true)
                 {
-                    Log("閒置逾時，結束 daemon");
+                    Log("idle timeout, stopping daemon");
                     shutdown.Cancel();
                 }
             }
@@ -68,13 +69,13 @@ public static class DaemonHost
         }
         catch (Exception ex)
         {
-            Log($"daemon 發生錯誤：{ex}");
+            Log($"daemon error: {ex}");
         }
         finally
         {
-            try { worker.Invoke(session.Dispose); } catch (Exception ex) { Log($"釋放 session 失敗：{ex.Message}"); }
+            try { worker.Invoke(session.Dispose); } catch (Exception ex) { Log($"failed to dispose session: {ex.Message}"); }
             TryDeleteSessionFile(sessionFile);
-            Log("daemon 結束");
+            Log("daemon stopped");
         }
 
         idleWatcher.Wait(TimeSpan.FromSeconds(1));
@@ -123,12 +124,12 @@ public static class DaemonHost
                 result = call.Command == "ping"
                     ? CommandResult.Success("pong")
                     : await worker.InvokeAsync(() => dispatcher.Execute(call));
-                log($"< {(result.Ok ? "ok" : $"失敗({result.ExitCode})：{result.Error}")}");
+                log($"< {(result.Ok ? "ok" : $"failed({result.ExitCode}): {result.Error}")}");
             }
             catch (Exception ex)
             {
                 result = CommandResult.Failure(ex.Message);
-                log($"< 例外：{ex}");
+                log($"< exception: {ex}");
             }
             finally
             {
@@ -140,7 +141,7 @@ public static class DaemonHost
         }
         catch (IOException)
         {
-            // 用戶端提早斷線
+            // The client disconnected early
         }
     }
 
@@ -154,11 +155,11 @@ public static class DaemonHost
         }
         catch
         {
-            // 忽略
+            // ignore
         }
     }
 
-    /// <summary>追蹤執行中的請求數與最後活動時間。</summary>
+    /// <summary>Tracks the number of in-flight requests and the time of the last activity.</summary>
     private sealed class ActivityState
     {
         private int _active;

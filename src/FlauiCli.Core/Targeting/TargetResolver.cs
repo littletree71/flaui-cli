@@ -4,7 +4,7 @@ using FlauiCli.Core.Engine;
 
 namespace FlauiCli.Core.Targeting;
 
-/// <summary>把 ref 或 selector 解析成元素；selector 會自動等待直到逾時（仿 Playwright auto-wait）。</summary>
+/// <summary>Resolves a ref or selector to an element; selectors auto-wait until the timeout (like Playwright's auto-wait).</summary>
 internal sealed class TargetResolver(AutomationSession session)
 {
     internal int PollIntervalMs { get; init; } = 150;
@@ -20,12 +20,12 @@ internal sealed class TargetResolver(AutomationSession session)
             var all = ElementFinder.FindAll(selector, session.SearchRoots());
             if (all.Count > 0) return all[0];
             if (sw.ElapsedMilliseconds >= timeoutMs)
-                throw new ElementNotFoundException(raw, $"已等待 {timeoutMs}ms");
+                throw new ElementNotFoundException(raw, $"waited {timeoutMs}ms");
             Thread.Sleep(PollIntervalMs);
         }
     }
 
-    /// <summary>只嘗試一次，找不到回傳 null（wait / assert 用）。</summary>
+    /// <summary>Tries once and returns null when nothing is found (used by wait / assert).</summary>
     public IUiElement? TryResolveOnce(string raw)
     {
         var selector = Selector.Parse(raw);
@@ -41,11 +41,11 @@ internal sealed class TargetResolver(AutomationSession session)
     private IUiElement ResolveRef(string r)
     {
         if (!session.Refs.TryGet(r, out var entry))
-            throw new CliException($"未知的 ref：{r}。請先執行 snapshot 取得最新的 ref");
+            throw new CliException($"Unknown ref: {r}. Run snapshot to get current refs");
 
         if (entry.Element.IsAlive) return entry.Element;
 
-        // 元素已失效：用記錄的 AutomationId / Name 重新尋找
+        // The element went stale: look it up again using the recorded AutomationId / Name
         var candidates = new List<string>();
         var kind = entry.Kind.ToString();
         if (entry.AutomationId.Length > 0) candidates.Add($"id={Selector.Quote(entry.AutomationId)}&&type={kind}");
@@ -60,6 +60,6 @@ internal sealed class TargetResolver(AutomationSession session)
             }
         }
 
-        throw new CliException($"ref {r} 對應的元素已不存在。請重新執行 snapshot");
+        throw new CliException($"The element for ref {r} no longer exists. Run snapshot again");
     }
 }

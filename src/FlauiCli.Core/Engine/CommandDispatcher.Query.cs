@@ -4,13 +4,13 @@ using FlauiCli.Core.Protocol;
 
 namespace FlauiCli.Core.Engine;
 
-// 讀取、等待、斷言
+// Read, wait and assert commands
 public sealed partial class CommandDispatcher
 {
     private static readonly HashSet<ControlKind> ValueTextKinds =
         [ControlKind.Edit, ControlKind.Document, ControlKind.ComboBox, ControlKind.Spinner];
 
-    /// <summary>元素的「文字」：輸入類控制項取 Value / TextPattern，其他取 Name。</summary>
+    /// <summary>The "text" of an element: Value / TextPattern for input controls, Name for everything else.</summary>
     internal static string GetText(IUiElement el) =>
         ValueTextKinds.Contains(el.Kind) ? el.Value ?? el.TryGetDocumentText() ?? el.Name : el.Name;
 
@@ -42,13 +42,13 @@ public sealed partial class CommandDispatcher
         var value = kind switch
         {
             "text" => GetText(el),
-            "value" => el.Value ?? throw new CliException($"{Label(el)} 不支援 ValuePattern"),
+            "value" => el.Value ?? throw new CliException($"{Label(el)} does not support ValuePattern"),
             "name" => el.Name,
             "state" => DescribeState(el),
             "rect" => $"{el.Bounds.X},{el.Bounds.Y},{el.Bounds.Width},{el.Bounds.Height}",
             "prop" => el.GetProperty(ctx.Call.Require("prop"))
-                      ?? throw new CliException($"{Label(el)} 不支援或讀不到屬性 {ctx.Call.Get("prop")}"),
-            _ => throw new CliException($"未知的 get 類型：{kind}（可用：text, value, name, state, rect, prop）"),
+                      ?? throw new CliException($"{Label(el)} does not support property {ctx.Call.Get("prop")} or it cannot be read"),
+            _ => throw new CliException($"Unknown get kind: {kind} (use text, value, name, state, rect or prop)"),
         };
         ctx.Data["value"] = value;
         return value;
@@ -66,13 +66,13 @@ public sealed partial class CommandDispatcher
             "gone" or "detached" => e => e is null,
             "enabled" => e => e is { IsEnabled: true },
             "disabled" => e => e is { IsEnabled: false },
-            _ => throw new CliException($"未知的狀態：{state}（可用：visible, hidden, exists, gone, enabled, disabled）"),
+            _ => throw new CliException($"Unknown state: {state} (use visible, hidden, exists, gone, enabled or disabled)"),
         };
 
         var timeout = ctx.Timeout;
         if (!Poll(timeout, () => satisfied(_resolver.TryResolveOnce(raw))))
-            throw new CliException($"等待逾時（{timeout}ms）：{raw} 未達到狀態 {state}");
-        return $"### Result\n{raw} 已達到狀態 {state}";
+            throw new CliException($"Timed out after {timeout}ms: {raw} did not reach state '{state}'");
+        return $"### Result\n{raw} reached state '{state}'";
     }
 
     private string WaitWindow(CommandContext ctx)
@@ -81,10 +81,10 @@ public sealed partial class CommandDispatcher
         var timeout = ctx.Timeout;
         IUiElement? found = null;
         if (!Poll(timeout, () => (found = FindTopLevelByTitle(title, _s.CurrentWindow?.ProcessId)) is not null))
-            throw new CliException($"等待逾時（{timeout}ms）：找不到標題為「{title}」的視窗");
+            throw new CliException($"Timed out after {timeout}ms: no window titled \"{title}\"");
 
         if (!ctx.Call.GetBool("no-switch")) ActivateWindow(found!);
-        return $"### Result\n視窗「{found!.Name}」已出現\n{WindowSection()}";
+        return $"### Result\nWindow \"{found!.Name}\" appeared\n{WindowSection()}";
     }
 
     private static readonly string[] ValueAssertions = ["text", "contains", "matches", "value"];
@@ -101,8 +101,8 @@ public sealed partial class CommandDispatcher
         ["exists", "not-exists", "visible", "hidden", "enabled", "disabled", "checked", "unchecked", "text", "contains", "matches", "value"];
 
     /// <summary>
-    /// 解析斷言：CLI 形式 <c>assert text id=x "預期"</c>（kind + expected），
-    /// 或 YAML 形式 <c>assert: { target: id=x, text: 預期 }</c>。
+    /// Parses an assertion. CLI form: <c>assert text id=x "expected"</c> (kind + expected);
+    /// YAML form: <c>assert: { target: id=x, text: expected }</c>.
     /// </summary>
     internal static (string Kind, string? Expected) ResolveAssertion(CommandCall call)
     {
@@ -124,42 +124,42 @@ public sealed partial class CommandDispatcher
             {
                 var b = BoolAssertions.FirstOrDefault(b => call.Has(b.Key));
                 if (b.Key is null)
-                    throw new CliException("assert 需要指定條件，例如 text / contains / matches / value / exists / visible / enabled / checked");
+                    throw new CliException("assert needs a condition, for example text / contains / matches / value / exists / visible / enabled / checked");
                 (kind, expected) = (call.GetBool(b.Key) ? b.Positive : b.Negative, null);
             }
         }
 
         if (!KnownAssertions.Contains(kind))
-            throw new CliException($"未知的斷言類型：{kind}（可用：{string.Join(", ", KnownAssertions)}）");
+            throw new CliException($"Unknown assertion kind: {kind} (use: {string.Join(", ", KnownAssertions)})");
         if (ValueAssertions.Contains(kind) && expected is null)
-            throw new CliException($"assert {kind} 需要預期值");
+            throw new CliException($"assert {kind} needs an expected value");
         return (kind, expected);
     }
 
-    /// <summary>評估斷言，通過回傳 null，失敗回傳原因。</summary>
+    /// <summary>Evaluates an assertion: returns null when it passes, otherwise the reason it failed.</summary>
     internal static string? EvaluateAssertion(string kind, string? expected, IUiElement? el, string target)
     {
         switch (kind)
         {
-            case "exists": return el is null ? $"{target} 不存在" : null;
-            case "not-exists": return el is not null ? $"{target} 仍然存在" : null;
-            case "hidden": return el is null || el.IsOffscreen ? null : $"{target} 仍然可見";
+            case "exists": return el is null ? $"{target} does not exist" : null;
+            case "not-exists": return el is not null ? $"{target} still exists" : null;
+            case "hidden": return el is null || el.IsOffscreen ? null : $"{target} is still visible";
         }
 
-        if (el is null) return $"找不到元素 {target}";
+        if (el is null) return $"Element not found: {target}";
         var exp = expected ?? "";
         return kind switch
         {
-            "visible" => el.IsOffscreen ? $"{target} 不可見" : null,
-            "enabled" => el.IsEnabled ? null : $"{target} 是停用狀態",
-            "disabled" => el.IsEnabled ? $"{target} 是啟用狀態" : null,
-            "checked" => IsChecked(el) ? null : $"{target} 未勾選",
-            "unchecked" => IsChecked(el) ? $"{target} 已勾選" : null,
-            "text" => GetText(el).Trim() == exp.Trim() ? null : $"{target} 的文字預期為「{exp}」，實際為「{GetText(el)}」",
-            "contains" => GetText(el).Contains(exp, StringComparison.Ordinal) ? null : $"{target} 的文字應包含「{exp}」，實際為「{GetText(el)}」",
-            "matches" => Regex.IsMatch(GetText(el), exp, RegexOptions.None, TimeSpan.FromSeconds(1)) ? null : $"{target} 的文字不符合 /{exp}/，實際為「{GetText(el)}」",
-            "value" => el.Value == exp ? null : $"{target} 的值預期為「{exp}」，實際為「{el.Value ?? "（不支援 ValuePattern）"}」",
-            _ => $"未知的斷言類型：{kind}",
+            "visible" => el.IsOffscreen ? $"{target} is not visible" : null,
+            "enabled" => el.IsEnabled ? null : $"{target} is disabled",
+            "disabled" => el.IsEnabled ? $"{target} is enabled" : null,
+            "checked" => IsChecked(el) ? null : $"{target} is not checked",
+            "unchecked" => IsChecked(el) ? $"{target} is checked" : null,
+            "text" => GetText(el).Trim() == exp.Trim() ? null : $"expected the text of {target} to be \"{exp}\" but it was \"{GetText(el)}\"",
+            "contains" => GetText(el).Contains(exp, StringComparison.Ordinal) ? null : $"expected the text of {target} to contain \"{exp}\" but it was \"{GetText(el)}\"",
+            "matches" => Regex.IsMatch(GetText(el), exp, RegexOptions.None, TimeSpan.FromSeconds(1)) ? null : $"expected the text of {target} to match /{exp}/ but it was \"{GetText(el)}\"",
+            "value" => el.Value == exp ? null : $"expected the value of {target} to be \"{exp}\" but it was \"{el.Value ?? "(no ValuePattern)"}\"",
+            _ => $"Unknown assertion kind: {kind}",
         };
     }
 
@@ -171,20 +171,20 @@ public sealed partial class CommandDispatcher
         var (kind, expected) = ResolveAssertion(ctx.Call);
         string? failure = null;
 
-        // 斷言會自動重試直到逾時（仿 Playwright expect）
+        // Assertions retry until the timeout (like Playwright's expect)
         var passed = Poll(ctx.Timeout, () =>
         {
             failure = EvaluateAssertion(kind, expected, _resolver.TryResolveOnce(raw), raw);
             return failure is null;
         });
-        if (!passed) throw new AssertionFailedException($"斷言失敗：{failure}");
-        return $"### Result\n斷言通過：{raw} {kind}{(expected is null ? "" : $"「{expected}」")}";
+        if (!passed) throw new AssertionFailedException($"Assertion failed: {failure}");
+        return $"### Result\nAssertion passed: {raw} {kind}{(expected is null ? "" : $" \"{expected}\"")}";
     }
 
     private string Sleep(CommandContext ctx)
     {
-        var ms = ctx.Call.GetInt("ms") ?? throw new CliException("sleep 需要毫秒數");
+        var ms = ctx.Call.GetInt("ms") ?? throw new CliException("sleep needs a number of milliseconds");
         Thread.Sleep(Math.Clamp(ms, 0, 600_000));
-        return $"### Result\n已暫停 {ms}ms";
+        return $"### Result\nSlept {ms}ms";
     }
 }

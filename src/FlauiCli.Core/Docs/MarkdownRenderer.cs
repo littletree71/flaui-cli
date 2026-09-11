@@ -9,16 +9,16 @@ internal static class MarkdownRenderer
         var sb = new StringBuilder();
         sb.AppendLine($"# {doc.Title}");
         sb.AppendLine();
-        sb.AppendLine($"> 產生時間：{doc.CreatedAt:yyyy-MM-dd HH:mm} · 共 {doc.Steps.Count} 個步驟");
+        sb.AppendLine($"> Generated {doc.CreatedAt:yyyy-MM-dd HH:mm} · {doc.Steps.Count} step(s)");
         sb.AppendLine();
 
         foreach (var s in doc.Steps)
         {
-            sb.AppendLine($"## 步驟 {s.Number}：{EscapeHeading(s.Text)}");
+            sb.AppendLine($"## Step {s.Number}: {EscapeHeading(s.Text)}");
             sb.AppendLine();
             if (s.ImagePath is not null)
             {
-                sb.AppendLine($"![步驟 {s.Number}]({imageUrl(s)})");
+                sb.AppendLine($"![Step {s.Number}]({imageUrl(s)})");
                 sb.AppendLine();
             }
             if (!string.IsNullOrEmpty(s.Command))

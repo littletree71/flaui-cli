@@ -1,44 +1,49 @@
 # flaui-cli
 
-以 [FlaUI](https://github.com/FlaUI/FlaUI) 驅動、仿 [playwright-cli](https://github.com/microsoft/playwright-cli) 的 **Windows 桌面 UI 自動化命令列工具**。
-設計給 AI Agent（例如 Claude Code）與腳本使用，主要用途：
+[繁體中文](README.zh-TW.md)
 
-1. **UI 測試**：Agent 即時操作 + 斷言，或執行 YAML 測試腳本並輸出 JUnit 報告。
-2. **產生操作文件**：每個步驟自動截圖並以紅框、編號標註操作的元素，輸出 Markdown（含 images/）與單檔 HTML。
+A **command-line tool for Windows desktop UI automation**, built on [FlaUI](https://github.com/FlaUI/FlaUI) and modelled on
+[playwright-cli](https://github.com/microsoft/playwright-cli). It is designed for AI agents (such as Claude Code) and scripts. Main uses:
 
-支援 WPF、WinForms、Win32 與 UWP（例如 Windows 小算盤）。
+1. **UI testing** - drive and assert interactively, or run YAML test scripts and produce JUnit reports.
+2. **Step-by-step documentation** - every step is captured with the operated element outlined by a numbered red box, exported as Markdown (with images/) and a single-file HTML page.
 
-## 安裝
+Supports WPF, WinForms, Win32 and UWP apps (for example Windows Calculator).
 
-需求：Windows 10/11；從原始碼建置需要 .NET 10 SDK。
+## Installation
+
+Requirements: Windows 10/11. Building from source needs the .NET 10 SDK.
 
 ```bash
-# 發佈成單一執行檔（自含 runtime，目標電腦不需要安裝 .NET）
+# Publish a self-contained single-file executable (no .NET runtime needed on the target machine)
 dotnet publish src/FlauiCli -p:PublishProfile=win-x64
-# 產出 artifacts/flaui-cli/flaui-cli.exe，把這個資料夾加入 PATH 即可
+# Output: artifacts/flaui-cli/flaui-cli.exe - add that folder to PATH
 ```
 
-> 為什麼不是 `dotnet tool`？.NET SDK 不允許目標框架含平台識別碼（例如 `net10.0-windows`）的專案封裝成 dotnet tool（NETSDK1146），而 FlaUI 只提供 Windows 目標框架，因此改用單一執行檔發佈。
+Why not a `dotnet tool` or Native AOT?
 
-安裝給 Claude Code 使用的技能說明：
+- The .NET SDK does not allow projects whose target framework has a platform identifier (for example `net10.0-windows`) to be packed as a dotnet tool (NETSDK1146), and FlaUI only ships Windows target frameworks.
+- FlaUI.UIA3 uses built-in COM interop, which Native AOT does not support (the UI Automation object fails to construct), so the executable is published self-contained instead.
+
+Install the agent skill for Claude Code:
 
 ```bash
-flaui-cli install-skill        # 複製到 ./.claude/skills/flaui-cli/SKILL.md
+flaui-cli install-skill        # copies SKILL.md to ./.claude/skills/flaui-cli/SKILL.md
 ```
 
-## 快速開始
+## Quick start
 
 ```bash
-flaui-cli open calc.exe --window Calculator     # 啟動並附加（背景 daemon 自動啟動）
-flaui-cli snapshot                              # UI 樹 + 元素 ref
+flaui-cli open calc.exe --window Calculator     # launch and attach (the background daemon starts automatically)
+flaui-cli snapshot                              # UI tree + element refs
 flaui-cli click id=num1Button
-flaui-cli click e21                             # 也可以用 snapshot 的 ref
+flaui-cli click e21                             # refs from a snapshot work too
 flaui-cli assert text id=CalculatorResults "Display is 1"
 flaui-cli screenshot --highlight id=CalculatorResults
 flaui-cli close
 ```
 
-snapshot 輸出範例：
+Snapshot output:
 
 ```yaml
 - window "Calculator" [ref=e1]
@@ -47,51 +52,51 @@ snapshot 輸出範例：
   - checkbox "I agree" [ref=e31] [checked]
 ```
 
-## 元素定位
+## Targeting elements
 
-| 寫法 | 說明 |
+| Syntax | Meaning |
 |---|---|
-| `e21` | snapshot ref（同一元素在多次 snapshot 之間保持相同） |
+| `e21` | Snapshot ref (the same element keeps its ref across snapshots) |
 | `id=num1Button` | AutomationId |
-| `name="One"`、`One` | Name 完全相符 |
-| `text=Disp` | Name 包含（不分大小寫） |
-| `type=Button&&name=OK` | 條件組合 |
-| `id=panel >> name=OK` | 階層 |
-| `type=ListItem&&nth=2` | 第 N 個（從 0 起算） |
+| `name="One"`, `One` | Exact name |
+| `text=Disp` | Name contains (case-insensitive) |
+| `type=Button&&name=OK` | Combined conditions |
+| `id=panel >> name=OK` | Nested search |
+| `type=ListItem&&nth=2` | The Nth match (zero-based) |
 | `xpath=//Button[@AutomationId='ok']` | FlaUI XPath |
 
-selector 會自動等待元素出現，斷言會自動重試直到逾時（預設 5 秒，`--timeout` 或設定檔可調）。
+Selectors wait for elements to appear and assertions retry until the timeout (5 s by default; change it with `--timeout` or the config file).
 
-## 指令一覽
+## Commands
 
-執行 `flaui-cli --help` 或 `flaui-cli <指令> --help` 查看完整說明。
+Run `flaui-cli --help` or `flaui-cli <command> --help` for details.
 
-| 類別 | 指令 |
+| Area | Commands |
 |---|---|
-| 應用程式 | `open` `attach` `close` `status` `list` `close-all` `kill-all` |
-| 視窗 | `windows` `window` `focus` `maximize` `minimize` `restore` `resize` `move` `wait-window` |
-| 檢視 | `snapshot` `find` `inspect` |
-| 動作 | `click` `dblclick` `hover` `fill` `type` `press` `select` `check` `uncheck` `expand` `collapse` `invoke` `scroll` `drag` |
-| 讀取 / 等待 / 斷言 | `get` `wait` `assert` `sleep` |
-| 截圖 | `screenshot` |
-| 錄製 | `record start\|capture\|status\|stop` |
-| 文件 | `doc start\|step\|status\|stop` |
-| 腳本 | `run` |
+| Application | `open` `attach` `close` `status` `list` `close-all` `kill-all` |
+| Windows | `windows` `window` `focus` `maximize` `minimize` `restore` `resize` `move` `wait-window` |
+| Inspection | `snapshot` `find` `inspect` |
+| Actions | `click` `dblclick` `hover` `fill` `type` `press` `select` `check` `uncheck` `expand` `collapse` `invoke` `scroll` `drag` |
+| Read / wait / assert | `get` `wait` `assert` `sleep` |
+| Screenshots | `screenshot` |
+| Recording | `record start\|capture\|status\|stop` |
+| Documents | `doc start\|step\|status\|stop` |
+| Scripts | `run` |
 
-全域選項：`-s, --session <名稱>`（多個 session 並行）、`--json`（結構化輸出）。
-結束碼：`0` 成功、`1` 斷言失敗、`2` 錯誤、`3` session 未啟動。
+Global options: `-s, --session <name>` (parallel sessions), `--json` (structured output).
+Exit codes: `0` success, `1` assertion failed, `2` error, `3` session not running.
 
-## YAML 測試腳本
+## YAML test scripts
 
 ```yaml
-name: 小算盤加法
+name: Calculator addition
 app:
   launch: calc.exe
   window: Calculator
 timeout: 5000
 steps:
   - click: id=num1Button
-    doc: 按下數字 1
+    doc: Press 1
   - click: id=plusButton
   - click: id=num2Button
   - click: id=equalButton
@@ -99,33 +104,33 @@ steps:
 ```
 
 ```bash
-flaui-cli run samples/calculator.flow.yaml                                 # console 報告
+flaui-cli run samples/calculator.flow.yaml                                 # console report
 flaui-cli run tests/*.flow.yaml --reporter junit --output out/report.xml    # CI
-flaui-cli run samples/calculator.flow.yaml --doc out/calc-doc              # 同時產生操作文件
+flaui-cli run samples/calculator.flow.yaml --doc out/calc-doc              # also produce a document
 ```
 
-### 錄製
+### Recording
 
 ```bash
-flaui-cli record start --name 登入         # 記錄之後執行的 CLI 指令（ref 自動轉成穩定 selector）
+flaui-cli record start --name Login        # records later CLI commands (refs become stable selectors)
 ...
 flaui-cli record stop --out login.flow.yaml
 
-flaui-cli record capture --out flow.yaml  # 捕捉真人滑鼠鍵盤操作，Ctrl+Shift+Q 結束
+flaui-cli record capture --out flow.yaml  # captures real mouse/keyboard input; Ctrl+Shift+Q stops
 ```
 
-## 操作文件
+## Documents
 
 ```bash
-flaui-cli doc start --title "小算盤使用說明"
-flaui-cli click id=num1Button --note "按下數字 1"
-flaui-cli doc step "完成"
+flaui-cli doc start --title "Using the calculator"
+flaui-cli click id=num1Button --note "Press 1"
+flaui-cli doc step "Done"
 flaui-cli doc stop --out docs/calculator --format md,html
 ```
 
-## 設定檔
+## Configuration
 
-`.flaui-cli/config.json`（相對於目前工作目錄，全部選填）：
+`.flaui-cli/config.json` (relative to the current working directory, every field optional):
 
 ```json
 {
@@ -137,31 +142,45 @@ flaui-cli doc stop --out docs/calculator --format md,html
 }
 ```
 
-## 架構
+## Architecture
 
 ```
 src/
-  FlauiCli/                CLI 前端（System.CommandLine）、daemon client、本機指令
-  FlauiCli.Core/           自動化引擎：抽象介面、selector、snapshot、dispatcher、腳本、錄製、文件、daemon
-  FlauiCli.Driver.FlaUI/   唯一引用 FlaUI 的轉接層（實作 IUiDriver / IUiElement）
+  FlauiCli/                CLI front-end (System.CommandLine), daemon client, local commands
+  FlauiCli.Core/           Engine: abstractions, selectors, snapshots, dispatcher, scripts, recording, documents, daemon
+  FlauiCli.Driver.FlaUI/   The only project that references FlaUI (implements IUiDriver / IUiElement)
 tests/
-  FlauiCli.Core.Tests/     單元測試（FakeDriver，不需要桌面）
-  FlauiCli.E2E.Tests/      DriverContractTests（FlaUI 轉接層契約）+ CLI 端對端測試
-  TestApps/WpfSample/      測試用 WPF 程式
+  FlauiCli.Core.Tests/     Unit tests (FakeDriver, no desktop needed)
+  FlauiCli.E2E.Tests/      DriverContractTests (FlaUI adapter contract) + CLI end-to-end tests
+  TestApps/WpfSample/      WPF application used by the tests
 ```
 
-- CLI 每次執行只是 client，第一次 `open` / `attach` 時會啟動同一個 exe 的 daemon 模式，透過 Named Pipe（僅限目前使用者）通訊；所有 UIA 呼叫都在 daemon 的單一執行緒上執行。
-- **FlaUI 隔離**：Core 不引用 FlaUI，只依賴 `IUiDriver` / `IUiElement` 等抽象與自有列舉。FlaUI 版本在 `Directory.Packages.props` 精確鎖定；升級時必須通過 `DriverContractTests`（包含列舉對應完整性檢查）。
+- Every CLI invocation is just a client. The first `open` / `attach` starts the same executable in daemon mode; they talk over a named pipe restricted to the current user, and every UI Automation call runs on a single daemon thread.
+- **FlaUI isolation**: Core does not reference FlaUI; it depends only on the `IUiDriver` / `IUiElement` abstractions and its own enums. The FlaUI version is pinned in `Directory.Packages.props`; upgrades must pass `DriverContractTests` (which include an enum-mapping completeness check).
 
-## 測試
+## Behaviour worth knowing (security and antivirus)
+
+flaui-cli does things that security products watch closely. They are all intentional and documented here:
+
+- **Synthetic input and screenshots** - actions send real mouse/keyboard input (`SendInput`) and screenshots capture the screen.
+- **Global keyboard/mouse hooks** - installed **only** while `record capture` is running and removed when it stops. They are never installed otherwise.
+- **Background daemon** - the same `flaui-cli.exe` started as `flaui-cli.exe daemon --session <name>`, without a console window. It only breaks away from the caller's job object when that job would otherwise kill it, and it exits after 30 idle minutes (`close` / `kill-all` stop it immediately).
+- **Local files** - session files and logs under `%LOCALAPPDATA%\flaui-cli`, snapshots and screenshots under `.flaui-cli` in the working directory.
+- The executable requests no elevation (`asInvoker`) and the published build is neither compressed nor packed.
+
+## Tests
 
 ```bash
-dotnet test tests/FlauiCli.Core.Tests                                   # 單元測試
-dotnet test tests/FlauiCli.E2E.Tests                                    # 需要互動式桌面，執行期間請勿操作滑鼠鍵盤
+dotnet test tests/FlauiCli.Core.Tests                                   # unit tests
+dotnet test tests/FlauiCli.E2E.Tests                                    # needs an interactive desktop; do not use mouse or keyboard while it runs
 ```
 
-## 已知限制
+## Known limitations
 
-- 動作會移動真實滑鼠、送出真實按鍵，執行期間請勿操作電腦（`click --invoke` 可避免移動滑鼠）。
-- UWP 程式的視窗由 ApplicationFrameHost 承載，`open` 需要 `--window` 指定標題；`close` 只會關閉視窗，不會結束共用程序。
-- 真人操作錄製依賴低階 hook，以滑鼠按下時的座標判斷元素，快速變動的 UI（例如動畫中的選單）可能錄到非預期元素。
+- Actions move the real mouse and send real key presses; do not use the computer while they run (`click --invoke` avoids moving the mouse).
+- UWP windows are hosted by ApplicationFrameHost, so `open` needs `--window <title>`; `close` only closes the window and never kills the shared process.
+- Input capture relies on low-level hooks and identifies elements by the position of the mouse press, so fast-changing UI (such as animated menus) may be recorded as an unexpected element.
+
+## License
+
+[MIT](LICENSE). Third-party components and their licenses are listed in [THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt).

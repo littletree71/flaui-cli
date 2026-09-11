@@ -1,7 +1,7 @@
 namespace FlauiCli.E2E.Tests;
 
 /// <summary>
-/// 以真正的 flaui-cli.exe（daemon + Named Pipe）操作應用程式的端對端測試。
+/// End-to-end tests that drive applications through the real flaui-cli.exe (daemon + named pipe).
 /// </summary>
 [Trait("Category", "E2E")]
 public sealed class CliEndToEndTests : IDisposable
@@ -14,30 +14,30 @@ public sealed class CliEndToEndTests : IDisposable
     public void Dispose()
     {
         _cli.Dispose();
-        try { Directory.Delete(_work, recursive: true); } catch { /* 忽略 */ }
+        try { Directory.Delete(_work, recursive: true); } catch { /* ignore */ }
     }
 
     private CliRun Ok(params string[] args)
     {
         var r = _cli.Run(args);
-        Assert.True(r.ExitCode == 0, $"flaui-cli {string.Join(' ', args)} 失敗（{r.ExitCode}）：{r.All}");
+        Assert.True(r.ExitCode == 0, $"flaui-cli {string.Join(' ', args)} failed ({r.ExitCode}): {r.All}");
         return r;
     }
 
     private void OpenWpfSample() => Ok("open", TestEnvironment.WpfSampleExe);
 
     [Fact]
-    public void 沒有session時回傳結束碼3()
+    public void ExitCode3WithoutASession()
     {
         var r = _cli.Run("snapshot");
         Assert.Equal(3, r.ExitCode);
-        Assert.Contains("沒有在執行", r.StdErr);
+        Assert.Contains("is not running", r.StdErr);
     }
 
     [Fact]
-    public void 小算盤加法()
+    public void CalculatorAddition()
     {
-        // 小算盤是 UWP：calc.exe 啟動後立即結束，需要用視窗標題附加（中英文系統都支援）
+        // Calculator is a UWP app: calc.exe exits immediately, so attach by window title (English or Chinese Windows)
         var open = _cli.Run("open", "calc.exe", "--window", "Calculator");
         if (open.ExitCode != 0) Ok("open", "calc.exe", "--window", "小算盤");
 
@@ -51,11 +51,11 @@ public sealed class CliEndToEndTests : IDisposable
         var click = Ok("click", "id=equalButton").StdOut;
         Assert.Contains("[Snapshot](", click);
 
-        // 以結尾數字比對，避免依賴系統語系（Display is 3 / 顯示為 3）
+        // Match only the trailing number so the test does not depend on the OS language ("Display is 3")
         Ok("assert", "matches", "id=CalculatorResults", "\\b3$");
         var failed = _cli.Run("assert", "matches", "id=CalculatorResults", "\\b4$", "--timeout", "500");
         Assert.Equal(1, failed.ExitCode);
-        Assert.Contains("斷言失敗", failed.StdErr);
+        Assert.Contains("Assertion failed", failed.StdErr);
 
         Ok("screenshot", "--highlight", "id=CalculatorResults", "--filename", "calc.png");
         Assert.True(File.Exists(Path.Combine(_work, "calc.png")));
@@ -63,7 +63,7 @@ public sealed class CliEndToEndTests : IDisposable
     }
 
     [Fact]
-    public void Wpf表單操作()
+    public void WpfFormOperations()
     {
         OpenWpfSample();
         Ok("fill", "id=nameInput", "Alice");
@@ -83,7 +83,7 @@ public sealed class CliEndToEndTests : IDisposable
     }
 
     [Fact]
-    public void Ref在指令之間保留()
+    public void RefsSurviveAcrossCommands()
     {
         OpenWpfSample();
         var snapshot = Ok("snapshot").StdOut;
@@ -95,10 +95,10 @@ public sealed class CliEndToEndTests : IDisposable
     }
 
     [Fact]
-    public void 對話框與視窗切換()
+    public void DialogsAndWindowSwitching()
     {
         OpenWpfSample();
-        // 開啟強制回應對話框後 click 會一直等待，因此用 invoke 觸發
+        // A modal dialog blocks a physical click from returning, so trigger it with invoke
         Ok("click", "id=dialogButton", "--invoke");
         Ok("wait-window", "Confirm");
         Assert.Contains("Confirm", Ok("windows").StdOut);
@@ -108,10 +108,10 @@ public sealed class CliEndToEndTests : IDisposable
     }
 
     [Fact]
-    public void 錄製指令後可重播()
+    public void RecordedCommandsCanBeReplayed()
     {
         OpenWpfSample();
-        Ok("record", "start", "--name", "表單");
+        Ok("record", "start", "--name", "Form");
         Ok("fill", "id=nameInput", "Rec");
         var r = Ok("snapshot").StdOut.Split('\n').First(l => l.Contains("id=agreeCheck")).Split("[ref=")[1].Split(']')[0];
         Ok("check", r);
@@ -121,43 +121,43 @@ public sealed class CliEndToEndTests : IDisposable
         Ok("close");
 
         var yaml = File.ReadAllText(Path.Combine(_work, "rec.yaml"));
-        Assert.Contains("id=agreeCheck", yaml);      // ref 已轉成穩定 selector
+        Assert.Contains("id=agreeCheck", yaml);      // the ref was turned into a stable selector
         Assert.DoesNotContain("[ref=", yaml);
 
         var run = Ok("run", "rec.yaml", "--reporter", "junit", "--output", "report.xml");
-        Assert.Contains("通過 1", run.StdOut);
+        Assert.Contains("1 passed", run.StdOut);
         Assert.Contains("failures=\"0\"", File.ReadAllText(Path.Combine(_work, "report.xml")));
     }
 
     [Fact]
-    public void 腳本產生操作文件()
+    public void ScriptsProduceDocuments()
     {
         var script = Path.Combine(_work, "form.flow.yaml");
         File.WriteAllText(script, $$"""
-            name: 填寫表單
+            name: Fill in the form
             app:
               launch: '{{TestEnvironment.WpfSampleExe}}'
             steps:
               - fill: { target: id=nameInput, text: Doc }
-                doc: 在 Name 欄位輸入名字
+                doc: Enter a name in the Name field
               - check: id=agreeCheck
               - click: id=submitButton
-                doc: 按下 Submit 送出
+                doc: Click Submit
               - assert: { target: id=statusText, text: Submitted }
             """);
 
         var run = Ok("run", script, "--doc", "manual");
         Assert.Contains("✔", run.StdOut);
         var md = File.ReadAllText(Path.Combine(_work, "manual", "index.md"));
-        Assert.Contains("## 步驟 1：在 Name 欄位輸入名字", md);
-        Assert.Contains("## 步驟 2：勾選「I agree」核取方塊", md);
-        Assert.Contains("## 步驟 3：按下 Submit 送出", md);
+        Assert.Contains("## Step 1: Enter a name in the Name field", md);
+        Assert.Contains("## Step 2: Check the \"I agree\" check box", md);
+        Assert.Contains("## Step 3: Click Submit", md);
         Assert.Equal(3, Directory.GetFiles(Path.Combine(_work, "manual", "images")).Length);
         Assert.True(File.Exists(Path.Combine(_work, "manual", "index.html")));
     }
 
     [Fact]
-    public void 失敗的腳本回傳結束碼1()
+    public void FailingScriptsExitWithCode1()
     {
         var script = Path.Combine(_work, "fail.flow.yaml");
         File.WriteAllText(script, $$"""

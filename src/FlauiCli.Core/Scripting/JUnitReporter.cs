@@ -4,7 +4,7 @@ using System.Xml.Linq;
 
 namespace FlauiCli.Core.Scripting;
 
-/// <summary>輸出 JUnit XML 報告（供 CI 使用）。每個腳本是一個 testcase。</summary>
+/// <summary>Writes a JUnit XML report (for CI). Each script is one test case.</summary>
 public static class JUnitReporter
 {
     public static string Render(IReadOnlyList<ScriptResult> results, DateTime timestamp)
@@ -27,11 +27,11 @@ public static class JUnitReporter
             var log = new StringBuilder();
             foreach (var s in r.Steps)
             {
-                log.Append(s.Passed ? "[通過] " : "[失敗] ")
+                log.Append(s.Passed ? "[PASS] " : "[FAIL] ")
                    .Append(s.IsSetup ? "setup" : $"#{s.Index}")
                    .Append(' ').Append(s.Command)
                    .Append($" ({s.Duration.TotalMilliseconds:0}ms)");
-                if (s.Error is not null) log.Append(" — ").Append(s.Error);
+                if (s.Error is not null) log.Append(" - ").Append(s.Error);
                 log.AppendLine();
             }
 
@@ -42,8 +42,8 @@ public static class JUnitReporter
             if (!r.Passed)
             {
                 var detail = log.ToString();
-                if (r.FailureScreenshot is not null) detail += $"失敗截圖：{r.FailureScreenshot}\n";
-                testcase.Add(new XElement("failure", new XAttribute("message", r.Error ?? "失敗"), detail));
+                if (r.FailureScreenshot is not null) detail += $"Failure screenshot: {r.FailureScreenshot}\n";
+                testcase.Add(new XElement("failure", new XAttribute("message", r.Error ?? "Failed"), detail));
             }
             testcase.Add(new XElement("system-out", log.ToString()));
             suite.Add(testcase);

@@ -3,7 +3,7 @@ using FlauiCli.Core.Abstractions;
 
 namespace FlauiCli.Core.Tests.Fakes;
 
-/// <summary>記憶體內的驅動程式。滑鼠點擊會以座標命中測試找到最深的元素並觸發其 OnClick。</summary>
+/// <summary>In-memory driver. Mouse clicks hit-test by coordinates, find the deepest element and trigger its OnClick.</summary>
 public sealed class FakeDriver : IUiDriver
 {
     public FakeDriver()
@@ -17,7 +17,7 @@ public sealed class FakeDriver : IUiDriver
 
     public FakeElement? Focused { get; set; }
 
-    /// <summary>Launch 時要回傳的主視窗（由測試設定）。</summary>
+    /// <summary>Main window returned by Launch (set by the test).</summary>
     public Func<string, FakeElement>? OnLaunch { get; set; }
 
     public List<string> Launched { get; } = [];
@@ -40,7 +40,7 @@ public sealed class FakeDriver : IUiDriver
     public IAppProcess Launch(string executable, string? arguments, string? workingDirectory)
     {
         Launched.Add($"{executable} {arguments}".Trim());
-        var window = OnLaunch?.Invoke(executable) ?? throw new InvalidOperationException("測試未設定 OnLaunch");
+        var window = OnLaunch?.Invoke(executable) ?? throw new InvalidOperationException("The test did not set OnLaunch");
         if (!TopLevel.Contains(window)) TopLevel.Add(window);
         return new FakeProcess(window.ProcessId, window);
     }
@@ -118,7 +118,7 @@ public sealed class FakeInput(FakeDriver driver) : IInputDevice
     public void PressChord(IReadOnlyList<ushort> virtualKeys)
     {
         Log.Add("press " + string.Join("+", virtualKeys.Select(v => $"0x{v:X2}")));
-        // 模擬 Ctrl+A、Delete 清空焦點元素
+        // Simulate Ctrl+A, Delete clearing the focused element
         if (virtualKeys is [0x2E] && driver.Focused is { Value: not null } f) f.Value = "";
     }
 

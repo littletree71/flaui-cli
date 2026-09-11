@@ -3,8 +3,8 @@ using FlauiCli.Core.Abstractions;
 namespace FlauiCli.Core.Targeting;
 
 /// <summary>
-/// 為元素產生可重複使用的穩定 selector（錄製與腳本用）。
-/// 優先序：AutomationId → AutomationId+type → type+name → 加上 nth → XPath。
+/// Generates a stable, reusable selector for an element (used by recording and scripts).
+/// Priority: AutomationId → AutomationId+type → type+name → add nth → XPath.
 /// </summary>
 internal static class SelectorGenerator
 {
@@ -42,7 +42,7 @@ internal static class SelectorGenerator
         return candidates.FirstOrDefault() ?? $"type={kind}";
     }
 
-    /// <summary>判斷 AutomationId 是否像是執行期產生、不穩定的值（例如純數字的 HWND 或 GUID）。</summary>
+    /// <summary>Whether an AutomationId looks generated at runtime and therefore unstable (for example a numeric HWND or a GUID).</summary>
     internal static bool LooksGenerated(string aid) =>
         Guid.TryParse(aid, out _) || (aid.Length > 6 && aid.All(char.IsDigit));
 }

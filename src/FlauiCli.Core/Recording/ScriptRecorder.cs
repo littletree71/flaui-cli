@@ -4,7 +4,7 @@ using FlauiCli.Core.Scripting;
 
 namespace FlauiCli.Core.Recording;
 
-/// <summary>收集錄製到的步驟（CLI 指令與真人操作共用），可匯出成 YAML 腳本。執行緒安全。</summary>
+/// <summary>Collects recorded steps (shared by command recording and input capture) and exports them as a YAML script. Thread-safe.</summary>
 public sealed class ScriptRecorder(string? name, AppInfo? app)
 {
     private readonly object _lock = new();
@@ -48,7 +48,7 @@ public sealed class ScriptRecorder(string? name, AppInfo? app)
         {
             return new ScriptDocument
             {
-                Name = Name ?? $"錄製於 {StartedAt:yyyy-MM-dd HH:mm}",
+                Name = Name ?? $"Recorded {StartedAt:yyyy-MM-dd HH:mm}",
                 App = App is null ? null : new AppSpec
                 {
                     Launch = App.Launch,

@@ -1,9 +1,9 @@
 using System.Text;
 
-// 讓中文輸出在各種終端機都正確
+// Make non-ASCII output render correctly in every terminal
 Console.OutputEncoding = new UTF8Encoding(false);
 
-// 診斷用：設定環境變數 FLAUI_CLI_TRACE=<檔案路徑> 時，記錄每次啟動收到的命令列
+// Diagnostics: when FLAUI_CLI_TRACE=<file path> is set, record the command line of every start
 if (Environment.GetEnvironmentVariable("FLAUI_CLI_TRACE") is { Length: > 0 } tracePath)
 {
     try
@@ -14,7 +14,7 @@ if (Environment.GetEnvironmentVariable("FLAUI_CLI_TRACE") is { Length: > 0 } tra
     }
     catch (IOException)
     {
-        // 追蹤失敗不影響執行
+        // Tracing failures must not affect execution
     }
 }
 

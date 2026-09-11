@@ -9,14 +9,14 @@ namespace FlauiCli.Core.Tests;
 public class ScriptTests
 {
     private const string Sample = """
-        name: 範例
+        name: Sample
         app:
           launch: calc.exe
           window: Calculator
         timeout: 3000
         steps:
           - click: id=num1Button
-            doc: 按下 1
+            doc: Press 1
           - fill: { target: id=nameInput, text: "Alice Chen" }
           - press: Ctrl+A
           - screenshot:
@@ -27,17 +27,17 @@ public class ScriptTests
         """;
 
     [Fact]
-    public void 解析各種步驟格式()
+    public void ParsesEveryStepFormat()
     {
         var doc = ScriptYaml.Parse(Sample);
-        Assert.Equal("範例", doc.Name);
+        Assert.Equal("Sample", doc.Name);
         Assert.Equal("calc.exe", doc.App!.Launch);
         Assert.Equal(3000, doc.Timeout);
         Assert.Equal(6, doc.Steps.Count);
 
         Assert.Equal("click", doc.Steps[0].Command);
         Assert.Equal("id=num1Button", doc.Steps[0].Get("target"));
-        Assert.Equal("按下 1", doc.Steps[0].Get("note"));
+        Assert.Equal("Press 1", doc.Steps[0].Get("note"));
         Assert.Equal("Alice Chen", doc.Steps[1].Get("text"));
         Assert.Equal("Ctrl+A", doc.Steps[2].Get("keys"));
         Assert.Equal(["id=a", "id=b"], doc.Steps[3].GetList("highlight"));
@@ -46,21 +46,21 @@ public class ScriptTests
     }
 
     [Theory]
-    [InlineData("steps:\n  - nope: x", "未知的指令")]
-    [InlineData("steps:\n  - click: a\n    fill: b", "只能有一個指令")]
-    [InlineData("steps:\n  - run: a.yaml", "不能用在腳本中")]
-    [InlineData("foo: 1", "未知的欄位")]
-    [InlineData("- a\n- b", "最上層必須是 mapping")]
-    [InlineData("steps: [", "YAML 格式錯誤")]
-    [InlineData("timeout: abc", "timeout 必須是整數")]
-    public void 錯誤訊息清楚(string yaml, string message)
+    [InlineData("steps:\n  - nope: x", "unknown command")]
+    [InlineData("steps:\n  - click: a\n    fill: b", "only one command per step")]
+    [InlineData("steps:\n  - run: a.yaml", "cannot be used in scripts")]
+    [InlineData("foo: 1", "unknown field")]
+    [InlineData("- a\n- b", "the top level must be a mapping")]
+    [InlineData("steps: [", "invalid YAML")]
+    [InlineData("timeout: abc", "timeout must be an integer")]
+    public void ErrorMessagesAreClear(string yaml, string message)
     {
         var ex = Assert.Throws<CliException>(() => ScriptYaml.Parse(yaml));
         Assert.Contains(message, ex.Message);
     }
 
     [Fact]
-    public void 儲存後可以重新載入()
+    public void SavedScriptsCanBeLoadedAgain()
     {
         var doc = ScriptYaml.Parse(Sample);
         var yaml = ScriptYaml.Save(doc);
@@ -78,11 +78,11 @@ public class ScriptTests
     }
 
     [Fact]
-    public void Runner執行腳本並回報每個步驟()
+    public void RunnerExecutesTheScriptAndReportsEachStep()
     {
         using var app = new TestApp();
         var doc = ScriptYaml.Parse("""
-            name: 加法
+            name: Addition
             app: { launch: calc.exe, window: Calculator }
             steps:
               - click: id=num1Button
@@ -101,7 +101,7 @@ public class ScriptTests
     }
 
     [Fact]
-    public void Runner在失敗時停止並記錄錯誤()
+    public void RunnerStopsAtTheFirstFailure()
     {
         using var app = new TestApp();
         var doc = ScriptYaml.Parse("""
@@ -115,17 +115,17 @@ public class ScriptTests
         var result = new ScriptRunner(() => app.Driver).Run(doc, new RunOptions { Cwd = app.Cwd });
 
         Assert.False(result.Passed);
-        Assert.Contains("第 2 步", result.Error);
-        Assert.Equal(3, result.Steps.Count); // setup + 2 步，第 3 步不執行
+        Assert.Contains("Step 2", result.Error);
+        Assert.Equal(3, result.Steps.Count); // setup + 2 steps; step 3 never runs
         Assert.DoesNotContain("click:Left", app.Two.Actions);
         Assert.NotNull(result.FailureScreenshot);
     }
 
     [Fact]
-    public void JUnit報告()
+    public void JUnitReport()
     {
         var pass = new ScriptResult { Name = "a", File = "a.yaml", Passed = true, Duration = TimeSpan.FromSeconds(1) };
-        var fail = new ScriptResult { Name = "b", File = "b.yaml", Passed = false, Error = "第 1 步失敗：x" };
+        var fail = new ScriptResult { Name = "b", File = "b.yaml", Passed = false, Error = "Step 1 failed: x" };
         fail.Steps.Add(new StepResult(1, "click id=x", false, "x", TimeSpan.FromMilliseconds(5)));
 
         var xml = XDocument.Parse(JUnitReporter.Render([pass, fail], new DateTime(2026, 9, 10)));
@@ -133,12 +133,12 @@ public class ScriptTests
         Assert.Equal("2", suite.Attribute("tests")!.Value);
         Assert.Equal("1", suite.Attribute("failures")!.Value);
         var failure = suite.Elements("testcase").Last().Element("failure")!;
-        Assert.Equal("第 1 步失敗：x", failure.Attribute("message")!.Value);
+        Assert.Equal("Step 1 failed: x", failure.Attribute("message")!.Value);
         Assert.Contains("click id=x", failure.Value);
     }
 
     [Fact]
-    public void 指令格式化成CLI字串()
+    public void CommandsAreFormattedAsCliLines()
     {
         var call = new CommandCall("fill").Set("target", "id=a").Set("text", "hello world").Set("keyboard", "true");
         Assert.Equal("fill id=a \"hello world\" --keyboard", CommandFormatter.ToCli(call));
@@ -148,7 +148,7 @@ public class ScriptTests
     }
 
     [Fact]
-    public void 規格表的名稱不重複且主要參數存在()
+    public void CatalogNamesAreUniqueAndArgumentsAreOrdered()
     {
         var names = CommandCatalog.All.Select(s => s.Name).ToList();
         Assert.Equal(names.Count, names.Distinct().Count());
@@ -156,11 +156,11 @@ public class ScriptTests
         {
             var all = spec.Args.Select(a => a.Name).Concat(spec.Options.Select(o => o.Name)).ToList();
             Assert.Equal(all.Count, all.Distinct().Count());
-            // 選填位置參數之後不可再有必填參數
+            // A required positional argument must not follow an optional one
             var seenOptional = false;
             foreach (var a in spec.Args)
             {
-                Assert.False(seenOptional && a.Required, $"{spec.Name}：必填參數 {a.Name} 位於選填參數之後");
+                Assert.False(seenOptional && a.Required, $"{spec.Name}: required argument {a.Name} follows an optional one");
                 seenOptional |= !a.Required;
             }
         }

@@ -2,7 +2,7 @@ using System.Drawing;
 
 namespace FlauiCli.Core.Abstractions;
 
-/// <summary>UI 樹節點的屬性快照（由 <see cref="IUiElement.CaptureTree"/> 一次取回）。</summary>
+/// <summary>Property snapshot of a UI tree node (fetched in one go by <see cref="IUiElement.CaptureTree"/>).</summary>
 public sealed class ElementNode
 {
     public required IUiElement Element { get; init; }
@@ -37,18 +37,18 @@ public static class GeometryExtensions
 
 public static class ControlKindExtensions
 {
-    /// <summary>snapshot 中使用的小寫角色名稱。</summary>
+    /// <summary>Lower-case role name used in snapshots.</summary>
     public static string Role(this ControlKind kind) => kind.ToString().ToLowerInvariant();
 }
 
 public static class UiElementExtensions
 {
-    /// <summary>取得可點擊座標，失敗時退回元素中心點。</summary>
+    /// <summary>Clickable point of the element, falling back to the center of its bounds.</summary>
     public static Point ClickPoint(this IUiElement el)
     {
         if (el.TryGetClickablePoint() is { } p) return p;
         var r = el.Bounds;
-        if (r.IsEmpty) throw new CliException("元素沒有可點擊的位置（可能不可見或已最小化）");
+        if (r.IsEmpty) throw new CliException("The element has no clickable point (it may be hidden or minimized)");
         return r.Center();
     }
 }

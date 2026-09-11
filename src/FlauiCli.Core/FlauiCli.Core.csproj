@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- 注意：Core 刻意不引用 FlaUI，只依賴 Abstractions 內的介面。 -->
+  <!-- Note: Core deliberately does not reference FlaUI; it only depends on the interfaces in Abstractions. -->
   <PropertyGroup>
     <RootNamespace>FlauiCli.Core</RootNamespace>
   </PropertyGroup>

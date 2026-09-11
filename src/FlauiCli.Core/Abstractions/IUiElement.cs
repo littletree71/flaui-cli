@@ -2,7 +2,7 @@ using System.Drawing;
 
 namespace FlauiCli.Core.Abstractions;
 
-/// <summary>搜尋條件（所有非 null 欄位需同時符合）。</summary>
+/// <summary>Search criteria (every non-null field must match).</summary>
 public sealed record ElementQuery(
     string? AutomationId = null,
     string? Name = null,
@@ -16,8 +16,9 @@ public sealed record ElementQuery(
 }
 
 /// <summary>
-/// UI 元素抽象。屬性為即時讀取；讀取失敗（元素消失、不支援）時回傳預設值而不擲出例外。
-/// 名稱以 Try 開頭的操作在元素不支援對應 pattern 時回傳 false。
+/// Abstraction of a UI element. Properties are read live; when a read fails (element gone,
+/// property not supported) a default value is returned instead of throwing.
+/// Operations prefixed with Try return false when the element does not support the pattern.
 /// </summary>
 public interface IUiElement : IEquatable<IUiElement>
 {
@@ -31,31 +32,32 @@ public interface IUiElement : IEquatable<IUiElement>
     bool HasFocus { get; }
     Rectangle Bounds { get; }
 
-    /// <summary>UIA RuntimeId（以 . 串接），用來辨識同一個元素。</summary>
+    /// <summary>UIA RuntimeId joined with dots; identifies the same element across lookups.</summary>
     string? RuntimeId { get; }
 
     int ProcessId { get; }
     nint WindowHandle { get; }
     bool IsPassword { get; }
 
-    /// <summary>元素是否仍存在。</summary>
+    /// <summary>Whether the element still exists.</summary>
     bool IsAlive { get; }
 
-    /// <summary>父元素（Control View），沒有或讀取失敗時為 null。</summary>
+    /// <summary>Parent element (Control View); null when there is none or it cannot be read.</summary>
     IUiElement? Parent { get; }
 
     ToggleValue? Toggle { get; }
 
-    /// <summary>ValuePattern 的值；不可編輯的 ComboBox 則為目前選取項目的名稱。</summary>
+    /// <summary>ValuePattern value; for a non-editable ComboBox, the name of the selected item.</summary>
     string? Value { get; }
+
     bool? IsReadOnly { get; }
     ExpandValue? Expand { get; }
     bool? IsSelected { get; }
 
-    /// <summary>支援的 pattern 名稱（例如 Invoke、Value、Toggle）。</summary>
+    /// <summary>Names of the supported patterns (for example Invoke, Value, Toggle).</summary>
     IReadOnlyList<string> SupportedPatterns { get; }
 
-    /// <summary>以名稱讀取其他屬性（HelpText、ItemStatus、LocalizedControlType…），不支援回傳 null。</summary>
+    /// <summary>Reads another property by name (HelpText, ItemStatus, LocalizedControlType...); null when unsupported.</summary>
     string? GetProperty(string name);
 
     Point? TryGetClickablePoint();
@@ -64,10 +66,10 @@ public interface IUiElement : IEquatable<IUiElement>
 
     IReadOnlyList<IUiElement> FindByXPath(string xpath);
 
-    /// <summary>從 <paramref name="root"/> 到此元素的 XPath，無法產生時回傳 null。</summary>
+    /// <summary>XPath from <paramref name="root"/> to this element, or null when it cannot be built.</summary>
     string? GetXPathFrom(IUiElement root);
 
-    /// <summary>一次取回整棵子樹的屬性快照（Control View）。</summary>
+    /// <summary>Fetches a property snapshot of the whole subtree in one go (Control View).</summary>
     ElementNode CaptureTree();
 
     void Focus();
@@ -82,10 +84,10 @@ public interface IUiElement : IEquatable<IUiElement>
     bool TryScrollIntoView();
     bool TryScroll(ScrollDirection direction);
 
-    /// <summary>ComboBox 選取項目（依文字或索引），成功時回傳選到的文字。</summary>
+    /// <summary>Selects a ComboBox item by text or index; on success returns the selected text.</summary>
     bool TrySelectComboBoxItem(string? text, int? index, out string? selected);
 
-    /// <summary>TextPattern 的全文，不支援回傳 null。</summary>
+    /// <summary>Full text of the TextPattern, or null when unsupported.</summary>
     string? TryGetDocumentText();
 
     bool TrySetWindowState(WindowStateKind state);

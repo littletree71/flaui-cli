@@ -4,7 +4,7 @@ using System.Windows.Threading;
 
 namespace WpfSample;
 
-/// <summary>flaui-cli 測試用的範例視窗。</summary>
+/// <summary>Sample window used by the flaui-cli tests.</summary>
 public partial class MainWindow : Window
 {
     public MainWindow()

@@ -2,13 +2,16 @@ using System.Drawing;
 
 namespace FlauiCli.Core.Abstractions;
 
-/// <summary>UI 自動化驅動程式（目前實作：FlaUI UIA3）。實作不需執行緒安全，由呼叫端保證單執行緒使用。</summary>
+/// <summary>
+/// UI automation driver (current implementation: FlaUI UIA3). Implementations do not need to be
+/// thread-safe; callers guarantee single-threaded use.
+/// </summary>
 public interface IUiDriver : IDisposable
 {
-    /// <summary>驅動程式名稱與版本，例如「FlaUI.UIA3 5.0.0」。</summary>
+    /// <summary>Driver name and version, for example "FlaUI.UIA3 5.0.0".</summary>
     string Description { get; }
 
-    /// <summary>桌面上的頂層元素；指定 processId 時只回傳該程序的。</summary>
+    /// <summary>Top-level elements on the desktop; limited to one process when processId is given.</summary>
     IReadOnlyList<IUiElement> GetTopLevelWindows(int? processId = null);
 
     IUiElement? FromPoint(Point point);
@@ -30,7 +33,7 @@ public interface IUiDriver : IDisposable
     IScreenCapture Screen { get; }
 }
 
-/// <summary>被自動化的應用程式程序。</summary>
+/// <summary>An automated application process.</summary>
 public interface IAppProcess : IDisposable
 {
     int ProcessId { get; }
@@ -44,7 +47,7 @@ public interface IAppProcess : IDisposable
     void Kill();
 }
 
-/// <summary>滑鼠鍵盤輸入。座標為螢幕實體像素；按鍵為 Win32 虛擬鍵碼。</summary>
+/// <summary>Mouse and keyboard input. Coordinates are physical screen pixels; keys are Win32 virtual-key codes.</summary>
 public interface IInputDevice
 {
     void MoveTo(Point point);
@@ -53,21 +56,21 @@ public interface IInputDevice
 
     void DoubleClick(Point point, MouseButtonKind button);
 
-    /// <summary>滾輪捲動，正值向上 / 向右。</summary>
+    /// <summary>Wheel scroll; positive values scroll up / right.</summary>
     void Scroll(int amount, bool horizontal);
 
     void Drag(Point from, Point to);
 
     void Type(string text);
 
-    /// <summary>同時按下一組按鍵（組合鍵）。</summary>
+    /// <summary>Presses a set of keys together (a chord).</summary>
     void PressChord(IReadOnlyList<ushort> virtualKeys);
 
-    /// <summary>等待輸入被目標程式處理完。</summary>
+    /// <summary>Waits until the target application has processed the input.</summary>
     void WaitUntilIdle();
 }
 
-/// <summary>螢幕擷取。</summary>
+/// <summary>Screen capture.</summary>
 public interface IScreenCapture
 {
     Rectangle VirtualScreen { get; }

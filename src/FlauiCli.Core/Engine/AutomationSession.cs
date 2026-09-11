@@ -6,16 +6,17 @@ using FlauiCli.Core.Snapshot;
 
 namespace FlauiCli.Core.Engine;
 
-/// <summary>應用程式是如何開啟的（錄製成腳本時寫入 app 區段）。</summary>
+/// <summary>How the application was opened (written to the app section of recorded scripts).</summary>
 public sealed record AppInfo(string? Launch, string? Args, string? Window, string? Attach);
 
 /// <summary>
-/// 一個自動化 session 的所有狀態。除了 <see cref="DriverFactory"/> 之外，所有成員都必須在同一條執行緒上存取。
+/// All state of one automation session. Except for <see cref="DriverFactory"/>, every member must be
+/// accessed from the same thread.
 /// </summary>
 public sealed class AutomationSession : IDisposable
 {
-    /// <param name="name">session 名稱。</param>
-    /// <param name="driverFactory">建立驅動程式的工廠；真人操作錄製會在另一條執行緒上建立獨立的驅動程式。</param>
+    /// <param name="name">Session name.</param>
+    /// <param name="driverFactory">Creates drivers; input capture creates its own driver on another thread.</param>
     public AutomationSession(string name, Func<IUiDriver> driverFactory)
     {
         NativeMethods.EnsureDpiAware();
@@ -36,7 +37,7 @@ public sealed class AutomationSession : IDisposable
 
     public IAppProcess? App { get; internal set; }
 
-    /// <summary>由本工具啟動的程序 PID（只有這種程序才可能在 close 時被強制結束）。</summary>
+    /// <summary>PID of the process this tool launched (the only kind of process that may be killed on close).</summary>
     public int? LaunchedPid { get; internal set; }
 
     public AppInfo? AppInfo { get; internal set; }
@@ -50,23 +51,27 @@ public sealed class AutomationSession : IDisposable
         {
             _currentWindow = value;
             if (value is null) return;
-            // 記住標題與 PID：元素失效後（例如 UWP 重建視窗）仍能找回同一個視窗
+            // Remember title and PID so the window can be found again after its element goes stale
+            // (for example when a UWP app recreates its window).
             WindowTitle = value.Name;
             WindowProcessId = value.ProcessId;
             IsSharedHostWindow = value.ClassName == SharedHostWindowClass;
         }
     }
 
-    /// <summary>UWP 程式的外框視窗類別；其程序（ApplicationFrameHost）同時承載所有 UWP 程式的視窗。</summary>
+    /// <summary>Frame window class of UWP apps; its process (ApplicationFrameHost) hosts the windows of every UWP app.</summary>
     internal const string SharedHostWindowClass = "ApplicationFrameWindow";
 
-    /// <summary>目前視窗是否由共用宿主程序承載（此時同 PID 的其他頂層視窗屬於別的程式，不可納入）。</summary>
+    /// <summary>
+    /// Whether the current window is hosted by a shared host process. In that case other top-level
+    /// windows with the same PID belong to other apps and must not be included.
+    /// </summary>
     public bool IsSharedHostWindow { get; private set; }
 
-    /// <summary>目前視窗最後已知的標題。</summary>
+    /// <summary>Last known title of the current window.</summary>
     public string? WindowTitle { get; private set; }
 
-    /// <summary>目前視窗最後已知的 PID（元素失效後仍保留）。</summary>
+    /// <summary>Last known PID of the current window (kept after its element goes stale).</summary>
     public int WindowProcessId { get; private set; }
 
     public ScriptRecorder? Recorder { get; internal set; }
@@ -78,7 +83,7 @@ public sealed class AutomationSession : IDisposable
     public IUiElement RequireWindow()
     {
         if (CurrentWindow is null)
-            throw new CliException("尚未開啟或附加任何應用程式。請先執行 open <app> 或 attach <process>");
+            throw new CliException("No application is open. Run open <app> or attach <process> first");
 
         if (CurrentWindow.IsAlive) return CurrentWindow;
 
@@ -88,13 +93,13 @@ public sealed class AutomationSession : IDisposable
             return replacement;
         }
 
-        throw new CliException("目前的視窗已關閉。請用 windows / window 切換視窗，或重新 open");
+        throw new CliException("The current window has been closed. Use windows / window to switch, or run open again");
     }
 
     /// <summary>
-    /// 目前視窗失效時找替代視窗：先找同 PID、同標題的視窗；
-    /// 只有 PID 是本 session 的應用程式程序時才退而求其次取任一視窗
-    /// （避免在 ApplicationFrameHost 這類共用程序中誤抓其他程式的視窗）。
+    /// Finds a replacement when the current window went stale: first a window with the same PID and title;
+    /// any window is only accepted when the PID belongs to this session's application
+    /// (so we never pick another app's window from a shared host such as ApplicationFrameHost).
     /// </summary>
     private IUiElement? FindReplacementWindow()
     {
@@ -107,7 +112,7 @@ public sealed class AutomationSession : IDisposable
             : null;
     }
 
-    /// <summary>目前應用程式相關程序的所有頂層視窗（包含選單、下拉清單等 popup）。</summary>
+    /// <summary>All top-level windows of the application's processes (including popups such as menus and drop-downs).</summary>
     public IReadOnlyList<IUiElement> GetTopLevelWindows()
     {
         var pids = new HashSet<int>();
@@ -120,20 +125,20 @@ public sealed class AutomationSession : IDisposable
             try
             {
                 var windows = Driver.GetTopLevelWindows(p);
-                // 共用宿主程序：只保留目前視窗本身
+                // Shared host process: only keep the current window itself
                 if (IsSharedHostWindow && p == WindowProcessId && CurrentWindow is not null)
                     windows = [.. windows.Where(CurrentWindow.Equals)];
                 result.AddRange(windows);
             }
             catch
             {
-                // 程序可能剛結束
+                // The process may have just exited
             }
         }
         return result;
     }
 
-    /// <summary>元素搜尋範圍：目前視窗 + 同程序的其他頂層視窗（popup）。</summary>
+    /// <summary>Search scope for elements: the current window plus the other top-level windows of the process (popups).</summary>
     public IReadOnlyList<IUiElement> SearchRoots()
     {
         var window = RequireWindow();
@@ -145,10 +150,10 @@ public sealed class AutomationSession : IDisposable
         return roots;
     }
 
-    /// <summary>忘記目前的應用程式（不關閉它）。</summary>
+    /// <summary>Forgets the current application (without closing it).</summary>
     internal void ResetApp()
     {
-        try { App?.Dispose(); } catch { /* 忽略 */ }
+        try { App?.Dispose(); } catch { /* ignore */ }
         App = null;
         LaunchedPid = null;
         AppInfo = null;
@@ -161,8 +166,8 @@ public sealed class AutomationSession : IDisposable
 
     public void Dispose()
     {
-        try { InputCapture?.Dispose(); } catch { /* 忽略 */ }
-        try { App?.Dispose(); } catch { /* 忽略 */ }
+        try { InputCapture?.Dispose(); } catch { /* ignore */ }
+        try { App?.Dispose(); } catch { /* ignore */ }
         Driver.Dispose();
     }
 }

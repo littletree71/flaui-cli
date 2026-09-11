@@ -2,7 +2,7 @@ using System.Collections.Concurrent;
 
 namespace FlauiCli.Core.Engine;
 
-/// <summary>在單一專用執行緒上依序執行工作（所有 UIA 呼叫都走這條執行緒，避免 COM apartment 問題）。</summary>
+/// <summary>Runs work items sequentially on one dedicated thread (every UIA call goes through it to avoid COM apartment issues).</summary>
 public sealed class SingleThreadWorker : IDisposable
 {
     private readonly BlockingCollection<Action> _queue = new();

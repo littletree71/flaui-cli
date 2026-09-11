@@ -19,7 +19,7 @@ public class TargetingTests
     }
 
     [Fact]
-    public void 依Id尋找()
+    public void FindsById()
     {
         var t = Tree();
         var found = ElementFinder.FindAll(Selector.Parse("id=okButton"), [t.Root]);
@@ -27,7 +27,7 @@ public class TargetingTests
     }
 
     [Fact]
-    public void 階層限定範圍()
+    public void NestingLimitsTheScope()
     {
         var t = Tree();
         var found = ElementFinder.FindAll(Selector.Parse("id=panel >> id=okButton"), [t.Root]);
@@ -43,7 +43,7 @@ public class TargetingTests
     }
 
     [Fact]
-    public void Text為包含比對且不分大小寫()
+    public void TextIsACaseInsensitiveContainsMatch()
     {
         var t = Tree();
         var found = ElementFinder.FindAll(Selector.Parse("text=pan"), [t.Root]);
@@ -51,7 +51,7 @@ public class TargetingTests
     }
 
     [Fact]
-    public void 可見元素優先()
+    public void VisibleElementsComeFirst()
     {
         var t = Tree();
         t.Ok.IsOffscreen = true;
@@ -63,15 +63,15 @@ public class TargetingTests
     [InlineData("button", ControlKind.Button)]
     [InlineData("textbox", ControlKind.Edit)]
     [InlineData("LINK", ControlKind.Hyperlink)]
-    public void Type別名(string value, ControlKind expected) => Assert.Equal(expected, ElementFinder.ParseKind(value));
+    public void TypeAliases(string value, ControlKind expected) => Assert.Equal(expected, ElementFinder.ParseKind(value));
 
     [Theory]
     [InlineData("nope")]
     [InlineData("3")]
-    public void 未知Type(string value) => Assert.Throws<CliException>(() => ElementFinder.ParseKind(value));
+    public void UnknownTypeThrows(string value) => Assert.Throws<CliException>(() => ElementFinder.ParseKind(value));
 
     [Fact]
-    public void 產生唯一的Id選擇器()
+    public void GeneratesAUniqueIdSelector()
     {
         var t = Tree();
         t.Inner.AutomationId = "innerOk";
@@ -79,14 +79,14 @@ public class TargetingTests
     }
 
     [Fact]
-    public void Id重複時退回nth()
+    public void FallsBackToNthWhenIdsAreDuplicated()
     {
         var t = Tree();
         Assert.Equal("id=okButton&&nth=1", SelectorGenerator.Generate(t.Inner, [t.Root]));
     }
 
     [Fact]
-    public void 沒有Id時使用type加name()
+    public void UsesTypeAndNameWithoutAnId()
     {
         var t = Tree();
         Assert.Equal("type=Button&&name=Dup&&nth=1", SelectorGenerator.Generate(t.DupB, [t.Root]));
@@ -96,7 +96,7 @@ public class TargetingTests
     }
 
     [Fact]
-    public void 產生的選擇器都能找回原元素()
+    public void GeneratedSelectorsResolveToTheSameElement()
     {
         var t = Tree();
         foreach (var el in t.Root.Descendants())
@@ -108,7 +108,7 @@ public class TargetingTests
     }
 
     [Fact]
-    public void 命中的文字元素提升為所屬按鈕()
+    public void HitTextIsPromotedToItsButton()
     {
         var text = new FakeElement(ControlKind.Text, "Submit");
         var button = new FakeElement(ControlKind.Button, "Submit", "submitButton").Add(text);
@@ -126,5 +126,5 @@ public class TargetingTests
     [InlineData("3f2504e0-4f89-11d3-9a0c-0305e82c3301", true)]
     [InlineData("okButton", false)]
     [InlineData("1001", false)]
-    public void 不穩定的AutomationId(string aid, bool generated) => Assert.Equal(generated, SelectorGenerator.LooksGenerated(aid));
+    public void UnstableAutomationIds(string aid, bool generated) => Assert.Equal(generated, SelectorGenerator.LooksGenerated(aid));
 }

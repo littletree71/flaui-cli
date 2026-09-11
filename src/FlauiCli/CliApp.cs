@@ -4,26 +4,26 @@ using FlauiCli.Core.Protocol;
 
 namespace FlauiCli;
 
-/// <summary>依 <see cref="CommandCatalog"/> 動態建立 System.CommandLine 指令樹。</summary>
+/// <summary>Builds the System.CommandLine command tree from <see cref="CommandCatalog"/>.</summary>
 internal static class CliApp
 {
     public const string SessionEnvVar = "FLAUI_CLI_SESSION";
 
     private static readonly Option<string?> SessionOption = new("--session", "-s")
     {
-        Description = $"session 名稱（預設 default，或環境變數 {SessionEnvVar}）",
+        Description = $"Session name (default: default, or the {SessionEnvVar} environment variable)",
         Recursive = true,
     };
 
     private static readonly Option<bool> JsonOption = new("--json")
     {
-        Description = "以 JSON 輸出結果",
+        Description = "Print results as JSON",
         Recursive = true,
     };
 
     public static int Run(string[] args)
     {
-        var root = new RootCommand("flaui-cli：以 FlaUI 驅動的 Windows 桌面 UI 自動化命令列工具（仿 playwright-cli）");
+        var root = new RootCommand("flaui-cli: Windows desktop UI automation CLI powered by FlaUI (modelled on playwright-cli)");
         root.Options.Add(SessionOption);
         root.Options.Add(JsonOption);
         foreach (var spec in CommandCatalog.All) root.Subcommands.Add(Build(spec));

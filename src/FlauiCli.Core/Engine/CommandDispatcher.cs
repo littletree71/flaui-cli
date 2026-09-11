@@ -11,7 +11,7 @@ using FlauiCli.Core.Targeting;
 
 namespace FlauiCli.Core.Engine;
 
-/// <summary>單次指令執行的上下文。</summary>
+/// <summary>Context of a single command execution.</summary>
 internal sealed class CommandContext(CommandCall call, CliConfig config)
 {
     public CommandCall Call { get; } = call;
@@ -20,7 +20,7 @@ internal sealed class CommandContext(CommandCall call, CliConfig config)
 
     public int Timeout => Call.GetInt("timeout") ?? Config.Timeouts.Action;
 
-    /// <summary>本次用到的 ref 對應的穩定 selector（錄製與文件用）。</summary>
+    /// <summary>Stable selectors for the refs used by this command (for recording and documents).</summary>
     public Dictionary<string, string> RefSelectors { get; } = new(StringComparer.OrdinalIgnoreCase);
 
     public Dictionary<string, string> Data { get; } = [];
@@ -35,8 +35,9 @@ internal sealed class CommandContext(CommandCall call, CliConfig config)
 }
 
 /// <summary>
-/// 指令分派器：把 <see cref="CommandCall"/> 轉成對驅動程式的操作。
-/// Daemon 與腳本執行器共用。必須在建立 <see cref="AutomationSession"/> 的同一條執行緒上呼叫。
+/// Command dispatcher: turns a <see cref="CommandCall"/> into driver operations.
+/// Shared by the daemon and the script runner. Must be called on the thread that created the
+/// <see cref="AutomationSession"/>.
 /// </summary>
 public sealed partial class CommandDispatcher
 {
@@ -92,7 +93,7 @@ public sealed partial class CommandDispatcher
 
     public AutomationSession Session => _s;
 
-    /// <summary>動作後是否自動存 snapshot 檔（腳本執行時關閉）。</summary>
+    /// <summary>Whether action commands save a snapshot file afterwards (disabled when running scripts).</summary>
     public bool AutoSnapshot { get; set; } = true;
 
     public CommandResult Execute(CommandCall call)
@@ -101,7 +102,7 @@ public sealed partial class CommandDispatcher
         {
             var ctx = new CommandContext(call, CliConfig.Load(call.Cwd));
             if (!_handlers.TryGetValue(call.Command, out var handler))
-                throw new CliException($"未知的指令：{call.Command}（執行 flaui-cli --help 查看可用指令）");
+                throw new CliException($"Unknown command: {call.Command} (run flaui-cli --help for the list of commands)");
 
             var text = handler(ctx);
             RecordIfNeeded(ctx);
@@ -124,11 +125,11 @@ public sealed partial class CommandDispatcher
         }
         catch (Exception ex)
         {
-            return CommandResult.Failure($"{ex.GetType().Name}：{ex.Message}");
+            return CommandResult.Failure($"{ex.GetType().Name}: {ex.Message}");
         }
     }
 
-    // ───────────────────────── 共用工具 ─────────────────────────
+    // ───────────────────────── Shared helpers ─────────────────────────
 
     private IUiElement Resolve(CommandContext ctx, string raw)
     {
@@ -146,7 +147,7 @@ public sealed partial class CommandDispatcher
         catch { return $"type={el.Kind}"; }
     }
 
-    /// <summary>元素的簡短描述，例如 <c>button "One" [ref=e21]</c>。</summary>
+    /// <summary>Short description of an element, for example <c>button "One" [ref=e21]</c>.</summary>
     private string Label(IUiElement el)
     {
         var name = el.Name;
@@ -156,31 +157,32 @@ public sealed partial class CommandDispatcher
             : $"{el.Kind.Role()} [ref={r}]";
     }
 
-    /// <summary>給操作文件用的中文描述，例如「One」按鈕。</summary>
+    /// <summary>Human-friendly description used in documents, for example <c>the "One" button</c>.</summary>
     internal static string Friendly(IUiElement? el)
     {
-        if (el is null) return "目前焦點";
+        if (el is null) return "the focused element";
         var kind = el.Kind switch
         {
-            ControlKind.Button or ControlKind.SplitButton => "按鈕",
-            ControlKind.Edit => "文字方塊",
-            ControlKind.CheckBox => "核取方塊",
-            ControlKind.ComboBox => "下拉選單",
-            ControlKind.MenuItem => "選單項目",
-            ControlKind.TabItem => "索引標籤",
-            ControlKind.ListItem => "清單項目",
-            ControlKind.TreeItem => "樹狀節點",
-            ControlKind.RadioButton => "選項按鈕",
-            ControlKind.Hyperlink => "連結",
-            ControlKind.Window => "視窗",
-            ControlKind.List => "清單",
-            ControlKind.Tree => "樹狀清單",
-            ControlKind.DataGrid or ControlKind.Table => "表格",
+            ControlKind.Button or ControlKind.SplitButton => "button",
+            ControlKind.Edit => "text box",
+            ControlKind.CheckBox => "check box",
+            ControlKind.ComboBox => "combo box",
+            ControlKind.MenuItem => "menu item",
+            ControlKind.TabItem => "tab",
+            ControlKind.ListItem => "list item",
+            ControlKind.TreeItem => "tree item",
+            ControlKind.RadioButton => "radio button",
+            ControlKind.Hyperlink => "link",
+            ControlKind.Window => "window",
+            ControlKind.List => "list",
+            ControlKind.Tree => "tree",
+            ControlKind.DataGrid or ControlKind.Table => "table",
             _ => "",
         };
         var name = el.Name.Length > 0 ? el.Name : el.AutomationId;
         if (name.Length > 40) name = name[..40] + "…";
-        return name.Length > 0 ? $"「{name}」{kind}" : kind.Length > 0 ? kind : "元素";
+        if (name.Length > 0) return kind.Length > 0 ? $"the \"{name}\" {kind}" : $"\"{name}\"";
+        return kind.Length > 0 ? $"the {kind}" : "the element";
     }
 
     private void TryForeground(IUiElement window)
@@ -191,7 +193,7 @@ public sealed partial class CommandDispatcher
         }
         catch
         {
-            // 帶到前景失敗時仍繼續操作
+            // Keep going even if the window cannot be brought to the foreground
         }
     }
 
@@ -201,11 +203,11 @@ public sealed partial class CommandDispatcher
         TryForeground(window);
     }
 
-    /// <summary>等待元素可操作（啟用），必要時捲動到可見範圍，並把視窗帶到前景。</summary>
+    /// <summary>Waits until the element can be operated (enabled), scrolls it into view if needed and brings the window forward.</summary>
     private void EnsureInteractable(CommandContext ctx, IUiElement el)
     {
         if (!Poll(ctx.Timeout, () => el.IsEnabled))
-            throw new CliException($"{Label(el)} 在 {ctx.Timeout}ms 內一直是停用狀態，無法操作");
+            throw new CliException($"{Label(el)} stayed disabled for {ctx.Timeout}ms and cannot be operated");
         if (el.IsOffscreen) el.TryScrollIntoView();
         TryForeground(_s.RequireWindow());
     }
@@ -227,7 +229,7 @@ public sealed partial class CommandDispatcher
     {
         var w = _s.CurrentWindow;
         if (w is null) return "";
-        return $"### Window\n- 標題：{w.Name}\n- PID：{w.ProcessId}\n";
+        return $"### Window\n- Title: {w.Name}\n- PID: {w.ProcessId}\n";
     }
 
     private string BuildSnapshot(IUiElement root, SnapshotOptions options, bool includePopups)
@@ -258,11 +260,11 @@ public sealed partial class CommandDispatcher
         }
         catch (Exception ex)
         {
-            return $"\n### Snapshot\n（無法取得 snapshot：{ex.Message}）";
+            return $"\n### Snapshot\n(Unable to take a snapshot: {ex.Message})";
         }
     }
 
-    /// <summary>把 ref 換成穩定 selector 後的指令（錄製、文件、報告用）。</summary>
+    /// <summary>The command with refs replaced by stable selectors (for recording, documents and reports).</summary>
     private static CommandCall Recordable(CommandContext ctx)
     {
         var rec = ctx.Call.Clone();
@@ -283,7 +285,7 @@ public sealed partial class CommandDispatcher
         var cmd = ctx.Call.Command;
         if (CommandCatalog.ReadOnlyCommands.Contains(cmd) || cmd is "close" or "status") return;
 
-        // 錄製開始前沒有應用程式資訊時，把 open / attach 當成腳本的 app 區段
+        // When recording started without an application, open / attach becomes the script's app section
         if (cmd is "open" or "attach" && recorder.App is null)
         {
             recorder.App = _s.AppInfo;
@@ -293,7 +295,7 @@ public sealed partial class CommandDispatcher
         recorder.Add(Recordable(ctx));
     }
 
-    /// <summary>操作文件模式下，在動作執行前截圖並以紅框標註目標元素。</summary>
+    /// <summary>In document mode, takes a screenshot before the action and outlines the target element.</summary>
     private void BeforeAction(CommandContext ctx, IUiElement? el, string description)
     {
         var doc = _s.Doc;

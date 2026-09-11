@@ -7,7 +7,7 @@ namespace FlauiCli.Core.Snapshot;
 public sealed record SnapshotOptions(int MaxDepth = 0, bool Boxes = false, bool All = false);
 
 /// <summary>
-/// 將 UI 樹輸出成仿 Playwright aria snapshot 的 YAML 風格文字：
+/// Formats a UI tree as YAML-like text modelled on Playwright's aria snapshots:
 /// <code>- button "One" [ref=e21] id=num1Button</code>
 /// </summary>
 internal static class SnapshotFormatter
@@ -27,7 +27,7 @@ internal static class SnapshotFormatter
         return sb.ToString().TrimEnd();
     }
 
-    /// <summary>產生單行描述（find 指令也會用到）。</summary>
+    /// <summary>Single-line description of a node (also used by the find command).</summary>
     public static string Line(ElementNode n, string r, bool boxes)
     {
         var sb = new StringBuilder();
@@ -63,7 +63,7 @@ internal static class SnapshotFormatter
             if (IsNoise(n)) return;
             if (IsPureContainer(n))
             {
-                // 無名稱的純容器不輸出，子元素提升到同一層
+                // Unnamed pure containers are not printed; their children move up one level
                 foreach (var c in n.Children) Emit(sb, c, refs, o, indent, depth, isRoot: false);
                 return;
             }

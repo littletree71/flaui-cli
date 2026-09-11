@@ -5,7 +5,7 @@ using System.Text;
 
 namespace FlauiCli.E2E.Tests;
 
-/// <summary>E2E 測試共用的路徑與工具。UI 測試不可平行執行（共用滑鼠鍵盤與前景視窗）。</summary>
+/// <summary>Paths and helpers shared by the E2E tests. UI tests must not run in parallel (they share mouse, keyboard and foreground window).</summary>
 internal static class TestEnvironment
 {
     public static string RepoRoot { get; } = FindRepoRoot();
@@ -14,16 +14,16 @@ internal static class TestEnvironment
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
         while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "FlauiCli.slnx"))) dir = dir.Parent;
-        return dir?.FullName ?? throw new InvalidOperationException("找不到儲存庫根目錄（FlauiCli.slnx）");
+        return dir?.FullName ?? throw new InvalidOperationException("Repository root (FlauiCli.slnx) not found");
     }
 
-    /// <summary>與測試相同組態（Debug/Release）建置出的檔案。</summary>
+    /// <summary>A file built with the same configuration (Debug/Release) as the tests.</summary>
     private static string BuildOutput(string project, string file)
     {
-        // AppContext.BaseDirectory = …\bin\<Configuration>\<tfm>\
+        // AppContext.BaseDirectory = ...\bin\<Configuration>\<tfm>\
         var configuration = new DirectoryInfo(AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar)).Parent!.Name;
         var path = Path.Combine(RepoRoot, project, "bin", configuration, "net10.0-windows", file);
-        return File.Exists(path) ? path : throw new FileNotFoundException($"找不到 {file}，請先建置方案", path);
+        return File.Exists(path) ? path : throw new FileNotFoundException($"{file} not found; build the solution first", path);
     }
 
     public static string WpfSampleExe => BuildOutput(Path.Combine("tests", "TestApps", "WpfSample"), "WpfSample.exe");
@@ -38,13 +38,13 @@ internal static class TestEnvironment
     }
 }
 
-/// <summary>執行 flaui-cli.exe 的結果。</summary>
+/// <summary>Result of running flaui-cli.exe.</summary>
 internal sealed record CliRun(int ExitCode, string StdOut, string StdErr)
 {
     public string All => StdOut + StdErr;
 }
 
-/// <summary>以獨立 session 呼叫真正的 flaui-cli.exe（涵蓋 daemon 與 Named Pipe）。</summary>
+/// <summary>Runs the real flaui-cli.exe in its own session (covers the daemon and the named pipe).</summary>
 internal sealed class CliSession(string workDir) : IDisposable
 {
     public string Name { get; } = "e2e-" + Guid.NewGuid().ToString("N")[..8];
@@ -72,13 +72,13 @@ internal sealed class CliSession(string workDir) : IDisposable
         if (!p.WaitForExit(TimeSpan.FromSeconds(90)))
         {
             p.Kill();
-            throw new TimeoutException("flaui-cli 執行逾時：" + string.Join(' ', args));
+            throw new TimeoutException("flaui-cli timed out: " + string.Join(' ', args));
         }
         return new CliRun(p.ExitCode, stdout.Result, stderr.Result);
     }
 
     public void Dispose()
     {
-        try { Run("close"); } catch { /* 忽略 */ }
+        try { Run("close"); } catch { /* ignore */ }
     }
 }

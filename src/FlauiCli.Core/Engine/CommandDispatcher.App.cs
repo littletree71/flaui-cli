@@ -5,7 +5,7 @@ using FlauiCli.Core.Commands;
 
 namespace FlauiCli.Core.Engine;
 
-// 應用程式與 session 相關指令
+// Application and session commands
 public sealed partial class CommandDispatcher
 {
     private string Open(CommandContext ctx)
@@ -15,11 +15,12 @@ public sealed partial class CommandDispatcher
         var windowHint = ctx.Call.Get("window");
         var timeout = ctx.Call.GetInt("timeout") ?? ctx.Config.Timeouts.Launch;
 
-        // 已有應用程式時切換到新的（不關閉舊的）
+        // Switch to the new application when one is already open (the old one keeps running)
         if (_s.CurrentWindow is not null) _s.ResetApp();
 
         var isStoreApp = app.Contains('!') && !app.Contains('\\') && !app.Contains('/');
-        // 記下啟動前已存在的視窗，之後優先選新出現的（例如已開著一個小算盤時再開一個）
+        // Remember the windows that already exist so a newly created one is preferred
+        // (for example when a Calculator is already open and another one is launched)
         var existing = windowHint is null ? null : _s.Driver.GetTopLevelWindows().Select(w => w.WindowHandle).ToHashSet();
         IAppProcess process;
         try
@@ -30,7 +31,7 @@ public sealed partial class CommandDispatcher
         }
         catch (Exception ex) when (ex is not CliException)
         {
-            throw new CliException($"無法啟動 {app}：{ex.Message}", ex);
+            throw new CliException($"Cannot launch {app}: {ex.Message}", ex);
         }
 
         _s.App = process;
@@ -39,7 +40,7 @@ public sealed partial class CommandDispatcher
         ActivateWindow(window);
         _s.AppInfo = new AppInfo(app, args, windowHint, null);
 
-        return $"### Result\n已啟動 {app}（PID {process.ProcessId}）\n{WindowSection()}";
+        return $"### Result\nLaunched {app} (PID {process.ProcessId})\n{WindowSection()}";
     }
 
     private static string? JoinArgs(IReadOnlyList<string> args) =>
@@ -48,7 +49,7 @@ public sealed partial class CommandDispatcher
     private static string ResolveExecutable(CommandContext ctx, string app) =>
         app.Contains('\\') || app.Contains('/') || app.StartsWith('.') ? ctx.Call.ResolvePath(app) : app;
 
-    /// <summary>視窗需持續存在這麼久才採用（UWP 啟動時可能先出現隨即被取代的過渡視窗）。</summary>
+    /// <summary>A window must stay alive this long before it is accepted (UWP apps may show a transient window first).</summary>
     internal int WindowStableMs { get; init; } = 300;
 
     private IUiElement WaitForWindow(IAppProcess process, string? hint, int timeoutMs, HashSet<nint>? existing)
@@ -69,20 +70,20 @@ public sealed partial class CommandDispatcher
             {
                 if (process.HasExited)
                     throw new CliException(
-                        $"程序（PID {process.ProcessId}）已結束，可能是 UWP 或把工作轉交給其他程序的啟動器。請加上 --window <視窗標題>");
+                        $"The process (PID {process.ProcessId}) has exited; it may be a UWP app or a launcher that hands off to another process. Add --window <window title>");
                 if (process.GetMainWindow(TimeSpan.FromMilliseconds(500)) is { } mw) return mw;
             }
             Thread.Sleep(200);
         }
 
         throw new CliException(hint is null
-            ? $"等待應用程式視窗逾時（{timeoutMs}ms）"
-            : $"等待應用程式視窗逾時（{timeoutMs}ms）：找不到標題為「{hint}」的視窗");
+            ? $"Timed out after {timeoutMs}ms waiting for the application window"
+            : $"Timed out after {timeoutMs}ms waiting for the application window: no window titled \"{hint}\"");
     }
 
     /// <summary>
-    /// 在桌面頂層視窗中依標題尋找：完全相符優先，其次包含；
-    /// 同名時「不在 <paramref name="existing"/> 內的新視窗」優先，其次同 PID。
+    /// Finds a top-level desktop window by title: exact matches first, then "contains".
+    /// Among equal titles, new windows (not in <paramref name="existing"/>) win, then the preferred PID.
     /// </summary>
     private IUiElement? FindTopLevelByTitle(string title, int? preferPid, HashSet<nint>? existing = null)
     {
@@ -94,7 +95,7 @@ public sealed partial class CommandDispatcher
         var found = MatchTitle(all, title, Rank);
         if (found is not null) return found;
 
-        // WPF / WinForms 的附屬對話框在 UIA 樹中位於擁有者視窗之下，而不是桌面頂層
+        // Owned dialogs of WPF / WinForms apps live under their owner window in the UIA tree, not on the desktop
         return MatchTitle(ChildWindows(), title, _ => 0);
     }
 
@@ -105,7 +106,7 @@ public sealed partial class CommandDispatcher
                ?? list.Where(w => w.Name.Contains(title, StringComparison.OrdinalIgnoreCase)).OrderBy(rank).FirstOrDefault();
     }
 
-    /// <summary>目前視窗之內的子視窗（附屬對話框）。UWP 共用宿主的內部 window 元素不算。</summary>
+    /// <summary>Windows inside the current window (owned dialogs). Internal window elements of a UWP shared host do not count.</summary>
     private IReadOnlyList<IUiElement> ChildWindows()
     {
         if (_s.IsSharedHostWindow || _s.CurrentWindow is not { IsAlive: true } current) return [];
@@ -117,7 +118,7 @@ public sealed partial class CommandDispatcher
         var proc = ctx.Call.Get("process");
         var title = ctx.Call.Get("title");
         var timeout = ctx.Call.GetInt("timeout") ?? ctx.Config.Timeouts.Action;
-        if (proc is null && title is null) throw new CliException("attach 需要 PID / 程序名稱，或 --title <視窗標題>");
+        if (proc is null && title is null) throw new CliException("attach needs a PID / process name, or --title <window title>");
 
         if (_s.CurrentWindow is not null) _s.ResetApp();
 
@@ -130,7 +131,7 @@ public sealed partial class CommandDispatcher
             }
             catch (Exception ex)
             {
-                throw new CliException($"找不到程序 {proc}：{ex.Message}", ex);
+                throw new CliException($"Process not found: {proc}: {ex.Message}", ex);
             }
         }
 
@@ -143,7 +144,7 @@ public sealed partial class CommandDispatcher
             return window is not null;
         });
         if (window is null)
-            throw new CliException(title is null ? $"程序 {proc} 沒有可用的主視窗" : $"找不到標題為「{title}」的視窗");
+            throw new CliException(title is null ? $"Process {proc} has no main window" : $"No window titled \"{title}\"");
 
         process ??= _s.Driver.Attach(window.ProcessId);
         _s.App = process;
@@ -151,7 +152,7 @@ public sealed partial class CommandDispatcher
         _s.AppInfo = new AppInfo(null, null, title, proc ?? ProcessName(window.ProcessId));
         ActivateWindow(window);
 
-        return $"### Result\n已附加到 PID {window.ProcessId}\n{WindowSection()}";
+        return $"### Result\nAttached to PID {window.ProcessId}\n{WindowSection()}";
     }
 
     private static string ProcessName(int pid)
@@ -185,49 +186,50 @@ public sealed partial class CommandDispatcher
             }
             catch
             {
-                // 視窗可能已自行關閉
+                // The window may already have closed itself
             }
 
-            // 只有自己啟動、且擁有該視窗的程序，才會在未自行結束時強制結束（避免誤殺 ApplicationFrameHost 等共用程序）
+            // Only a process we launched ourselves, and which owns the window, is killed when it does not exit
+            // (so shared processes such as ApplicationFrameHost are never killed by mistake)
             if (_s.LaunchedPid is int pid && _s.App is { HasExited: false } app && app.ProcessId == pid && pid == windowPid)
             {
                 if (!app.WaitForExit(TimeSpan.FromSeconds(3)))
                 {
                     app.Kill();
-                    sb.AppendLine($"程序 {pid} 未在 3 秒內結束，已強制結束");
+                    sb.AppendLine($"Process {pid} did not exit within 3 seconds and was killed");
                 }
             }
-            sb.AppendLine("已關閉應用程式視窗");
+            sb.AppendLine("Closed the application window");
         }
 
         _s.ResetApp();
         ctx.Data["shutdown"] = "true";
-        sb.AppendLine($"session「{_s.Name}」已結束");
+        sb.AppendLine($"Session '{_s.Name}' ended");
         return sb.ToString();
     }
 
     private string Status(CommandContext ctx)
     {
         var sb = new StringBuilder("### Session\n");
-        sb.AppendLine($"- 名稱：{_s.Name}");
-        sb.AppendLine($"- 驅動程式：{_s.Driver.Description}");
-        sb.AppendLine($"- 啟動時間：{_s.StartedAt:yyyy-MM-dd HH:mm:ss}");
-        if (_s.AppInfo is { } app) sb.AppendLine($"- 應用程式：{app.Launch ?? app.Attach}");
+        sb.AppendLine($"- Name: {_s.Name}");
+        sb.AppendLine($"- Driver: {_s.Driver.Description}");
+        sb.AppendLine($"- Started: {_s.StartedAt:yyyy-MM-dd HH:mm:ss}");
+        if (_s.AppInfo is { } app) sb.AppendLine($"- Application: {app.Launch ?? app.Attach}");
         if (_s.CurrentWindow is { } w)
         {
             var alive = w.IsAlive;
-            sb.AppendLine($"- 目前視窗：{(alive ? w.Name : "（已關閉）")}{(alive ? $"（PID {w.ProcessId}）" : "")}");
+            sb.AppendLine($"- Current window: {(alive ? $"{w.Name} (PID {w.ProcessId})" : "(closed)")}");
         }
         else
         {
-            sb.AppendLine("- 目前視窗：（無）");
+            sb.AppendLine("- Current window: (none)");
         }
         var recording = _s.Recorder is not null;
         var capturing = _s.InputCapture?.IsRunning == true;
-        sb.AppendLine($"- 錄製：{(recording ? $"進行中（{_s.Recorder!.Count} 步）" : "否")}{(capturing ? "，正在捕捉真人操作" : "")}");
-        if (_s.InputCapture?.LastError is { } err) sb.AppendLine($"- 錄製錯誤：{err}");
-        sb.AppendLine($"- 操作文件：{(_s.Doc is { } d ? $"進行中（{d.Steps.Count} 步）" : "否")}");
-        sb.AppendLine($"- refs：{_s.Refs.Count}");
+        sb.AppendLine($"- Recording: {(recording ? $"in progress ({_s.Recorder!.Count} steps)" : "no")}{(capturing ? ", capturing input" : "")}");
+        if (_s.InputCapture?.LastError is { } err) sb.AppendLine($"- Recording error: {err}");
+        sb.AppendLine($"- Document: {(_s.Doc is { } d ? $"in progress ({d.Steps.Count} steps)" : "no")}");
+        sb.AppendLine($"- Refs: {_s.Refs.Count}");
 
         ctx.Data["recording"] = recording ? "true" : "false";
         ctx.Data["capturing"] = capturing ? "true" : "false";

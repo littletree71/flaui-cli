@@ -11,11 +11,13 @@ using FlauiCli.Core.Targeting;
 namespace FlauiCli.Core.Recording;
 
 /// <summary>
-/// 捕捉真人的滑鼠鍵盤操作並轉成腳本步驟（類似 playwright codegen）。
+/// Captures real mouse and keyboard input and turns it into script steps (similar to playwright codegen).
 /// <list type="bullet">
-/// <item>低階 hook 執行緒只負責把事件放進佇列（hook callback 必須很快返回）。</item>
-/// <item>處理執行緒使用獨立的驅動程式實例做 FromPoint / selector 產生，不與 daemon 主執行緒共用 UIA 物件。</item>
-/// <item>程式注入的輸入（FlaUI 的 SendInput）會被忽略，因此 CLI 指令與真人操作可同時錄製。</item>
+/// <item>The low-level hooks are only installed while capturing and are removed when it stops.</item>
+/// <item>The hook thread only queues events (hook callbacks must return quickly).</item>
+/// <item>The processing thread uses its own driver instance for FromPoint / selector generation and never
+/// shares UIA objects with the daemon's main thread.</item>
+/// <item>Injected input (FlaUI's SendInput) is ignored, so CLI commands and real input can be recorded together.</item>
 /// </list>
 /// </summary>
 public sealed class InputRecorder : IDisposable
@@ -37,7 +39,7 @@ public sealed class InputRecorder : IDisposable
     private NativeMethods.HookProc? _keyboardProc;
     private volatile bool _running;
 
-    // 處理執行緒的狀態
+    // State owned by the processing thread
     private IUiDriver? _driver;
     private IUiElement? _root;
     private IUiElement? _textElement;
@@ -58,7 +60,7 @@ public sealed class InputRecorder : IDisposable
 
     public void Start()
     {
-        if (_rootHwnd == 0) throw new CliException("目前的視窗沒有視窗代碼（HWND），無法錄製真人操作");
+        if (_rootHwnd == 0) throw new CliException("The current window has no window handle (HWND), so input cannot be captured");
         _running = true;
         _worker = new Thread(WorkerLoop) { IsBackground = true, Name = "flaui-cli-input-worker" };
         _worker.Start();
@@ -68,9 +70,9 @@ public sealed class InputRecorder : IDisposable
         _hookThread.Start();
         if (!ready.Wait(TimeSpan.FromSeconds(5)) || LastError is not null)
         {
-            var error = LastError ?? "逾時";
+            var error = LastError ?? "timed out";
             Stop();
-            throw new CliException("無法安裝鍵盤滑鼠 hook：" + error);
+            throw new CliException("Cannot install the keyboard/mouse hooks: " + error);
         }
     }
 
@@ -78,7 +80,7 @@ public sealed class InputRecorder : IDisposable
     {
         if (!_queue.IsAddingCompleted)
         {
-            try { _queue.Add(RawInput.StopSignal); } catch (InvalidOperationException) { /* 已完成 */ }
+            try { _queue.Add(RawInput.StopSignal); } catch (InvalidOperationException) { /* already completed */ }
             _queue.CompleteAdding();
         }
         _worker?.Join(TimeSpan.FromSeconds(5));
@@ -89,7 +91,7 @@ public sealed class InputRecorder : IDisposable
 
     public void Dispose() => Stop();
 
-    // ───────────────────────── hook 執行緒 ─────────────────────────
+    // ───────────────────────── Hook thread ─────────────────────────
 
     private void HookLoop(ManualResetEventSlim ready)
     {
@@ -99,14 +101,14 @@ public sealed class InputRecorder : IDisposable
         var module = NativeMethods.GetModuleHandleW(null);
         _mouseHook = NativeMethods.SetWindowsHookExW(NativeMethods.WH_MOUSE_LL, _mouseProc, module, 0);
         _keyboardHook = NativeMethods.SetWindowsHookExW(NativeMethods.WH_KEYBOARD_LL, _keyboardProc, module, 0);
-        if (_mouseHook == 0 || _keyboardHook == 0) LastError = $"Win32 錯誤碼 {Marshal.GetLastWin32Error()}";
+        if (_mouseHook == 0 || _keyboardHook == 0) LastError = $"Win32 error {Marshal.GetLastWin32Error()}";
         ready.Set();
 
         if (LastError is null)
         {
             while (NativeMethods.GetMessageW(out _, 0, 0, 0) > 0)
             {
-                // 低階 hook 需要訊息迴圈
+                // Low-level hooks need a message loop
             }
         }
 
@@ -151,7 +153,7 @@ public sealed class InputRecorder : IDisposable
                 if (ctrl && shift && info.vkCode == VkQ)
                 {
                     Enqueue(RawInput.StopSignal);
-                    return 1; // 吃掉停止熱鍵，不傳給應用程式
+                    return 1; // Swallow the stop hotkey so the application does not receive it
                 }
                 var caps = (NativeMethods.GetKeyState(NativeMethods.VK_CAPITAL) & 1) != 0;
                 Enqueue(RawInput.Key((ushort)info.vkCode, info.scanCode, ctrl, shift, alt, win, caps, info.time));
@@ -165,10 +167,10 @@ public sealed class InputRecorder : IDisposable
     private void Enqueue(RawInput input)
     {
         try { _queue.TryAdd(input); }
-        catch (InvalidOperationException) { /* 已停止 */ }
+        catch (InvalidOperationException) { /* stopped */ }
     }
 
-    // ───────────────────────── 處理執行緒 ─────────────────────────
+    // ───────────────────────── Processing thread ─────────────────────────
 
     private void WorkerLoop()
     {
@@ -176,7 +178,7 @@ public sealed class InputRecorder : IDisposable
         {
             NativeMethods.EnsureDpiAware();
             _driver = _driverFactory();
-            _root = _driver.FromHandle(_rootHwnd) ?? throw new CliException("找不到要錄製的視窗");
+            _root = _driver.FromHandle(_rootHwnd) ?? throw new CliException("The window to capture was not found");
 
             foreach (var ev in _queue.GetConsumingEnumerable())
             {
@@ -201,7 +203,7 @@ public sealed class InputRecorder : IDisposable
         finally
         {
             _running = false;
-            try { _driver?.Dispose(); } catch { /* 忽略 */ }
+            try { _driver?.Dispose(); } catch { /* ignore */ }
             if (_hookThreadId != 0) NativeMethods.PostThreadMessageW(_hookThreadId, NativeMethods.WM_QUIT, 0, 0);
         }
     }
@@ -261,7 +263,7 @@ public sealed class InputRecorder : IDisposable
         }
 
         var ch = ToChar(ev);
-        // 編輯中的游標移動 / 刪除，最終值會在 flush 時從 ValuePattern 讀取
+        // Caret movement / deletion while editing; the final value is read from ValuePattern when flushing
         var editingKey = vk is 0x08 or 0x2E or 0x25 or 0x27 or 0x24 or 0x23;
         if (ch is null && !(editingKey && _textElement is not null))
         {
@@ -295,13 +297,13 @@ public sealed class InputRecorder : IDisposable
             _recorder.Add(new CommandCall("fill")
                 .Set("target", SelectorGenerator.Generate(el, Roots()))
                 .Set("text", "********")
-                .Set("note", "密碼欄位：錄製時不保存內容，請手動改成實際值"));
+                .Set("note", "Password field: the value is not recorded; replace it with the real value"));
             return;
         }
 
         string? value = null;
         try { if (el.IsReadOnly == false) value = el.Value; }
-        catch { /* 讀不到值就改用 type */ }
+        catch { /* fall back to type when the value cannot be read */ }
 
         if (value is not null)
             _recorder.Add(new CommandCall("fill").Set("target", SelectorGenerator.Generate(el, Roots())).Set("text", value));
@@ -317,7 +319,7 @@ public sealed class InputRecorder : IDisposable
         var threadId = NativeMethods.GetWindowThreadProcessId(NativeMethods.GetForegroundWindow(), out _);
         var layout = NativeMethods.GetKeyboardLayout(threadId);
         var sb = new StringBuilder(8);
-        // wFlags = 4：不改變鍵盤狀態（避免影響 dead key）
+        // wFlags = 4: do not change the keyboard state (keeps dead keys working)
         var n = NativeMethods.ToUnicodeEx(ev.Vk, ev.Scan, state, sb, sb.Capacity, 4, layout);
         if (n != 1) return null;
         var c = sb[0];

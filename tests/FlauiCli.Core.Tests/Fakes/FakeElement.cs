@@ -3,7 +3,7 @@ using FlauiCli.Core.Abstractions;
 
 namespace FlauiCli.Core.Tests.Fakes;
 
-/// <summary>記憶體內的 UI 元素，用來在不啟動任何程式的情況下測試 Core 邏輯。</summary>
+/// <summary>In-memory UI element used to test Core logic without launching any application.</summary>
 public sealed class FakeElement : IUiElement
 {
     private static int _nextId;
@@ -43,12 +43,13 @@ public sealed class FakeElement : IUiElement
     public FakeElement? Parent { get; private set; }
 
     IUiElement? IUiElement.Parent => Parent;
+
     public List<FakeElement> Children { get; } = [];
 
-    /// <summary>被點擊（或 invoke）時觸發，用來模擬應用程式的反應。</summary>
+    /// <summary>Invoked when the element is clicked (or invoked), to simulate the application's reaction.</summary>
     public Action? OnClick { get; set; }
 
-    /// <summary>此元素收到的操作紀錄。</summary>
+    /// <summary>Operations this element received.</summary>
     public List<string> Actions { get; } = [];
 
     public FakeElement Add(params FakeElement[] children)

@@ -3,15 +3,15 @@ using System.Text.RegularExpressions;
 
 namespace FlauiCli.Core.Targeting;
 
-/// <summary>單一條件，例如 id=num1Button。</summary>
+/// <summary>A single condition, for example id=num1Button.</summary>
 public sealed record SelectorCondition(string Key, string Value);
 
-/// <summary>以 &amp;&amp; 串接的一組條件；多個 part 以 &gt;&gt; 表示「在前者之內」。</summary>
+/// <summary>A group of conditions joined with &amp;&amp;; several parts joined with &gt;&gt; mean "inside the previous one".</summary>
 public sealed class SelectorPart
 {
     public List<SelectorCondition> Conditions { get; } = [];
 
-    /// <summary>第幾個符合者（從 0 起算）。</summary>
+    /// <summary>Which match to take (zero-based).</summary>
     public int? Nth { get; set; }
 
     public string? XPath { get; set; }
@@ -26,13 +26,13 @@ public sealed class SelectorPart
 }
 
 /// <summary>
-/// 元素定位字串。支援：
+/// Element locator string. Supports:
 /// <list type="bullet">
-/// <item>ref：<c>e12</c>（來自 snapshot）</item>
-/// <item><c>id=</c>AutomationId、<c>name=</c>名稱完全相符、<c>text=</c>名稱包含、<c>type=</c>ControlType、<c>class=</c>ClassName、<c>nth=</c>索引</item>
-/// <item><c>xpath=</c>FlaUI XPath</item>
-/// <item>以 <c>&amp;&amp;</c> 組合條件、以 <c>&gt;&gt;</c> 表示階層</item>
-/// <item>沒有前綴的字串視為 name</item>
+/// <item>ref: <c>e12</c> (from a snapshot)</item>
+/// <item><c>id=</c> AutomationId, <c>name=</c> exact name, <c>text=</c> name contains, <c>type=</c> ControlType, <c>class=</c> ClassName, <c>nth=</c> index</item>
+/// <item><c>xpath=</c> FlaUI XPath</item>
+/// <item><c>&amp;&amp;</c> to combine conditions, <c>&gt;&gt;</c> for nesting</item>
+/// <item>a string without a known prefix is treated as a name</item>
 /// </list>
 /// </summary>
 public sealed partial class Selector
@@ -43,7 +43,7 @@ public sealed partial class Selector
 
     public string Raw { get; }
 
-    /// <summary>若為 snapshot ref（e12）則有值。</summary>
+    /// <summary>Set when the selector is a snapshot ref (e12).</summary>
     public string? Ref { get; private init; }
 
     public List<SelectorPart> Parts { get; } = [];
@@ -57,7 +57,7 @@ public sealed partial class Selector
 
     public static Selector Parse(string raw)
     {
-        if (string.IsNullOrWhiteSpace(raw)) throw new CliException("目標選擇器不可為空");
+        if (string.IsNullOrWhiteSpace(raw)) throw new CliException("The selector must not be empty");
         var text = raw.Trim();
         if (LooksLikeRef(text)) return new Selector(text) { Ref = text };
 
@@ -68,7 +68,7 @@ public sealed partial class Selector
             var trimmed = partText.Trim();
             if (trimmed.StartsWith("xpath=", StringComparison.OrdinalIgnoreCase))
             {
-                // xpath 內可能含 &&，因此整段視為 xpath
+                // An XPath may contain &&, so the whole part is taken as XPath
                 part.XPath = Unquote(trimmed[6..].Trim());
                 selector.Parts.Add(part);
                 continue;
@@ -88,7 +88,7 @@ public sealed partial class Selector
                         case "nth":
                             part.Nth = int.TryParse(value, out var n) && n >= 0
                                 ? n
-                                : throw new CliException($"nth 必須是非負整數：{value}");
+                                : throw new CliException($"nth must be a non-negative integer: {value}");
                             break;
                         case "xpath":
                             part.XPath = value;
@@ -100,20 +100,20 @@ public sealed partial class Selector
                 }
                 else
                 {
-                    // 沒有已知前綴：視為名稱完全相符
+                    // No known prefix: exact name match
                     part.Conditions.Add(new SelectorCondition("name", Unquote(c)));
                 }
             }
 
             if (part.Conditions.Count == 0 && part.XPath is null)
-                throw new CliException($"無效的選擇器：{raw}");
+                throw new CliException($"Invalid selector: {raw}");
             selector.Parts.Add(part);
         }
 
         return selector;
     }
 
-    /// <summary>必要時為值加上雙引號（含空白、&amp;&amp;、&gt;&gt; 或引號時）。</summary>
+    /// <summary>Quotes a value when needed (whitespace, &amp;&amp;, &gt;&gt;, quotes or =).</summary>
     public static string Quote(string value)
     {
         var needs = value.Length == 0 || value.Any(char.IsWhiteSpace) || value.Contains("&&") || value.Contains(">>")

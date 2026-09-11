@@ -5,10 +5,15 @@ using System.Text;
 namespace FlauiCli;
 
 /// <summary>
-/// 以「完全分離」的方式啟動 daemon：不繼承任何 handle（避免呼叫端的輸出管線被佔住而卡住）、
-/// 不建立可見視窗，並盡量脫離呼叫端的 Job（避免終端機關閉時被一起結束）。
+/// Starts the daemon fully detached: no inherited handles (so the caller's output pipes are never held
+/// open), no visible console window.
+/// <para>
+/// The daemon only breaks away from the caller's job object when that job would kill it on close
+/// (JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE), for example inside some terminals or agent sandboxes.
+/// Breaking away unconditionally is a behaviour antivirus heuristics dislike, so it is avoided otherwise.
+/// </para>
 /// </summary>
-[System.Diagnostics.CodeAnalysis.SuppressMessage("Interoperability", "SYSLIB1054", Justification = "CreateProcessW 需要可寫入的命令列緩衝區")]
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Interoperability", "SYSLIB1054", Justification = "CreateProcessW needs a writable command line buffer")]
 internal static class ProcessLauncher
 {
     private const uint CREATE_NO_WINDOW = 0x08000000;
@@ -16,26 +21,51 @@ internal static class ProcessLauncher
     private const uint CREATE_BREAKAWAY_FROM_JOB = 0x01000000;
     private const uint CREATE_UNICODE_ENVIRONMENT = 0x00000400;
 
+    private const uint JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x00002000;
+    private const uint JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK = 0x00001000;
+    private const int JobObjectExtendedLimitInformation = 9;
+
     public static void StartDaemon(string session)
     {
-        var processPath = Environment.ProcessPath ?? throw new InvalidOperationException("無法取得目前執行檔路徑");
+        var processPath = Environment.ProcessPath ?? throw new InvalidOperationException("Cannot determine the path of the current executable");
         var isDotnetHost = Path.GetFileNameWithoutExtension(processPath).Equals("dotnet", StringComparison.OrdinalIgnoreCase);
         var cmd = new StringBuilder();
         cmd.Append('"').Append(processPath).Append('"');
-        // 以 dotnet flaui-cli.dll 執行時需要帶上 dll 路徑（單檔發佈時不會走到這裡）
+        // Running as "dotnet flaui-cli.dll" needs the dll path (never the case for published builds)
         if (isDotnetHost) cmd.Append(" \"").Append(Path.Combine(AppContext.BaseDirectory, "flaui-cli.dll")).Append('"');
         cmd.Append(" daemon --session \"").Append(session.Replace("\"", "")).Append('"');
 
         var flags = CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP | CREATE_UNICODE_ENVIRONMENT;
-        if (!TryCreate(cmd.ToString(), flags | CREATE_BREAKAWAY_FROM_JOB) && !TryCreate(cmd.ToString(), flags))
-            throw new Win32Exception(Marshal.GetLastWin32Error(), "無法啟動 daemon");
+        if (JobKillsChildrenOnClose() && TryCreate(cmd.ToString(), flags | CREATE_BREAKAWAY_FROM_JOB)) return;
+        if (!TryCreate(cmd.ToString(), flags))
+            throw new Win32Exception(Marshal.GetLastWin32Error(), "Cannot start the daemon");
+    }
+
+    /// <summary>
+    /// Whether the current process runs inside a job that would terminate the daemon when the job closes
+    /// and does not already let children break away silently.
+    /// </summary>
+    private static bool JobKillsChildrenOnClose()
+    {
+        try
+        {
+            if (!IsProcessInJob(GetCurrentProcess(), 0, out var inJob) || !inJob) return false;
+            var info = new JOBOBJECT_EXTENDED_LIMIT_INFORMATION();
+            if (!QueryInformationJobObject(0, JobObjectExtendedLimitInformation, ref info, Marshal.SizeOf(info), out _)) return false;
+            var limits = info.BasicLimitInformation.LimitFlags;
+            return (limits & JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE) != 0 && (limits & JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK) == 0;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private static bool TryCreate(string commandLine, uint flags)
     {
         var si = new STARTUPINFO { cb = Marshal.SizeOf<STARTUPINFO>() };
         var buffer = new StringBuilder(commandLine, commandLine.Length + 1);
-        // 工作目錄設為程式所在目錄，避免 daemon 鎖住使用者的專案資料夾
+        // Use the program directory as working directory so the daemon never locks the user's project folder
         if (!CreateProcessW(null, buffer, 0, 0, false, flags, 0, AppContext.BaseDirectory, ref si, out var pi)) return false;
         CloseHandle(pi.hProcess);
         CloseHandle(pi.hThread);
@@ -74,6 +104,42 @@ internal static class ProcessLauncher
         public int dwThreadId;
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct JOBOBJECT_BASIC_LIMIT_INFORMATION
+    {
+        public long PerProcessUserTimeLimit;
+        public long PerJobUserTimeLimit;
+        public uint LimitFlags;
+        public nuint MinimumWorkingSetSize;
+        public nuint MaximumWorkingSetSize;
+        public uint ActiveProcessLimit;
+        public nuint Affinity;
+        public uint PriorityClass;
+        public uint SchedulingClass;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct IO_COUNTERS
+    {
+        public ulong ReadOperationCount;
+        public ulong WriteOperationCount;
+        public ulong OtherOperationCount;
+        public ulong ReadTransferCount;
+        public ulong WriteTransferCount;
+        public ulong OtherTransferCount;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct JOBOBJECT_EXTENDED_LIMIT_INFORMATION
+    {
+        public JOBOBJECT_BASIC_LIMIT_INFORMATION BasicLimitInformation;
+        public IO_COUNTERS IoInfo;
+        public nuint ProcessMemoryLimit;
+        public nuint JobMemoryLimit;
+        public nuint PeakProcessMemoryUsed;
+        public nuint PeakJobMemoryUsed;
+    }
+
     [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool CreateProcessW(string? lpApplicationName, StringBuilder lpCommandLine, nint lpProcessAttributes,
@@ -83,4 +149,16 @@ internal static class ProcessLauncher
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool CloseHandle(nint hObject);
+
+    [DllImport("kernel32.dll")]
+    private static extern nint GetCurrentProcess();
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsProcessInJob(nint processHandle, nint jobHandle, [MarshalAs(UnmanagedType.Bool)] out bool result);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool QueryInformationJobObject(nint hJob, int jobObjectInfoClass,
+        ref JOBOBJECT_EXTENDED_LIMIT_INFORMATION lpJobObjectInfo, int cbJobObjectInfoLength, out int lpReturnLength);
 }

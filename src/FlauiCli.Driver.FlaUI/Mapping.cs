@@ -4,8 +4,8 @@ using FlauiCli.Core.Abstractions;
 namespace FlauiCli.Drivers;
 
 /// <summary>
-/// FlaUI 列舉與 Core 自有列舉的對應。以名稱對應，
-/// 完整性由契約測試（DriverContractTests.列舉對應完整）檢查：FlaUI 新增或更名成員時測試會失敗。
+/// Maps FlaUI enums to the Core-owned enums by name. Completeness is checked by the contract tests
+/// (DriverContractTests.EnumMappingsAreComplete): the test fails when FlaUI adds or renames members.
 /// </summary>
 internal static class Mapping
 {
@@ -15,7 +15,7 @@ internal static class Mapping
     public static ControlType ToControlType(ControlKind kind) =>
         Enum.TryParse<ControlType>(kind.ToString(), out var t)
             ? t
-            : throw new NotSupportedException($"FlaUI 不支援的控制項類型：{kind}");
+            : throw new NotSupportedException($"Control type not supported by FlaUI: {kind}");
 
     public static ToggleValue ToToggle(ToggleState state) => state switch
     {

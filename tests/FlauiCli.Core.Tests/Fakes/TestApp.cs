@@ -6,7 +6,7 @@ using FlauiCli.Core.Protocol;
 namespace FlauiCli.Core.Tests.Fakes;
 
 /// <summary>
-/// 一個假的「計算機 + 表單」應用程式與 dispatcher 組合，讓 dispatcher 測試不需要真實 UI。
+/// A fake "calculator + form" application wired to a dispatcher, so dispatcher tests need no real UI.
 /// </summary>
 public sealed class TestApp : IDisposable
 {
@@ -31,7 +31,7 @@ public sealed class TestApp : IDisposable
                 new FakeElement(ControlKind.ListItem, "Banana") { IsSelected = false, Bounds = new Rectangle(10, 320, 150, 20) });
         Disabled = Button("Disabled", "disabledButton", 10, 400);
         Disabled.IsEnabled = false;
-        // 兩個名稱相同、沒有 AutomationId 的按鈕（測試 nth）
+        // Two buttons with the same name and no AutomationId (for nth tests)
         DupA = Button("Dup", "", 10, 450);
         DupB = Button("Dup", "", 110, 450);
 
@@ -71,7 +71,7 @@ public sealed class TestApp : IDisposable
     private static FakeElement Button(string name, string id, int x, int y) =>
         new(ControlKind.Button, name, id) { Bounds = new Rectangle(x, y, 90, 40) };
 
-    /// <summary>執行指令：<c>Run("click", ("target", "id=num1Button"))</c>。</summary>
+    /// <summary>Runs a command: <c>Run("click", ("target", "id=num1Button"))</c>.</summary>
     public CommandResult Run(string command, params (string Key, string Value)[] args)
     {
         var call = new CommandCall(command) { Cwd = Cwd };
@@ -84,6 +84,6 @@ public sealed class TestApp : IDisposable
     public void Dispose()
     {
         Session.Dispose();
-        try { Directory.Delete(Cwd, recursive: true); } catch { /* 忽略 */ }
+        try { Directory.Delete(Cwd, recursive: true); } catch { /* ignore */ }
     }
 }

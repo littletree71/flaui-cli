@@ -481,11 +481,11 @@ $RECYCLE.BIN/
 # Vim temporary swap files
 *.swp
 
-# flaui-cli 專案自訂
+# flaui-cli specific
 .flaui-cli/
 output/
 out/
 artifacts/
 *.flow.local.yaml
-# 本專案的發佈設定檔不含機密，需要納入版本控制
+# This publish profile contains no secrets and must be tracked
 !src/FlauiCli/Properties/PublishProfiles/win-x64.pubxml

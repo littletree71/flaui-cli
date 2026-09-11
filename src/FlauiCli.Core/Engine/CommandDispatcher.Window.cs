@@ -6,7 +6,7 @@ using FlauiCli.Core.Targeting;
 
 namespace FlauiCli.Core.Engine;
 
-// 視窗與檢視相關指令
+// Window and inspection commands
 public sealed partial class CommandDispatcher
 {
     private IReadOnlyList<IUiElement> WindowList()
@@ -29,7 +29,7 @@ public sealed partial class CommandDispatcher
         for (var i = 0; i < list.Count; i++)
         {
             var w = list[i];
-            sb.AppendLine($"- [{i}] {Label(w)}{(w.Equals(current) ? "（目前）" : "")}");
+            sb.AppendLine($"- [{i}] {Label(w)}{(w.Equals(current) ? " (current)" : "")}");
         }
         return sb.ToString();
     }
@@ -41,7 +41,7 @@ public sealed partial class CommandDispatcher
         IUiElement? target;
         if (int.TryParse(key, out var index))
         {
-            target = index >= 0 && index < list.Count ? list[index] : throw new CliException($"視窗索引超出範圍：{index}（共 {list.Count} 個）");
+            target = index >= 0 && index < list.Count ? list[index] : throw new CliException($"Window index out of range: {index} ({list.Count} windows)");
         }
         else if (Selector.LooksLikeRef(key))
         {
@@ -52,11 +52,11 @@ public sealed partial class CommandDispatcher
             target = list.FirstOrDefault(w => string.Equals(w.Name, key, StringComparison.OrdinalIgnoreCase))
                      ?? list.FirstOrDefault(w => w.Name.Contains(key, StringComparison.OrdinalIgnoreCase))
                      ?? FindTopLevelByTitle(key, _s.CurrentWindow?.ProcessId)
-                     ?? throw new CliException($"找不到視窗：{key}");
+                     ?? throw new CliException($"Window not found: {key}");
         }
 
         ActivateWindow(target);
-        return $"### Result\n已切換視窗\n{WindowSection()}";
+        return $"### Result\nSwitched window\n{WindowSection()}";
     }
 
     private string Focus(CommandContext ctx)
@@ -64,42 +64,42 @@ public sealed partial class CommandDispatcher
         if (ctx.Call.Get("target") is { } raw)
         {
             var el = Resolve(ctx, raw);
-            BeforeAction(ctx, el, $"將焦點移到{Friendly(el)}");
+            BeforeAction(ctx, el, $"Focus {Friendly(el)}");
             EnsureInteractable(ctx, el);
             el.Focus();
-            return $"### Result\n{Label(el)} 已取得焦點";
+            return $"### Result\n{Label(el)} has focus";
         }
 
         var window = _s.RequireWindow();
         window.SetForeground();
-        return $"### Result\n已將視窗帶到前景\n{WindowSection()}";
+        return $"### Result\nBrought the window to the foreground\n{WindowSection()}";
     }
 
     private string SetWindowState(CommandContext ctx, WindowStateKind state)
     {
         var window = _s.RequireWindow();
-        if (!window.TrySetWindowState(state)) throw new CliException("此視窗不支援 WindowPattern，無法變更狀態");
-        return $"### Result\n視窗已{state switch { WindowStateKind.Maximized => "最大化", WindowStateKind.Minimized => "最小化", _ => "還原" }}";
+        if (!window.TrySetWindowState(state)) throw new CliException("This window does not support WindowPattern, so its state cannot be changed");
+        return $"### Result\nWindow {state switch { WindowStateKind.Maximized => "maximized", WindowStateKind.Minimized => "minimized", _ => "restored" }}";
     }
 
     private string Resize(CommandContext ctx)
     {
-        var w = ctx.Call.GetInt("width") ?? throw new CliException("缺少 width");
-        var h = ctx.Call.GetInt("height") ?? throw new CliException("缺少 height");
+        var w = ctx.Call.GetInt("width") ?? throw new CliException("Missing width");
+        var h = ctx.Call.GetInt("height") ?? throw new CliException("Missing height");
         var window = _s.RequireWindow();
         window.TrySetWindowState(WindowStateKind.Normal);
-        if (!window.TryResize(w, h)) throw new CliException("此視窗不允許調整大小");
-        return $"### Result\n視窗大小已調整為 {w}x{h}";
+        if (!window.TryResize(w, h)) throw new CliException("This window cannot be resized");
+        return $"### Result\nWindow resized to {w}x{h}";
     }
 
     private string MoveWindow(CommandContext ctx)
     {
-        var x = ctx.Call.GetInt("x") ?? throw new CliException("缺少 x");
-        var y = ctx.Call.GetInt("y") ?? throw new CliException("缺少 y");
+        var x = ctx.Call.GetInt("x") ?? throw new CliException("Missing x");
+        var y = ctx.Call.GetInt("y") ?? throw new CliException("Missing y");
         var window = _s.RequireWindow();
         window.TrySetWindowState(WindowStateKind.Normal);
-        if (!window.TryMove(x, y)) throw new CliException("此視窗不允許移動");
-        return $"### Result\n視窗已移動到 ({x}, {y})";
+        if (!window.TryMove(x, y)) throw new CliException("This window cannot be moved");
+        return $"### Result\nWindow moved to ({x}, {y})";
     }
 
     private string TakeSnapshot(CommandContext ctx)
@@ -118,7 +118,7 @@ public sealed partial class CommandDispatcher
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             File.WriteAllText(path, text);
             ctx.Data["path"] = path;
-            return $"### Result\n已儲存 snapshot：{ctx.Relative(path)}";
+            return $"### Result\nSnapshot saved: {ctx.Relative(path)}";
         }
 
         return $"{WindowSection()}### Snapshot\n```yaml\n{text}\n```";
@@ -132,7 +132,7 @@ public sealed partial class CommandDispatcher
         if (ctx.Call.GetBool("regex"))
         {
             try { re = new Regex(text, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1)); }
-            catch (ArgumentException ex) { throw new CliException($"正規表示式錯誤：{ex.Message}", ex); }
+            catch (ArgumentException ex) { throw new CliException($"Invalid regular expression: {ex.Message}", ex); }
         }
 
         bool Match(string? s) => !string.IsNullOrEmpty(s) && (re?.IsMatch(s) ?? s.Contains(text, StringComparison.OrdinalIgnoreCase));
@@ -142,9 +142,9 @@ public sealed partial class CommandDispatcher
             .Where(n => Match(n.Name) || Match(n.AutomationId) || Match(n.Value))
             .ToList();
 
-        if (matches.Count == 0) return $"### Result\n找不到符合「{text}」的元素";
+        if (matches.Count == 0) return $"### Result\nNo element matches \"{text}\"";
 
-        var sb = new StringBuilder($"### Result\n找到 {matches.Count} 個元素{(matches.Count > limit ? $"（只列出前 {limit} 個）" : "")}\n");
+        var sb = new StringBuilder($"### Result\nFound {matches.Count} element(s){(matches.Count > limit ? $" (showing the first {limit})" : "")}\n");
         foreach (var n in matches.Take(limit))
             sb.AppendLine("- " + SnapshotFormatter.Line(n, _s.Refs.Assign(n), boxes: false));
         return sb.ToString();
@@ -155,27 +155,27 @@ public sealed partial class CommandDispatcher
         var el = ResolveArg(ctx);
         var b = el.Bounds;
         var sb = new StringBuilder("### Element\n");
-        sb.AppendLine($"- ref：{_s.Refs.GetOrAssign(el)}");
-        sb.AppendLine($"- 建議 selector：{StableSelector(el)}");
-        sb.AppendLine($"- ControlType：{el.Kind}");
-        sb.AppendLine($"- Name：{el.Name}");
-        sb.AppendLine($"- AutomationId：{el.AutomationId}");
-        sb.AppendLine($"- ClassName：{el.ClassName}");
-        sb.AppendLine($"- FrameworkId：{el.FrameworkId}");
-        sb.AppendLine($"- IsEnabled：{el.IsEnabled}");
-        sb.AppendLine($"- IsOffscreen：{el.IsOffscreen}");
-        sb.AppendLine($"- HasKeyboardFocus：{el.HasFocus}");
-        sb.AppendLine($"- BoundingRectangle：{b.X},{b.Y},{b.Width},{b.Height}");
-        sb.AppendLine($"- ProcessId：{el.ProcessId}");
-        if (el.Value is { } v) sb.AppendLine($"- Value：{v}{(el.IsReadOnly == true ? "（唯讀）" : "")}");
-        if (el.Toggle is { } t) sb.AppendLine($"- ToggleState：{t}");
-        if (el.Expand is { } e) sb.AppendLine($"- ExpandCollapseState：{e}");
-        if (el.IsSelected is { } s) sb.AppendLine($"- IsSelected：{s}");
+        sb.AppendLine($"- Ref: {_s.Refs.GetOrAssign(el)}");
+        sb.AppendLine($"- Suggested selector: {StableSelector(el)}");
+        sb.AppendLine($"- ControlType: {el.Kind}");
+        sb.AppendLine($"- Name: {el.Name}");
+        sb.AppendLine($"- AutomationId: {el.AutomationId}");
+        sb.AppendLine($"- ClassName: {el.ClassName}");
+        sb.AppendLine($"- FrameworkId: {el.FrameworkId}");
+        sb.AppendLine($"- IsEnabled: {el.IsEnabled}");
+        sb.AppendLine($"- IsOffscreen: {el.IsOffscreen}");
+        sb.AppendLine($"- HasKeyboardFocus: {el.HasFocus}");
+        sb.AppendLine($"- BoundingRectangle: {b.X},{b.Y},{b.Width},{b.Height}");
+        sb.AppendLine($"- ProcessId: {el.ProcessId}");
+        if (el.Value is { } v) sb.AppendLine($"- Value: {v}{(el.IsReadOnly == true ? " (read-only)" : "")}");
+        if (el.Toggle is { } t) sb.AppendLine($"- ToggleState: {t}");
+        if (el.Expand is { } e) sb.AppendLine($"- ExpandCollapseState: {e}");
+        if (el.IsSelected is { } s) sb.AppendLine($"- IsSelected: {s}");
         foreach (var name in new[] { "HelpText", "ItemStatus", "LocalizedControlType", "AcceleratorKey", "AccessKey" })
         {
-            if (el.GetProperty(name) is { Length: > 0 } pv) sb.AppendLine($"- {name}：{pv}");
+            if (el.GetProperty(name) is { Length: > 0 } pv) sb.AppendLine($"- {name}: {pv}");
         }
-        sb.AppendLine($"- 支援的 Pattern：{string.Join(", ", el.SupportedPatterns)}");
+        sb.AppendLine($"- Supported patterns: {string.Join(", ", el.SupportedPatterns)}");
         return sb.ToString();
     }
 }

@@ -17,10 +17,10 @@ public class KeyParserTests
     [Theory]
     [InlineData("")]
     [InlineData("Ctrl+NoSuchKey")]
-    public void 無效按鍵(string keys) => Assert.Throws<CliException>(() => KeyParser.Parse(keys));
+    public void InvalidKeysThrow(string keys) => Assert.Throws<CliException>(() => KeyParser.Parse(keys));
 
     [Fact]
-    public void Format_使用正式名稱()
+    public void FormatUsesCanonicalNames()
     {
         Assert.Equal("Ctrl+Shift+S", KeyParser.Format([0x11, 0x10, 0x53]));
         Assert.Equal("Enter", KeyParser.Format(0x0D));
@@ -28,14 +28,14 @@ public class KeyParserTests
     }
 
     [Fact]
-    public void Format_與Parse互為反函數()
+    public void FormatIsTheInverseOfParse()
     {
         foreach (var keys in new[] { "Ctrl+A", "Alt+F4", "Shift+Tab", "Enter", "PageDown" })
             Assert.Equal(keys, KeyParser.Format(KeyParser.Parse(keys)));
     }
 
     [Fact]
-    public void 修飾鍵判斷()
+    public void Modifiers()
     {
         Assert.True(KeyParser.IsModifier(0x11));
         Assert.True(KeyParser.IsModifier(0xA0));

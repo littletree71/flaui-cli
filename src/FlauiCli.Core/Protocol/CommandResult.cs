@@ -2,7 +2,7 @@ using System.Text.Json.Serialization;
 
 namespace FlauiCli.Core.Protocol;
 
-/// <summary>程式結束碼規範。</summary>
+/// <summary>Process exit codes.</summary>
 public static class ExitCodes
 {
     public const int Success = 0;
@@ -11,19 +11,19 @@ public static class ExitCodes
     public const int DaemonUnavailable = 3;
 }
 
-/// <summary>指令執行結果。</summary>
+/// <summary>Result of a command.</summary>
 public sealed class CommandResult
 {
     public bool Ok { get; set; }
 
     public int ExitCode { get; set; }
 
-    /// <summary>給人 / Agent 閱讀的輸出文字（Markdown 風格）。</summary>
+    /// <summary>Output for humans / agents (Markdown style).</summary>
     public string Text { get; set; } = "";
 
     public string? Error { get; set; }
 
-    /// <summary>額外的結構化資料（例如 record status），供 CLI 端判斷用。</summary>
+    /// <summary>Extra structured data (for example record status) used by the CLI side.</summary>
     public Dictionary<string, string>? Data { get; set; }
 
     [JsonIgnore]

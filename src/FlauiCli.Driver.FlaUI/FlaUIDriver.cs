@@ -3,7 +3,6 @@ using System.Drawing;
 using System.Runtime.InteropServices;
 using FlaUI.Core;
 using FlaUI.Core.AutomationElements;
-using FlaUI.Core.Capturing;
 using FlaUI.Core.Input;
 using FlaUI.Core.WindowsAPI;
 using FlaUI.UIA3;
@@ -11,7 +10,11 @@ using FlauiCli.Core.Abstractions;
 
 namespace FlauiCli.Drivers;
 
-/// <summary>以 FlaUI UIA3 實作的驅動程式。</summary>
+/// <summary>
+/// Driver implemented with FlaUI UIA3.
+/// Note: FlaUI.UIA3 relies on built-in COM interop, which Native AOT does not support
+/// (CUIAutomation8Class fails to construct), so the application is published self-contained instead.
+/// </summary>
 public sealed class FlaUIDriver : IUiDriver
 {
     private readonly UIA3Automation _automation = new();
@@ -91,14 +94,14 @@ internal sealed class FlaUIAppProcess(Application app, AutomationBase automation
         }
         catch (ArgumentException)
         {
-            return true; // 程序已不存在
+            return true; // The process no longer exists
         }
     }
 
     public void Kill()
     {
         try { app.Kill(); }
-        catch { /* 已結束 */ }
+        catch { /* already exited */ }
     }
 
     public void Dispose() => app.Dispose();

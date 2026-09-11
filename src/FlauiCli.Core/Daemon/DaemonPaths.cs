@@ -2,10 +2,10 @@ using System.Text.RegularExpressions;
 
 namespace FlauiCli.Core.Daemon;
 
-/// <summary>session 檔記錄的 daemon 資訊。</summary>
+/// <summary>Daemon information stored in the session file.</summary>
 public sealed record SessionInfo(string Session, int Pid, string Pipe, DateTime StartedAt);
 
-/// <summary>Daemon 相關的路徑與命名。</summary>
+/// <summary>Paths and names used by the daemon.</summary>
 public static partial class DaemonPaths
 {
     public static string StateDir =>

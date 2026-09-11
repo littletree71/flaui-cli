@@ -1,16 +1,18 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!--
-    發佈方式：單一自含執行檔（dotnet publish -p:PublishProfile=win-x64）。
-    不使用 dotnet tool：.NET SDK 不允許含平台識別碼（net10.0-windows）的專案 PackAsTool（NETSDK1146），
-    而 FlaUI 只提供 Windows 目標框架。
+    Distribution: self-contained single-file executable (dotnet publish -p:PublishProfile=win-x64).
+    Not a dotnet tool: the .NET SDK does not allow PackAsTool for projects whose target framework has a
+    platform identifier (net10.0-windows, NETSDK1146), and FlaUI only ships Windows target frameworks.
+    Not Native AOT: FlaUI.UIA3 uses built-in COM interop, which Native AOT does not support.
   -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <RootNamespace>FlauiCli</RootNamespace>
     <AssemblyName>flaui-cli</AssemblyName>
+    <AssemblyTitle>flaui-cli - Windows desktop UI automation CLI</AssemblyTitle>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Description>以 FlaUI 包裝、仿 playwright-cli 的 Windows 桌面 UI 自動化命令列工具（適合 AI Agent 使用）。</Description>
+    <Description>A playwright-cli style command-line tool for Windows desktop UI automation, built on FlaUI and designed for AI agents.</Description>
     <IsPackable>false</IsPackable>
   </PropertyGroup>
 
@@ -24,8 +26,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- SKILL.md 隨執行檔一起發佈，供 install-skill 複製 -->
+    <!-- Shipped next to the executable: the agent skill used by install-skill, plus the license notices -->
     <None Include="..\..\skills\flaui-cli\SKILL.md" Link="skills\SKILL.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="..\..\LICENSE" Link="LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="..\..\THIRD-PARTY-NOTICES.txt" Link="THIRD-PARTY-NOTICES.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

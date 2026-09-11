@@ -8,12 +8,12 @@ using YamlDotNet.Serialization;
 namespace FlauiCli.Core.Scripting;
 
 /// <summary>
-/// YAML 腳本的讀寫。步驟格式：
+/// Reads and writes YAML scripts. Step formats:
 /// <code>
-/// - click: id=num1Button              # 純量 = 指令的第一個參數
-/// - fill: { target: id=txt, text: hi } # mapping = 具名參數
+/// - click: id=num1Button              # scalar = the command's first argument
+/// - fill: { target: id=txt, text: hi } # mapping = named arguments
 /// - click: id=ok
-///   doc: 按下確定                       # doc = 操作文件的說明
+///   doc: Press OK                      # doc = description used in generated documents
 /// </code>
 /// </summary>
 public static class ScriptYaml
@@ -22,7 +22,7 @@ public static class ScriptYaml
 
     public static ScriptDocument Load(string path)
     {
-        if (!File.Exists(path)) throw new CliException($"找不到腳本檔：{path}");
+        if (!File.Exists(path)) throw new CliException($"Script file not found: {path}");
         var doc = Parse(File.ReadAllText(path), path);
         doc.SourcePath = Path.GetFullPath(path);
         return doc;
@@ -30,13 +30,13 @@ public static class ScriptYaml
 
     public static ScriptDocument Parse(string yaml, string? sourceName = null)
     {
-        var where = sourceName ?? "腳本";
+        var where = sourceName ?? "script";
         var stream = new YamlStream();
         try { stream.Load(new StringReader(yaml)); }
-        catch (YamlException ex) { throw new CliException($"{where} YAML 格式錯誤（第 {ex.Start.Line} 行）：{ex.Message}", ex); }
+        catch (YamlException ex) { throw new CliException($"{where}: invalid YAML (line {ex.Start.Line}): {ex.Message}", ex); }
 
         if (stream.Documents.Count == 0 || stream.Documents[0].RootNode is not YamlMappingNode root)
-            throw new CliException($"{where} 最上層必須是 mapping（name / app / steps）");
+            throw new CliException($"{where}: the top level must be a mapping (name / app / steps)");
 
         var doc = new ScriptDocument();
         foreach (var (keyNode, value) in root.Children)
@@ -50,18 +50,18 @@ public static class ScriptYaml
                 case "timeout":
                     doc.Timeout = int.TryParse(Scalar(value), NumberStyles.Integer, CultureInfo.InvariantCulture, out var t)
                         ? t
-                        : throw new CliException($"{where}：timeout 必須是整數");
+                        : throw new CliException($"{where}: timeout must be an integer");
                     break;
                 case "app":
                     doc.App = ParseApp(value, where);
                     break;
                 case "steps":
-                    if (value is not YamlSequenceNode seq) throw new CliException($"{where}：steps 必須是清單");
+                    if (value is not YamlSequenceNode seq) throw new CliException($"{where}: steps must be a list");
                     var i = 0;
                     foreach (var step in seq.Children) doc.Steps.Add(ParseStep(step, ++i, where));
                     break;
                 default:
-                    throw new CliException($"{where}：未知的欄位 {key}（可用：name, app, timeout, steps）");
+                    throw new CliException($"{where}: unknown field {key} (use name, app, timeout, steps)");
             }
         }
 
@@ -71,7 +71,7 @@ public static class ScriptYaml
     private static AppSpec ParseApp(YamlNode node, string where)
     {
         if (node is YamlScalarNode s) return new AppSpec { Launch = s.Value };
-        if (node is not YamlMappingNode m) throw new CliException($"{where}：app 必須是 mapping");
+        if (node is not YamlMappingNode m) throw new CliException($"{where}: app must be a mapping");
         var app = new AppSpec();
         foreach (var (k, v) in m.Children)
         {
@@ -84,11 +84,11 @@ public static class ScriptYaml
                 case "window": app.Window = value; break;
                 case "attach": app.Attach = value; break;
                 case "close": app.Close = ParseBool(value, where); break;
-                default: throw new CliException($"{where}：app 未知的欄位 {key}（可用：launch, args, window, attach, close）");
+                default: throw new CliException($"{where}: unknown app field {key} (use launch, args, window, attach, close)");
             }
         }
         if (app.Launch is null && app.Attach is null && app.Window is null)
-            throw new CliException($"{where}：app 需要 launch、attach 或 window 其中之一");
+            throw new CliException($"{where}: app needs one of launch, attach or window");
         return app;
     }
 
@@ -109,18 +109,18 @@ public static class ScriptYaml
                     var key = Scalar(k) ?? "";
                     if (NoteKeys.Contains(key)) { note = NodeToString(v, where); continue; }
                     if (command is not null)
-                        throw new CliException($"{where} 第 {index} 步：一個步驟只能有一個指令（{command}、{key}）");
+                        throw new CliException($"{where} step {index}: only one command per step ({command}, {key})");
                     command = key;
                     body = v;
                 }
                 break;
             default:
-                throw new CliException($"{where} 第 {index} 步：格式錯誤");
+                throw new CliException($"{where} step {index}: invalid format");
         }
 
-        if (string.IsNullOrWhiteSpace(command)) throw new CliException($"{where} 第 {index} 步：缺少指令");
-        var spec = CommandCatalog.Find(command) ?? throw new CliException($"{where} 第 {index} 步：未知的指令 {command}");
-        if (spec.Location == CommandLocation.Local) throw new CliException($"{where} 第 {index} 步：指令 {command} 不能用在腳本中");
+        if (string.IsNullOrWhiteSpace(command)) throw new CliException($"{where} step {index}: missing command");
+        var spec = CommandCatalog.Find(command) ?? throw new CliException($"{where} step {index}: unknown command {command}");
+        if (spec.Location == CommandLocation.Local) throw new CliException($"{where} step {index}: {command} cannot be used in scripts");
 
         var call = new CommandCall(spec.Name);
         switch (body)
@@ -130,7 +130,7 @@ public static class ScriptYaml
             case YamlScalarNode sc when string.IsNullOrEmpty(sc.Value):
                 break;
             case YamlScalarNode or YamlSequenceNode:
-                var primary = spec.PrimaryArg ?? throw new CliException($"{where} 第 {index} 步：{command} 不接受參數");
+                var primary = spec.PrimaryArg ?? throw new CliException($"{where} step {index}: {command} takes no arguments");
                 call.Set(primary, NodeToString(body, where));
                 break;
             case YamlMappingNode mm:
@@ -148,17 +148,17 @@ public static class ScriptYaml
     {
         YamlScalarNode s => s.Value ?? "",
         YamlSequenceNode seq => string.Join(CommandCall.MultiValueSeparator, seq.Children.Select(c => NodeToString(c, where))),
-        _ => throw new CliException($"{where}：參數值必須是文字或清單"),
+        _ => throw new CliException($"{where}: argument values must be text or a list"),
     };
 
     private static bool ParseBool(string v, string where) => v.Trim().ToLowerInvariant() switch
     {
         "true" or "yes" or "1" or "on" => true,
         "false" or "no" or "0" or "off" => false,
-        _ => throw new CliException($"{where}：無法解析布林值 {v}"),
+        _ => throw new CliException($"{where}: cannot parse boolean {v}"),
     };
 
-    /// <summary>把腳本序列化成 YAML。</summary>
+    /// <summary>Serializes a script to YAML.</summary>
     public static string Save(ScriptDocument doc)
     {
         var root = new Dictionary<string, object>();

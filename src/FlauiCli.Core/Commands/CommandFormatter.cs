@@ -3,7 +3,7 @@ using FlauiCli.Core.Protocol;
 
 namespace FlauiCli.Core.Commands;
 
-/// <summary>把 <see cref="CommandCall"/> 轉回 CLI 指令字串（顯示於報告、文件）。</summary>
+/// <summary>Turns a <see cref="CommandCall"/> back into a CLI command line (shown in reports and documents).</summary>
 public static class CommandFormatter
 {
     public static string ToCli(CommandCall call)

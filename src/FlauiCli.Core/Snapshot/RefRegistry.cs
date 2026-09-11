@@ -2,12 +2,12 @@ using FlauiCli.Core.Abstractions;
 
 namespace FlauiCli.Core.Snapshot;
 
-/// <summary>ref 對應的元素與重新尋找所需的線索。</summary>
+/// <summary>Element behind a ref plus the hints needed to find it again.</summary>
 public sealed record RefEntry(string Ref, IUiElement Element, string AutomationId, string Name, ControlKind Kind);
 
 /// <summary>
-/// 管理 snapshot ref（e1、e2…）。同一個元素（依 RuntimeId 判斷）在多次 snapshot 之間會保留相同的 ref，
-/// 讓 Agent 可以持續使用先前取得的 ref。
+/// Manages snapshot refs (e1, e2...). The same element (identified by RuntimeId) keeps the same ref across
+/// snapshots, so agents can keep using refs they obtained earlier.
 /// </summary>
 public sealed class RefRegistry
 {
@@ -33,7 +33,7 @@ public sealed class RefRegistry
 
     public string Assign(ElementNode n) => Assign(n.Element, n.RuntimeId, n.AutomationId, n.Name, n.Kind);
 
-    /// <summary>為任意元素取得（或指派）ref。</summary>
+    /// <summary>Gets (or assigns) the ref of any element.</summary>
     public string GetOrAssign(IUiElement el) => Assign(el, el.RuntimeId, el.AutomationId, el.Name, el.Kind);
 
     public bool TryGet(string r, out RefEntry entry) => _byRef.TryGetValue(r, out entry!);

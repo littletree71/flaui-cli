@@ -14,6 +14,6 @@ internal static class Output
 
         if (!string.IsNullOrEmpty(result.Text)) Console.WriteLine(result.Text);
         if (!result.Ok && !string.IsNullOrEmpty(result.Error))
-            Console.Error.WriteLine(result.IsAssertionFailure ? result.Error : "錯誤：" + result.Error);
+            Console.Error.WriteLine(result.IsAssertionFailure ? result.Error : "Error: " + result.Error);
     }
 }

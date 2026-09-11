@@ -2,7 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="WpfSample" Height="560" Width="720" WindowStartupLocation="CenterScreen">
-    <!-- flaui-cli 契約測試 / 端對端測試用的範例程式：每個控制項都有 AutomationId -->
+    <!-- Sample application for the flaui-cli contract / end-to-end tests: every control has an AutomationId -->
     <DockPanel>
         <Menu DockPanel.Dock="Top" AutomationProperties.AutomationId="mainMenu">
             <MenuItem Header="_File" AutomationProperties.AutomationId="menuFile">

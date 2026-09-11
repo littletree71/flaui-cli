@@ -6,8 +6,9 @@ using FlauiCli.Drivers;
 namespace FlauiCli.E2E.Tests;
 
 /// <summary>
-/// FlaUI 轉接層的契約測試：直接對真實的 WPF 程式驗證 <see cref="IUiDriver"/> / <see cref="IUiElement"/> 的每個行為。
-/// 升級 FlaUI 版本時必須全部通過，這是 Core 單元測試（使用 FakeDriver）無法涵蓋的部分。
+/// Contract tests for the FlaUI adapter: verify every behaviour of <see cref="IUiDriver"/> / <see cref="IUiElement"/>
+/// against a real WPF application. They must all pass when FlaUI is upgraded; this is exactly what the Core unit
+/// tests (which use FakeDriver) cannot cover.
 /// </summary>
 [Trait("Category", "E2E")]
 public sealed class DriverContractTests : IDisposable
@@ -19,38 +20,38 @@ public sealed class DriverContractTests : IDisposable
     public DriverContractTests()
     {
         _app = _driver.Launch(TestEnvironment.WpfSampleExe, null, null);
-        _window = _app.GetMainWindow(TimeSpan.FromSeconds(15)) ?? throw new InvalidOperationException("WpfSample 沒有開啟視窗");
+        _window = _app.GetMainWindow(TimeSpan.FromSeconds(15)) ?? throw new InvalidOperationException("WpfSample did not open a window");
         _window.SetForeground();
     }
 
     public void Dispose()
     {
-        try { _app.Kill(); } catch { /* 忽略 */ }
+        try { _app.Kill(); } catch { /* ignore */ }
         _app.Dispose();
         _driver.Dispose();
     }
 
     private IUiElement ById(string id) =>
-        _window.FindAll(new ElementQuery(AutomationId: id)).FirstOrDefault() ?? throw new InvalidOperationException($"找不到 {id}");
+        _window.FindAll(new ElementQuery(AutomationId: id)).FirstOrDefault() ?? throw new InvalidOperationException($"{id} not found");
 
     private static void WaitUntil(Func<bool> condition, int timeoutMs = 3000)
     {
         var sw = Stopwatch.StartNew();
         while (!condition())
         {
-            if (sw.ElapsedMilliseconds > timeoutMs) throw new TimeoutException("條件未在時限內成立");
+            if (sw.ElapsedMilliseconds > timeoutMs) throw new TimeoutException("The condition did not become true in time");
             Thread.Sleep(50);
         }
     }
 
-    // ───────────── 不需要 UI 的對應檢查 ─────────────
+    // ───────────── Mapping checks (no UI needed) ─────────────
 
     [Fact]
-    public void 列舉對應完整()
+    public void EnumMappingsAreComplete()
     {
         foreach (var t in Enum.GetValues<ControlType>())
             Assert.True(Enum.IsDefined(Mapping.ToKind(t)) && (t == ControlType.Unknown || Mapping.ToKind(t) != ControlKind.Unknown),
-                $"FlaUI ControlType.{t} 沒有對應的 ControlKind");
+                $"FlaUI ControlType.{t} has no matching ControlKind");
         foreach (var k in Enum.GetValues<ControlKind>())
             Assert.Equal(k, Mapping.ToKind(Mapping.ToControlType(k)));
         foreach (var s in Enum.GetValues<ToggleState>())
@@ -59,10 +60,10 @@ public sealed class DriverContractTests : IDisposable
             Assert.Equal(s.ToString(), Mapping.ToExpand(s).ToString());
     }
 
-    // ───────────── 屬性 ─────────────
+    // ───────────── Properties ─────────────
 
     [Fact]
-    public void 基本屬性()
+    public void BasicProperties()
     {
         var name = ById("nameInput");
         Assert.Equal(ControlKind.Edit, name.Kind);
@@ -77,7 +78,7 @@ public sealed class DriverContractTests : IDisposable
         Assert.False(name.IsReadOnly);
         Assert.True(name.IsAlive);
         Assert.NotNull(name.Parent);
-        Assert.Null(_driver.GetTopLevelWindows().First().Parent?.Parent); // 頂層視窗的父元素是桌面
+        Assert.Null(_driver.GetTopLevelWindows().First().Parent?.Parent); // the parent of a top-level window is the desktop
 
         Assert.Equal(ControlKind.Window, _window.Kind);
         Assert.Equal("WpfSample", _window.Name);
@@ -85,20 +86,20 @@ public sealed class DriverContractTests : IDisposable
     }
 
     [Fact]
-    public void 狀態屬性()
+    public void StateProperties()
     {
         Assert.False(ById("disabledButton").IsEnabled);
         Assert.True(ById("passwordInput").IsPassword);
         Assert.Equal(ToggleValue.Off, ById("agreeCheck").Toggle);
         Assert.Equal(ExpandValue.Collapsed, ById("colorCombo").Expand);
         Assert.Contains("Invoke", ById("submitButton").SupportedPatterns);
-        // 在地化類型名稱依系統介面語系而異（例如「按鈕」），只檢查讀得到
+        // The localized control type depends on the OS UI language, so only check that it can be read
         Assert.False(string.IsNullOrEmpty(ById("submitButton").GetProperty("LocalizedControlType")));
         Assert.Null(ById("submitButton").GetProperty("NoSuchProperty"));
     }
 
     [Fact]
-    public void 同一元素相等()
+    public void SameElementIsEqual()
     {
         var a = ById("submitButton");
         var b = _window.FindAll(new ElementQuery(Name: "Submit", Kind: ControlKind.Button)).Single();
@@ -107,10 +108,10 @@ public sealed class DriverContractTests : IDisposable
         Assert.Equal(a.RuntimeId, b.RuntimeId);
     }
 
-    // ───────────── 搜尋 ─────────────
+    // ───────────── Searching ─────────────
 
     [Fact]
-    public void 搜尋條件與範圍()
+    public void QueryConditionsAndScopes()
     {
         Assert.Single(_window.FindAll(new ElementQuery(AutomationId: "submitButton", Kind: ControlKind.Button)));
         Assert.Empty(_window.FindAll(new ElementQuery(AutomationId: "submitButton", Kind: ControlKind.Edit)));
@@ -120,19 +121,19 @@ public sealed class DriverContractTests : IDisposable
     }
 
     [Fact]
-    public void XPath往返()
+    public void XPathRoundTrip()
     {
         var submit = ById("submitButton");
         var xpath = submit.GetXPathFrom(_window);
         Assert.False(string.IsNullOrEmpty(xpath));
         var found = _window.FindByXPath(xpath!);
         Assert.True(found.Any(e => e.Equals(submit)),
-            $"xpath={xpath}，找到 {found.Count} 個：{string.Join(" | ", found)}；//Button 共 {_window.FindByXPath("//Button").Count} 個");
+            $"xpath={xpath}, found {found.Count}: {string.Join(" | ", found)}; //Button matches {_window.FindByXPath("//Button").Count}");
         Assert.Single(_window.FindByXPath("//Button[@AutomationId='submitButton']"));
     }
 
     [Fact]
-    public void 快照樹包含控制項與狀態()
+    public void TreeSnapshotContainsControlsAndStates()
     {
         ById("nameInput").TrySetValue("snap");
         var nodes = _window.CaptureTree().DescendantsAndSelf().ToList();
@@ -146,23 +147,24 @@ public sealed class DriverContractTests : IDisposable
     }
 
     [Fact]
-    public void FromPoint與焦點()
+    public void FromPointAndFocus()
     {
         var submit = ById("submitButton");
-        // 命中測試回傳最深的元素（WPF 按鈕中央是其內容文字），因此接受按鈕本身或其子元素
+        // Hit testing returns the deepest element (the centre of a WPF button is its content text),
+        // so both the button itself and its child are accepted
         var hit = _driver.FromPoint(submit.Bounds.Center());
         Assert.NotNull(hit);
-        Assert.True(hit!.Equals(submit) || hit.Parent?.Equals(submit) == true, $"FromPoint 回傳 {hit}");
+        Assert.True(hit!.Equals(submit) || hit.Parent?.Equals(submit) == true, $"FromPoint returned {hit}");
         var name = ById("nameInput");
         name.Focus();
         WaitUntil(() => _driver.GetFocusedElement()?.Equals(name) == true);
         Assert.True(_driver.FromHandle(_window.WindowHandle)?.Equals(_window));
     }
 
-    // ───────────── Pattern 操作 ─────────────
+    // ───────────── Pattern operations ─────────────
 
     [Fact]
-    public void Invoke與SetValue()
+    public void InvokeAndSetValue()
     {
         Assert.True(ById("nameInput").TrySetValue("Alice"));
         Assert.True(ById("submitButton").TryInvoke());
@@ -180,7 +182,7 @@ public sealed class DriverContractTests : IDisposable
     }
 
     [Fact]
-    public void ComboBox選取()
+    public void ComboBoxSelection()
     {
         var combo = ById("colorCombo");
         Assert.True(combo.TrySelectComboBoxItem("Green", null, out var selected));
@@ -193,7 +195,7 @@ public sealed class DriverContractTests : IDisposable
     }
 
     [Fact]
-    public void 清單項目選取()
+    public void ListItemSelection()
     {
         var item = ById("fruitList").FindAll(new ElementQuery(Name: "Banana")).First(e => e.Kind == ControlKind.ListItem);
         Assert.False(item.IsSelected);
@@ -202,7 +204,7 @@ public sealed class DriverContractTests : IDisposable
     }
 
     [Fact]
-    public void 索引標籤與樹狀展開()
+    public void TabSelectionAndTreeExpansion()
     {
         var tab = ById("treeTab");
         Assert.True(tab.TrySelectItem());
@@ -215,7 +217,7 @@ public sealed class DriverContractTests : IDisposable
     }
 
     [Fact]
-    public void 視窗操作()
+    public void WindowOperations()
     {
         Assert.True(_window.TrySetWindowState(WindowStateKind.Normal));
         Assert.True(_window.TryResize(650, 520));
@@ -225,7 +227,7 @@ public sealed class DriverContractTests : IDisposable
     }
 
     [Fact]
-    public void 對話框是新的頂層視窗且可關閉()
+    public void DialogIsAWindowThatCanBeClosed()
     {
         ById("dialogButton").TryInvoke();
         IUiElement? dialog = null;
@@ -235,10 +237,10 @@ public sealed class DriverContractTests : IDisposable
         WaitUntil(() => ById("statusText").Name == "Dialog cancelled", 5000);
     }
 
-    // ───────────── 輸入與截圖 ─────────────
+    // ───────────── Input and screenshots ─────────────
 
     [Fact]
-    public void 滑鼠點擊與鍵盤輸入()
+    public void MouseClicksAndKeyboardInput()
     {
         var name = ById("nameInput");
         _driver.Input.Click(name.ClickPoint(), MouseButtonKind.Left);
@@ -255,7 +257,7 @@ public sealed class DriverContractTests : IDisposable
     }
 
     [Fact]
-    public void 截圖()
+    public void Screenshot()
     {
         var bounds = _window.Bounds;
         using var bmp = _driver.Screen.Capture(bounds);
@@ -265,7 +267,7 @@ public sealed class DriverContractTests : IDisposable
     }
 
     [Fact]
-    public void 程序生命週期()
+    public void ProcessLifetime()
     {
         Assert.False(_app.HasExited);
         Assert.True(_window.TryClose());

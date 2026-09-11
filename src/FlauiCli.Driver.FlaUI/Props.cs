@@ -4,7 +4,7 @@ using FlaUI.Core.Identifiers;
 
 namespace FlauiCli.Drivers;
 
-/// <summary>安全讀取 UIA 屬性：不支援或元素已消失時回傳 null；CacheRequest 啟用時讀取快取值。</summary>
+/// <summary>Safe UIA property reads: null when unsupported or the element is gone; cached values while a CacheRequest is active.</summary>
 internal static class Props
 {
     public static T? Ref<T>(AutomationElement el, PropertyId id) where T : class

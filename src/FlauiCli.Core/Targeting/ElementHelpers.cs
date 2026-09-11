@@ -4,7 +4,7 @@ namespace FlauiCli.Core.Targeting;
 
 internal static class ElementHelpers
 {
-    /// <summary>使用者實際會操作的控制項類型。</summary>
+    /// <summary>Control types that users actually operate.</summary>
     private static readonly HashSet<ControlKind> InteractiveKinds =
     [
         ControlKind.Button, ControlKind.SplitButton, ControlKind.CheckBox, ControlKind.RadioButton, ControlKind.ComboBox,
@@ -13,8 +13,9 @@ internal static class ElementHelpers
     ];
 
     /// <summary>
-    /// 座標命中測試（FromPoint）通常回傳最深的元素，例如按鈕裡的文字。
-    /// 往上最多找 3 層，若遇到可互動的控制項就改用它，讓錄製出的 selector 指向真正被操作的元素。
+    /// Hit testing (FromPoint) usually returns the deepest element, for example the text inside a button.
+    /// Walks up at most three levels and switches to the first interactive control, so recorded selectors
+    /// point at the element the user really operated.
     /// </summary>
     public static IUiElement PromoteToInteractive(IUiElement element)
     {

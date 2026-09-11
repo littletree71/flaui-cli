@@ -5,7 +5,7 @@ using FlauiCli.Core.Daemon;
 
 namespace FlauiCli.Core.Protocol;
 
-/// <summary>Named Pipe 通訊與 session 檔使用的 JSON 序列化設定（source generator）。</summary>
+/// <summary>JSON settings for the named pipe protocol and the session files (source generated).</summary>
 [JsonSourceGenerationOptions(
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
@@ -39,10 +39,10 @@ public static class ProtocolJson
     public static string Serialize(SessionInfo info) => JsonSerializer.Serialize(info, IndentedContext.SessionInfo);
 
     public static CommandCall DeserializeCall(string json) =>
-        JsonSerializer.Deserialize(json, Context.CommandCall) ?? throw new CliException("無法解析指令 JSON");
+        JsonSerializer.Deserialize(json, Context.CommandCall) ?? throw new CliException("Cannot parse the command JSON");
 
     public static CommandResult DeserializeResult(string json) =>
-        JsonSerializer.Deserialize(json, Context.CommandResult) ?? throw new CliException("無法解析回應 JSON");
+        JsonSerializer.Deserialize(json, Context.CommandResult) ?? throw new CliException("Cannot parse the response JSON");
 
     public static SessionInfo? DeserializeSession(string json)
     {

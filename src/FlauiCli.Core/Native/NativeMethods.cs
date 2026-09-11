@@ -2,8 +2,8 @@ using System.Runtime.InteropServices;
 
 namespace FlauiCli.Core.Native;
 
-/// <summary>Win32 API 宣告。</summary>
-[System.Diagnostics.CodeAnalysis.SuppressMessage("Interoperability", "SYSLIB1054", Justification = "低階 hook 需要委派封送，使用傳統 DllImport")]
+/// <summary>Win32 API declarations.</summary>
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Interoperability", "SYSLIB1054", Justification = "Low-level hooks need delegate marshalling, so classic DllImport is used")]
 internal static class NativeMethods
 {
     public const int WH_KEYBOARD_LL = 13;
@@ -32,12 +32,12 @@ internal static class NativeMethods
     private static readonly nint DpiAwarenessContextPerMonitorAwareV2 = -4;
     private static int _dpiInitialized;
 
-    /// <summary>確保目前程序為 Per-Monitor V2 DPI 感知（座標與截圖一致）。只會執行一次。</summary>
+    /// <summary>Makes the current process Per-Monitor V2 DPI aware (so coordinates match screenshots). Runs only once.</summary>
     public static void EnsureDpiAware()
     {
         if (Interlocked.Exchange(ref _dpiInitialized, 1) == 1) return;
         try { SetProcessDpiAwarenessContext(DpiAwarenessContextPerMonitorAwareV2); }
-        catch { /* 已由 manifest 設定或系統不支援時忽略 */ }
+        catch { /* Already set by the manifest, or not supported by the OS */ }
     }
 
     public delegate nint HookProc(int nCode, nint wParam, nint lParam);

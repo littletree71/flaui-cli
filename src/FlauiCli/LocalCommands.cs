@@ -9,7 +9,7 @@ using FlauiCli.Drivers;
 
 namespace FlauiCli;
 
-/// <summary>在 CLI 程序內直接處理的指令。</summary>
+/// <summary>Commands handled inside the CLI process.</summary>
 internal static class LocalCommands
 {
     public static int Execute(CommandCall call, string session, bool json) => call.Command switch
@@ -20,7 +20,7 @@ internal static class LocalCommands
         "run" => Run(call, json),
         "install-skill" => InstallSkill(call, json),
         "daemon" => DaemonHost.Run(session, () => new FlaUIDriver()),
-        _ => throw new CliException($"未知的本機指令：{call.Command}"),
+        _ => throw new CliException($"Unknown local command: {call.Command}"),
     };
 
     private static IEnumerable<SessionInfo> Sessions()
@@ -57,15 +57,15 @@ internal static class LocalCommands
             var status = IsAlive(info.Pid) ? DaemonClient.TrySend(info.Session, new CommandCall("status"), 1000) : null;
             if (status is null)
             {
-                // 殘留的 session 檔
+                // Stale session file
                 try { File.Delete(DaemonPaths.SessionFile(info.Session)); } catch (IOException) { }
                 continue;
             }
             count++;
-            var window = status.Data?.GetValueOrDefault("window") ?? "（無視窗）";
-            sb.AppendLine($"- {info.Session}（daemon PID {info.Pid}，啟動於 {info.StartedAt:HH:mm:ss}）— {window}");
+            var window = status.Data?.GetValueOrDefault("window") ?? "(no window)";
+            sb.AppendLine($"- {info.Session} (daemon PID {info.Pid}, started {info.StartedAt:HH:mm:ss}) - {window}");
         }
-        if (count == 0) sb.AppendLine("（沒有執行中的 session）");
+        if (count == 0) sb.AppendLine("(no running sessions)");
         Output.Print(CommandResult.Success(sb.ToString().TrimEnd()), json);
         return ExitCodes.Success;
     }
@@ -76,7 +76,7 @@ internal static class LocalCommands
         foreach (var info in Sessions())
         {
             var r = DaemonClient.TrySend(info.Session, new CommandCall("close") { Cwd = Environment.CurrentDirectory }, 1000);
-            sb.AppendLine(r is { Ok: true } ? $"- 已關閉 {info.Session}" : $"- {info.Session} 無回應");
+            sb.AppendLine(r is { Ok: true } ? $"- Closed {info.Session}" : $"- {info.Session} did not respond");
         }
         Output.Print(CommandResult.Success(sb.ToString().TrimEnd()), json);
         return ExitCodes.Success;
@@ -91,11 +91,11 @@ internal static class LocalCommands
             {
                 using var p = Process.GetProcessById(info.Pid);
                 p.Kill();
-                sb.AppendLine($"- 已強制結束 {info.Session}（PID {info.Pid}）");
+                sb.AppendLine($"- Killed {info.Session} (PID {info.Pid})");
             }
             catch (ArgumentException)
             {
-                sb.AppendLine($"- {info.Session} 已不在執行");
+                sb.AppendLine($"- {info.Session} is not running");
             }
             try { File.Delete(DaemonPaths.SessionFile(info.Session)); } catch (IOException) { }
         }
@@ -106,9 +106,9 @@ internal static class LocalCommands
     private static int Run(CommandCall call, bool json)
     {
         var files = call.GetList("files");
-        if (files.Count == 0) throw new CliException("請指定要執行的腳本檔");
+        if (files.Count == 0) throw new CliException("Specify at least one script file");
         var reporter = (call.Get("reporter") ?? "console").ToLowerInvariant();
-        if (reporter is not ("console" or "junit")) throw new CliException($"未知的 reporter：{reporter}（可用：console, junit）");
+        if (reporter is not ("console" or "junit")) throw new CliException($"Unknown reporter: {reporter} (use console or junit)");
         var docRoot = call.Get("doc") is { } d ? call.ResolvePath(d) : null;
         var docFormats = (call.Get("doc-format") ?? "md,html").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         var bail = call.GetBool("bail");
@@ -127,12 +127,12 @@ internal static class LocalCommands
             {
                 var failed = new ScriptResult { Name = Path.GetFileNameWithoutExtension(path), File = path, Passed = false, Error = ex.Message };
                 results.Add(failed);
-                if (!json) Console.Error.WriteLine($"✘ {failed.Name}：{ex.Message}");
+                if (!json) Console.Error.WriteLine($"✘ {failed.Name}: {ex.Message}");
                 if (bail) break;
                 continue;
             }
 
-            if (!json) Console.WriteLine($"▶ {doc.DisplayName}（{DisplayPath(path)}）");
+            if (!json) Console.WriteLine($"▶ {doc.DisplayName} ({DisplayPath(path)})");
             var docDir = docRoot is null ? null : files.Count == 1 ? docRoot : Path.Combine(docRoot, SafeName(doc.DisplayName));
             var result = runner.Run(doc, new RunOptions
             {
@@ -146,10 +146,10 @@ internal static class LocalCommands
             if (!json)
             {
                 Console.WriteLine(result.Passed
-                    ? $"✔ 通過（{result.Duration.TotalSeconds:0.0}s）"
-                    : $"✘ 失敗（{result.Duration.TotalSeconds:0.0}s）：{result.Error}");
-                if (result.FailureScreenshot is not null) Console.WriteLine($"  失敗截圖：{result.FailureScreenshot}");
-                foreach (var f in result.DocFiles) Console.WriteLine($"  操作文件：{f}");
+                    ? $"✔ Passed ({result.Duration.TotalSeconds:0.0}s)"
+                    : $"✘ Failed ({result.Duration.TotalSeconds:0.0}s): {result.Error}");
+                if (result.FailureScreenshot is not null) Console.WriteLine($"  Failure screenshot: {result.FailureScreenshot}");
+                foreach (var f in result.DocFiles) Console.WriteLine($"  Document: {f}");
                 Console.WriteLine();
             }
             if (!result.Passed && bail) break;
@@ -159,7 +159,7 @@ internal static class LocalCommands
         {
             var output = call.ResolvePath(call.Get("output") ?? "flaui-cli-results.xml");
             JUnitReporter.Write(results, output);
-            if (!json) Console.WriteLine($"JUnit 報告：{output}");
+            if (!json) Console.WriteLine($"JUnit report: {output}");
         }
 
         var passed = results.Count(r => r.Passed);
@@ -173,7 +173,7 @@ internal static class LocalCommands
         }
         else
         {
-            Console.WriteLine($"總計 {results.Count} 個腳本：通過 {passed}，失敗 {results.Count - passed}");
+            Console.WriteLine($"Total: {results.Count} script(s), {passed} passed, {results.Count - passed} failed");
         }
         return passed == results.Count ? ExitCodes.Success : ExitCodes.AssertionFailed;
     }
@@ -182,11 +182,11 @@ internal static class LocalCommands
     {
         var mark = s.Passed ? "✓" : "✗";
         var label = s.IsSetup ? "setup" : $"#{s.Index}";
-        Console.WriteLine($"  {mark} {label} {s.Command}（{s.Duration.TotalMilliseconds:0}ms）");
+        Console.WriteLine($"  {mark} {label} {s.Command} ({s.Duration.TotalMilliseconds:0}ms)");
         if (s.Error is not null) Console.WriteLine($"      {s.Error}");
     }
 
-    /// <summary>在工作目錄之下顯示相對路徑，否則顯示完整路徑。</summary>
+    /// <summary>Relative path when the file is under the working directory, otherwise the full path.</summary>
     private static string DisplayPath(string path)
     {
         var rel = Path.GetRelativePath(Environment.CurrentDirectory, path);
@@ -199,12 +199,12 @@ internal static class LocalCommands
     private static int InstallSkill(CommandCall call, bool json)
     {
         var source = Path.Combine(AppContext.BaseDirectory, "skills", "SKILL.md");
-        if (!File.Exists(source)) throw new CliException($"找不到內建的 SKILL.md：{source}");
+        if (!File.Exists(source)) throw new CliException($"Built-in SKILL.md not found: {source}");
         var dir = call.Get("dir") is { } d ? call.ResolvePath(d) : Path.Combine(call.Cwd ?? Environment.CurrentDirectory, ".claude", "skills", "flaui-cli");
         Directory.CreateDirectory(dir);
         var dest = Path.Combine(dir, "SKILL.md");
         File.Copy(source, dest, overwrite: true);
-        Output.Print(CommandResult.Success($"### Result\n已安裝 Agent 技能說明：{dest}"), json);
+        Output.Print(CommandResult.Success($"### Result\nInstalled the agent skill: {dest}"), json);
         return ExitCodes.Success;
     }
 }

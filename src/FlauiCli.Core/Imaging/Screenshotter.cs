@@ -6,21 +6,21 @@ using FlauiCli.Core.Abstractions;
 
 namespace FlauiCli.Core.Imaging;
 
-/// <summary>截圖與標註（紅框 + 編號）。座標一律為螢幕實體像素。</summary>
+/// <summary>Screenshots and annotations (red outline + number). Coordinates are always physical screen pixels.</summary>
 internal static class Screenshotter
 {
     private static readonly Color HighlightColor = Color.FromArgb(229, 57, 53);
 
-    /// <summary>擷取螢幕上的矩形區域（會裁切到虛擬螢幕範圍內）。</summary>
+    /// <summary>Captures a rectangle of the screen (clipped to the virtual screen).</summary>
     public static Bitmap CaptureRegion(IScreenCapture screen, Rectangle region, out Rectangle captured)
     {
         captured = Rectangle.Intersect(region, screen.VirtualScreen);
         if (captured.Width <= 0 || captured.Height <= 0)
-            throw new CliException("要擷取的區域不在螢幕範圍內（視窗可能已最小化）");
+            throw new CliException("The region to capture is off-screen (the window may be minimized)");
         return screen.Capture(captured);
     }
 
-    /// <summary>在圖片上標註多個元素。<paramref name="origin"/> 為圖片左上角對應的螢幕座標。</summary>
+    /// <summary>Outlines elements on the image. <paramref name="origin"/> is the screen position of the image's top-left corner.</summary>
     public static void Annotate(Bitmap bmp, Point origin, IReadOnlyList<Rectangle> targets, int? firstNumber)
     {
         if (targets.Count == 0) return;
@@ -42,7 +42,7 @@ internal static class Screenshotter
 
             if (firstNumber is null) continue;
             const int d = 24;
-            // 編號徽章放在框的左上角外側，超出圖片時往內移
+            // The number badge sits just outside the top-left corner of the outline, moved inwards when it would leave the image
             var bx = Math.Clamp(local.X - d / 2, 0, Math.Max(0, bmp.Width - d));
             var by = Math.Clamp(local.Y - d / 2, 0, Math.Max(0, bmp.Height - d));
             g.FillEllipse(brush, bx, by, d, d);

@@ -1,15 +1,30 @@
 <Project>
-  <!-- 所有專案共用的建置設定 -->
+  <!-- Build settings shared by every project -->
   <PropertyGroup>
     <TargetFramework>net10.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <!-- NuGet 弱點稽核只警告、不中斷建置 -->
+    <!-- NuGet vulnerability audit warnings should not break the build -->
     <WarningsNotAsErrors>NU1901;NU1902;NU1903;NU1904</WarningsNotAsErrors>
-    <SatelliteResourceLanguages>en;zh-Hant</SatelliteResourceLanguages>
-    <Version>0.1.0</Version>
-    <Authors>eric8271</Authors>
+    <!-- Only ship English satellite resources (System.CommandLine help headings etc.) -->
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <!--
+    Version and file metadata. These end up in the assembly attributes and in the
+    Win32 version resource of the executable (Properties > Details), which also
+    helps antivirus products and SmartScreen identify the publisher.
+    Bump VersionPrefix manually when releasing.
+  -->
+  <PropertyGroup>
+    <VersionPrefix>0.1.0</VersionPrefix>
+    <Authors>littletree71</Authors>
+    <Company>littletree71</Company>
+    <Product>flaui-cli</Product>
+    <Copyright>Copyright (c) 2026 littletree71</Copyright>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <NeutralLanguage>en</NeutralLanguage>
   </PropertyGroup>
 </Project>

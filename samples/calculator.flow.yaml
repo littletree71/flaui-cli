@@ -1,22 +1,22 @@
-# 小算盤加法：1 + 2 = 3
-# 執行：flaui-cli run samples/calculator.flow.yaml --doc out/calc-doc
-# 注意：Windows 11 小算盤是 UWP，calc.exe 啟動後會立即結束，因此必須用 window 指定視窗標題。
-#       以下的標題與顯示文字是英文系統的值（中文系統為「小算盤」、「顯示為 3」）。
-name: 小算盤加法
+# Calculator addition: 1 + 2 = 3
+# Run: flaui-cli run samples/calculator.flow.yaml --doc out/calc-doc
+# Note: Windows 11 Calculator is a UWP app. calc.exe exits immediately, so the window title must be given.
+#       The title and display text below are the English values ("小算盤" / "顯示為 3" on Traditional Chinese Windows).
+name: Calculator addition
 app:
   launch: calc.exe
   window: Calculator
 steps:
   - click: id=clearButton
-    doc: 先按 C 清除計算機
+    doc: Press C to clear the calculator
   - click: id=num1Button
-    doc: 按下數字 1
+    doc: Press 1
   - click: id=plusButton
-    doc: 按下加號
+    doc: Press +
   - click: id=num2Button
-    doc: 按下數字 2
+    doc: Press 2
   - click: id=equalButton
-    doc: 按下等號
+    doc: Press =
   - assert:
       target: id=CalculatorResults
       text: Display is 3

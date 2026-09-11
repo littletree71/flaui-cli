@@ -1,9 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!--
-    需要真實桌面環境的測試：
-    - DriverContractTests：逐一驗證 FlaUI 轉接層的每個介面方法（FlaUI 升級時的防線）
-    - CLI 端對端測試（小算盤、WpfSample）
+    Tests that need a real interactive desktop:
+    - DriverContractTests: verify every behaviour of the FlaUI adapter (the safety net for FlaUI upgrades)
+    - CLI end-to-end tests (Calculator, WpfSample)
   -->
   <PropertyGroup>
     <IsPackable>false</IsPackable>
@@ -21,7 +21,7 @@
     <ProjectReference Include="..\..\src\FlauiCli.Core\FlauiCli.Core.csproj" />
     <ProjectReference Include="..\..\src\FlauiCli.Driver.FlaUI\FlauiCli.Driver.FlaUI.csproj" />
     <ProjectReference Include="..\..\src\FlauiCli\FlauiCli.csproj" />
-    <!-- 只要求先建置 WpfSample，不引用其組件 -->
+    <!-- Only ensure WpfSample is built; its assembly is not referenced -->
     <ProjectReference Include="..\TestApps\WpfSample\WpfSample.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
 

@@ -2,12 +2,12 @@ using FlauiCli.Core.Native;
 
 namespace FlauiCli.Core.Engine;
 
-/// <summary>解析按鍵字串（例如 <c>Enter</c>、<c>Ctrl+Shift+S</c>、<c>Alt+F4</c>）成 Win32 虛擬鍵碼。</summary>
+/// <summary>Parses key strings (for example <c>Enter</c>, <c>Ctrl+Shift+S</c>, <c>Alt+F4</c>) into Win32 virtual-key codes.</summary>
 public static class KeyParser
 {
     private static readonly Dictionary<string, ushort> Named = BuildNamed();
 
-    // 同一鍵碼有多個別名時，以第一個（正式名稱）作為輸出
+    // When a key code has several aliases, the first one (the canonical name) is used for output
     private static readonly Dictionary<ushort, string> Names = Named
         .GroupBy(kv => kv.Value)
         .ToDictionary(g => g.Key, g => g.First().Key);
@@ -50,8 +50,8 @@ public static class KeyParser
 
     public static ushort[] Parse(string keys)
     {
-        if (string.IsNullOrWhiteSpace(keys)) throw new CliException("按鍵不可為空");
-        // 「Ctrl++」表示 Ctrl 加上 + 號
+        if (string.IsNullOrWhiteSpace(keys)) throw new CliException("Keys must not be empty");
+        // "Ctrl++" means Ctrl plus the + key
         var parts = new List<string>();
         var tokens = keys.Trim().Split('+');
         for (var i = 0; i < tokens.Length; i++)
@@ -60,7 +60,7 @@ public static class KeyParser
             if (t.Length == 0 && i < tokens.Length - 1) { parts.Add("+"); i++; continue; }
             if (t.Length > 0) parts.Add(t);
         }
-        if (parts.Count == 0) throw new CliException($"無法辨識的按鍵：{keys}");
+        if (parts.Count == 0) throw new CliException($"Unrecognized key: {keys}");
         return [.. parts.Select(ToVk)];
     }
 
@@ -75,10 +75,10 @@ public static class KeyParser
             var scan = NativeMethods.VkKeyScanW(ch);
             if (scan != -1) return (ushort)(scan & 0xFF);
         }
-        throw new CliException($"無法辨識的按鍵：{token}");
+        throw new CliException($"Unrecognized key: {token}");
     }
 
-    /// <summary>把虛擬鍵碼組合成字串（錄製用）。</summary>
+    /// <summary>Formats virtual-key codes as a key string (used by the recorder).</summary>
     public static string Format(IEnumerable<ushort> vks) => string.Join("+", vks.Select(Format));
 
     public static string Format(ushort vk)

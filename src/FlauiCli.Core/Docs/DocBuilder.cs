@@ -3,19 +3,22 @@ using FlauiCli.Core.Imaging;
 
 namespace FlauiCli.Core.Docs;
 
-/// <summary>操作文件中的一個步驟。</summary>
+/// <summary>One step of a document.</summary>
 public sealed record DocStep(int Number, string Text, string? ImagePath, string? Command, DateTime Time);
 
 /// <summary>
-/// 收集操作步驟（說明 + 標註截圖），最後匯出成 Markdown（含 images/）與單檔 HTML。
+/// Collects steps (description + annotated screenshot) and exports them as Markdown (with images/)
+/// and a single-file HTML page.
 /// </summary>
 public sealed class DocBuilder
 {
+    public const string DefaultTitle = "Instructions";
+
     private readonly List<DocStep> _steps = [];
 
     public DocBuilder(string title, string workDir)
     {
-        Title = string.IsNullOrWhiteSpace(title) ? "操作說明" : title;
+        Title = string.IsNullOrWhiteSpace(title) ? DefaultTitle : title;
         WorkDir = workDir;
         Directory.CreateDirectory(workDir);
     }
@@ -44,7 +47,7 @@ public sealed class DocBuilder
         return step;
     }
 
-    /// <summary>匯出文件，回傳產生的檔案路徑。</summary>
+    /// <summary>Exports the document and returns the paths of the generated files.</summary>
     public IReadOnlyList<string> Export(string outDir, IEnumerable<string> formats)
     {
         Directory.CreateDirectory(outDir);
@@ -53,7 +56,7 @@ public sealed class DocBuilder
         if (fmts.Count == 0) fmts = ["md", "html"];
 
         foreach (var f in fmts.Where(f => f is not ("md" or "markdown" or "html")))
-            throw new CliException($"不支援的文件格式：{f}（可用：md, html）");
+            throw new CliException($"Unsupported document format: {f} (use md or html)");
 
         if (fmts.Contains("md") || fmts.Contains("markdown"))
         {

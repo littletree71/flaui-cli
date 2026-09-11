@@ -2,7 +2,7 @@ using FlauiCli.Core.Abstractions;
 
 namespace FlauiCli.Core.Engine;
 
-// 操作元素的動作指令
+// Action commands that operate on elements
 public sealed partial class CommandDispatcher
 {
     private IInputDevice Input => _s.Driver.Input;
@@ -12,7 +12,7 @@ public sealed partial class CommandDispatcher
         "left" => MouseButtonKind.Left,
         "right" => MouseButtonKind.Right,
         "middle" => MouseButtonKind.Middle,
-        _ => throw new CliException($"未知的滑鼠按鍵：{value}（可用：left, right, middle）"),
+        _ => throw new CliException($"Unknown mouse button: {value} (use left, right or middle)"),
     };
 
     private string Click(CommandContext ctx)
@@ -22,14 +22,14 @@ public sealed partial class CommandDispatcher
         var dbl = ctx.Call.GetBool("double");
         var label = Label(el);
 
-        BeforeAction(ctx, el, dbl ? $"雙擊{Friendly(el)}"
-            : button == MouseButtonKind.Right ? $"在{Friendly(el)}上按右鍵"
-            : $"點擊{Friendly(el)}");
+        BeforeAction(ctx, el, dbl ? $"Double-click {Friendly(el)}"
+            : button == MouseButtonKind.Right ? $"Right-click {Friendly(el)}"
+            : $"Click {Friendly(el)}");
 
         if (ctx.Call.GetBool("invoke"))
         {
             EnsureInteractable(ctx, el);
-            if (!el.TryInvoke()) throw new CliException($"{label} 不支援 InvokePattern，請改用一般點擊");
+            if (!el.TryInvoke()) throw new CliException($"{label} does not support InvokePattern; use a normal click instead");
         }
         else
         {
@@ -40,38 +40,38 @@ public sealed partial class CommandDispatcher
         }
 
         Input.WaitUntilIdle();
-        return $"### Result\n已{(dbl ? "雙擊" : button == MouseButtonKind.Right ? "右鍵點擊" : "點擊")} {label}";
+        return $"### Result\n{(dbl ? "Double-clicked" : button == MouseButtonKind.Right ? "Right-clicked" : "Clicked")} {label}";
     }
 
     private string DoubleClick(CommandContext ctx)
     {
         var el = ResolveArg(ctx);
         var label = Label(el);
-        BeforeAction(ctx, el, $"雙擊{Friendly(el)}");
+        BeforeAction(ctx, el, $"Double-click {Friendly(el)}");
         EnsureInteractable(ctx, el);
         Input.DoubleClick(el.ClickPoint(), MouseButtonKind.Left);
         Input.WaitUntilIdle();
-        return $"### Result\n已雙擊 {label}";
+        return $"### Result\nDouble-clicked {label}";
     }
 
     private string Hover(CommandContext ctx)
     {
         var el = ResolveArg(ctx);
-        BeforeAction(ctx, el, $"將滑鼠移到{Friendly(el)}");
+        BeforeAction(ctx, el, $"Hover over {Friendly(el)}");
         EnsureInteractable(ctx, el);
         Input.MoveTo(el.ClickPoint());
-        return $"### Result\n滑鼠已移到 {Label(el)}";
+        return $"### Result\nMoved the mouse over {Label(el)}";
     }
 
     private string Fill(CommandContext ctx)
     {
         var el = ResolveArg(ctx);
-        if (!ctx.Call.Has("text")) throw new CliException("fill 缺少必要參數 <text>");
+        if (!ctx.Call.Has("text")) throw new CliException("fill is missing the required argument <text>");
         var text = ctx.Call.Get("text") ?? "";
         var label = Label(el);
         var secret = el.IsPassword;
 
-        BeforeAction(ctx, el, secret ? $"在{Friendly(el)}輸入密碼" : $"在{Friendly(el)}輸入「{text}」");
+        BeforeAction(ctx, el, secret ? $"Enter the password in {Friendly(el)}" : $"Type \"{text}\" into {Friendly(el)}");
         EnsureInteractable(ctx, el);
 
         if (ctx.Call.GetBool("keyboard") || !el.TrySetValue(text))
@@ -83,18 +83,18 @@ public sealed partial class CommandDispatcher
         }
 
         Input.WaitUntilIdle();
-        return $"### Result\n已在 {label} 填入「{(secret ? "********" : text)}」";
+        return $"### Result\nFilled {label} with \"{(secret ? "********" : text)}\"";
     }
 
     private string TypeText(CommandContext ctx)
     {
         var text = ctx.Call.Require("text");
         var focused = _s.Driver.GetFocusedElement();
-        BeforeAction(ctx, focused, $"輸入「{text}」");
+        BeforeAction(ctx, focused, $"Type \"{text}\"");
         TryForeground(_s.RequireWindow());
         Input.Type(text);
         Input.WaitUntilIdle();
-        return $"### Result\n已輸入「{text}」";
+        return $"### Result\nTyped \"{text}\"";
     }
 
     private string Press(CommandContext ctx)
@@ -104,7 +104,7 @@ public sealed partial class CommandDispatcher
         var hasTarget = ctx.Call.Get("target") is not null;
         var target = hasTarget ? ResolveArg(ctx) : _s.Driver.GetFocusedElement();
 
-        BeforeAction(ctx, target, $"按下 {keys}");
+        BeforeAction(ctx, target, $"Press {keys}");
         if (hasTarget)
         {
             EnsureInteractable(ctx, target!);
@@ -117,7 +117,7 @@ public sealed partial class CommandDispatcher
 
         Input.PressChord(vks);
         Input.WaitUntilIdle();
-        return $"### Result\n已按下 {keys}";
+        return $"### Result\nPressed {keys}";
     }
 
     private static readonly HashSet<ControlKind> ItemKinds =
@@ -130,14 +130,14 @@ public sealed partial class CommandDispatcher
         int? index = item.StartsWith('#') && int.TryParse(item[1..], out var ix) ? ix : null;
         var label = Label(el);
 
-        BeforeAction(ctx, el, $"在{Friendly(el)}選擇「{item}」");
+        BeforeAction(ctx, el, $"Select \"{item}\" in {Friendly(el)}");
         EnsureInteractable(ctx, el);
 
         string selected;
         if (el.Kind == ControlKind.ComboBox)
         {
             if (!el.TrySelectComboBoxItem(index is null ? item : null, index, out var s))
-                throw new CliException($"無法在 {label} 選取「{item}」");
+                throw new CliException($"Cannot select \"{item}\" in {label}");
             selected = s ?? item;
         }
         else
@@ -148,8 +148,8 @@ public sealed partial class CommandDispatcher
                 : items.FirstOrDefault(e => e.Name == item) ?? items.FirstOrDefault(e => e.Name.Contains(item, StringComparison.OrdinalIgnoreCase));
             if (target is null)
             {
-                var names = string.Join("、", items.Select(e => e.Name).Where(n => n.Length > 0).Take(20));
-                throw new CliException($"在 {label} 找不到項目「{item}」。可用項目：{(names.Length > 0 ? names : "（無）")}");
+                var names = string.Join(", ", items.Select(e => e.Name).Where(n => n.Length > 0).Take(20));
+                throw new CliException($"Item \"{item}\" not found in {label}. Available items: {(names.Length > 0 ? names : "(none)")}");
             }
             if (target.IsOffscreen) target.TryScrollIntoView();
             if (!target.TrySelectItem()) Input.Click(target.ClickPoint(), MouseButtonKind.Left);
@@ -157,60 +157,60 @@ public sealed partial class CommandDispatcher
         }
 
         Input.WaitUntilIdle();
-        return $"### Result\n已在 {label} 選取「{selected}」";
+        return $"### Result\nSelected \"{selected}\" in {label}";
     }
 
     private string SetChecked(CommandContext ctx, bool check)
     {
         var el = ResolveArg(ctx);
         var label = Label(el);
-        BeforeAction(ctx, el, check ? $"勾選{Friendly(el)}" : $"取消勾選{Friendly(el)}");
+        BeforeAction(ctx, el, check ? $"Check {Friendly(el)}" : $"Uncheck {Friendly(el)}");
         EnsureInteractable(ctx, el);
 
         var desired = check ? ToggleValue.On : ToggleValue.Off;
         if (el.Toggle is not null)
         {
-            // 三態核取方塊可能需要切換兩次
+            // A three-state check box may need two toggles
             for (var i = 0; i < 3 && el.Toggle != desired; i++)
             {
                 if (!el.TryToggle()) break;
             }
-            if (el.Toggle != desired) throw new CliException($"無法將 {label} 設為{(check ? "勾選" : "未勾選")}");
+            if (el.Toggle != desired) throw new CliException($"Cannot set {label} to {(check ? "checked" : "unchecked")}");
         }
         else if (el.IsSelected is not null)
         {
-            if (!check) throw new CliException($"{label} 是選項按鈕，無法取消勾選（請改選其他選項）");
-            if (el.IsSelected != true && !el.TrySelectItem()) throw new CliException($"無法選取 {label}");
+            if (!check) throw new CliException($"{label} is a radio button and cannot be unchecked (select another option instead)");
+            if (el.IsSelected != true && !el.TrySelectItem()) throw new CliException($"Cannot select {label}");
         }
         else
         {
-            throw new CliException($"{label} 不是核取方塊或切換按鈕");
+            throw new CliException($"{label} is not a check box or toggle button");
         }
 
-        return $"### Result\n已{(check ? "勾選" : "取消勾選")} {label}";
+        return $"### Result\n{(check ? "Checked" : "Unchecked")} {label}";
     }
 
     private string ExpandCollapse(CommandContext ctx, bool expand)
     {
         var el = ResolveArg(ctx);
         var label = Label(el);
-        BeforeAction(ctx, el, expand ? $"展開{Friendly(el)}" : $"收合{Friendly(el)}");
+        BeforeAction(ctx, el, expand ? $"Expand {Friendly(el)}" : $"Collapse {Friendly(el)}");
         EnsureInteractable(ctx, el);
         var ok = expand ? el.TryExpand() : el.TryCollapse();
-        if (!ok) throw new CliException($"{label} 不支援 ExpandCollapsePattern");
+        if (!ok) throw new CliException($"{label} does not support ExpandCollapsePattern");
         Input.WaitUntilIdle();
-        return $"### Result\n已{(expand ? "展開" : "收合")} {label}";
+        return $"### Result\n{(expand ? "Expanded" : "Collapsed")} {label}";
     }
 
     private string Invoke(CommandContext ctx)
     {
         var el = ResolveArg(ctx);
         var label = Label(el);
-        BeforeAction(ctx, el, $"執行{Friendly(el)}");
+        BeforeAction(ctx, el, $"Invoke {Friendly(el)}");
         EnsureInteractable(ctx, el);
-        if (!el.TryInvoke()) throw new CliException($"{label} 不支援 InvokePattern");
+        if (!el.TryInvoke()) throw new CliException($"{label} does not support InvokePattern");
         Input.WaitUntilIdle();
-        return $"### Result\n已觸發 {label}";
+        return $"### Result\nInvoked {label}";
     }
 
     private string Scroll(CommandContext ctx)
@@ -222,13 +222,13 @@ public sealed partial class CommandDispatcher
             "down" => ScrollDirection.Down,
             "left" => ScrollDirection.Left,
             "right" => ScrollDirection.Right,
-            var d => throw new CliException($"未知的捲動方向：{d}（可用：up, down, left, right）"),
+            var d => throw new CliException($"Unknown scroll direction: {d} (use up, down, left or right)"),
         };
         var amount = Math.Max(1, ctx.Call.GetInt("amount") ?? 3);
-        BeforeAction(ctx, el, $"捲動{Friendly(el)}");
+        BeforeAction(ctx, el, $"Scroll {Friendly(el)}");
         TryForeground(_s.RequireWindow());
 
-        // 優先用 ScrollPattern；不支援時改用滑鼠滾輪
+        // Prefer ScrollPattern; fall back to the mouse wheel when it is not supported
         if (el.TryScroll(direction))
         {
             for (var i = 1; i < amount; i++) el.TryScroll(direction);
@@ -242,17 +242,17 @@ public sealed partial class CommandDispatcher
         }
 
         Input.WaitUntilIdle();
-        return $"### Result\n已向 {direction.ToString().ToLowerInvariant()} 捲動 {Label(el)} {amount} 次";
+        return $"### Result\nScrolled {Label(el)} {direction.ToString().ToLowerInvariant()} {amount} time(s)";
     }
 
     private string Drag(CommandContext ctx)
     {
         var source = ResolveArg(ctx, "source");
         var dest = ResolveArg(ctx, "dest");
-        BeforeAction(ctx, source, $"將{Friendly(source)}拖曳到{Friendly(dest)}");
+        BeforeAction(ctx, source, $"Drag {Friendly(source)} to {Friendly(dest)}");
         EnsureInteractable(ctx, source);
         Input.Drag(source.ClickPoint(), dest.ClickPoint());
         Input.WaitUntilIdle();
-        return $"### Result\n已將 {Label(source)} 拖曳到 {Label(dest)}";
+        return $"### Result\nDragged {Label(source)} to {Label(dest)}";
     }
 }

@@ -6,16 +6,16 @@ using FlauiCli.Core.Abstractions;
 
 namespace FlauiCli.Drivers;
 
-/// <summary>以 UIA CacheRequest 一次取回整棵子樹（Control View），大幅減少跨程序呼叫。</summary>
+/// <summary>Fetches a whole subtree (Control View) with one UIA CacheRequest, drastically reducing cross-process calls.</summary>
 internal static class TreeCapture
 {
-    /// <summary>節點數上限，避免超大型 DataGrid 拖垮輸出。</summary>
+    /// <summary>Node limit so that huge data grids do not blow up the output.</summary>
     public const int MaxNodes = 5000;
 
     public static ElementNode Capture(AutomationElement root)
     {
         var tree = CaptureRaw(root);
-        // 快取中沒有 SelectionPattern：補上不可編輯 ComboBox 的選取值（通常只有少數幾個）
+        // SelectionPattern is not cached: fill in the selected value of non-editable ComboBoxes (usually only a few)
         foreach (var n in tree.DescendantsAndSelf().Where(n => n.Kind == ControlKind.ComboBox && n.Value is null))
             n.Value = FlaUIElement.SelectedItemName(((FlaUIElement)n.Element).Inner);
         return tree;
@@ -57,7 +57,7 @@ internal static class TreeCapture
         }
         catch
         {
-            // 部分程式的 provider 不支援快取，改用逐一讀取
+            // Some providers do not support caching; fall back to reading element by element
         }
 
         var liveCount = 0;

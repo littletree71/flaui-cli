@@ -8,7 +8,7 @@ public class SelectorTests
     [InlineData("e1")]
     [InlineData("e123")]
     [InlineData("  e7 ")]
-    public void Ref_被辨識(string raw)
+    public void RefIsRecognized(string raw)
     {
         var s = Selector.Parse(raw);
         Assert.True(s.IsRef);
@@ -16,7 +16,7 @@ public class SelectorTests
     }
 
     [Fact]
-    public void Id_條件()
+    public void IdCondition()
     {
         var s = Selector.Parse("id=num1Button");
         var part = Assert.Single(s.Parts);
@@ -24,7 +24,7 @@ public class SelectorTests
     }
 
     [Fact]
-    public void 組合條件與nth()
+    public void CombinedConditionsAndNth()
     {
         var part = Assert.Single(Selector.Parse("type=Button&&name=\"Save as\"&&nth=2").Parts);
         Assert.Equal(2, part.Conditions.Count);
@@ -33,7 +33,7 @@ public class SelectorTests
     }
 
     [Fact]
-    public void 階層選擇器()
+    public void NestedSelector()
     {
         var s = Selector.Parse("id=panel >> name=OK");
         Assert.Equal(2, s.Parts.Count);
@@ -41,28 +41,28 @@ public class SelectorTests
     }
 
     [Fact]
-    public void 引號內的分隔符號不被切開()
+    public void SeparatorsInsideQuotesAreNotSplit()
     {
         var part = Assert.Single(Selector.Parse("name=\"A && B >> C\"").Parts);
         Assert.Equal("A && B >> C", Assert.Single(part.Conditions).Value);
     }
 
     [Fact]
-    public void 跳脫的引號()
+    public void EscapedQuotes()
     {
         var part = Assert.Single(Selector.Parse("name=\"say \\\"hi\\\"\"").Parts);
         Assert.Equal("say \"hi\"", part.Conditions[0].Value);
     }
 
     [Fact]
-    public void XPath_整段保留()
+    public void XPathIsKeptWhole()
     {
         var part = Assert.Single(Selector.Parse("xpath=//Button[@Name='a' and @AutomationId='b']").Parts);
         Assert.Equal("//Button[@Name='a' and @AutomationId='b']", part.XPath);
     }
 
     [Fact]
-    public void 沒有前綴視為名稱()
+    public void TextWithoutPrefixIsAName()
     {
         var part = Assert.Single(Selector.Parse("Display is 0").Parts);
         Assert.Equal(new SelectorCondition("name", "Display is 0"), part.Conditions[0]);
@@ -73,13 +73,13 @@ public class SelectorTests
     [InlineData("   ")]
     [InlineData("nth=-1")]
     [InlineData("nth=abc")]
-    public void 無效選擇器擲出例外(string raw) => Assert.Throws<CliException>(() => Selector.Parse(raw));
+    public void InvalidSelectorsThrow(string raw) => Assert.Throws<CliException>(() => Selector.Parse(raw));
 
     [Theory]
     [InlineData("id=a", "id=a")]
     [InlineData("type=Button && name=\"Save as\"", "type=Button&&name=\"Save as\"")]
     [InlineData("id=p >> id=c&&nth=1", "id=p >> id=c&&nth=1")]
-    public void ToString_可重新解析(string raw, string expected)
+    public void ToStringRoundTrips(string raw, string expected)
     {
         var s = Selector.Parse(raw);
         Assert.Equal(expected, s.ToString());

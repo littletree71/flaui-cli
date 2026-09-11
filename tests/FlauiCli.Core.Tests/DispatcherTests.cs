@@ -15,17 +15,17 @@ public sealed class DispatcherTests : IDisposable
     private static void Ok(CommandResult r) => Assert.True(r.Ok, r.Error);
 
     [Fact]
-    public void 規格表中每個daemon指令都有對應的handler()
+    public void EveryDaemonCommandInTheCatalogHasAHandler()
     {
         foreach (var spec in CommandCatalog.All.Where(s => s.Location == CommandLocation.Daemon))
         {
             var r = _app.Dispatcher.Execute(new CommandCall(spec.Name) { Cwd = _app.Cwd });
-            Assert.DoesNotContain("未知的指令", r.Error ?? "");
+            Assert.DoesNotContain("Unknown command", r.Error ?? "");
         }
     }
 
     [Fact]
-    public void 未開啟應用程式時給出提示()
+    public void HintsWhenNoApplicationIsOpen()
     {
         var r = _app.Run("snapshot");
         Assert.False(r.Ok);
@@ -34,7 +34,7 @@ public sealed class DispatcherTests : IDisposable
     }
 
     [Fact]
-    public void Open後可以snapshot()
+    public void SnapshotAfterOpen()
     {
         Ok(_app.Open());
         Assert.Equal(["calc.exe"], _app.Driver.Launched);
@@ -47,7 +47,7 @@ public sealed class DispatcherTests : IDisposable
     }
 
     [Fact]
-    public void 以ref與selector點擊並斷言()
+    public void ClickByRefAndSelectorThenAssert()
     {
         Ok(_app.Open());
         var snapshot = _app.Run("snapshot").Text;
@@ -66,25 +66,25 @@ public sealed class DispatcherTests : IDisposable
     }
 
     [Fact]
-    public void 找不到元素時逾時失敗()
+    public void MissingElementTimesOut()
     {
         Ok(_app.Open());
         var r = _app.Run("click", ("target", "id=nope"), ("timeout", "200"));
         Assert.Equal(ExitCodes.Error, r.ExitCode);
-        Assert.Contains("找不到元素", r.Error);
+        Assert.Contains("Element not found", r.Error);
     }
 
     [Fact]
-    public void 停用的元素不能點擊()
+    public void DisabledElementsCannotBeClicked()
     {
         Ok(_app.Open());
         var r = _app.Run("click", ("target", "id=disabledButton"), ("timeout", "200"));
         Assert.False(r.Ok);
-        Assert.Contains("停用", r.Error);
+        Assert.Contains("disabled", r.Error);
     }
 
     [Fact]
-    public void Fill優先使用ValuePattern()
+    public void FillPrefersValuePattern()
     {
         Ok(_app.Open());
         Ok(_app.Run("fill", ("target", "id=nameInput"), ("text", "Alice")));
@@ -95,7 +95,7 @@ public sealed class DispatcherTests : IDisposable
     }
 
     [Fact]
-    public void Fill可強制使用鍵盤()
+    public void FillCanForceTheKeyboard()
     {
         Ok(_app.Open());
         _app.Driver.Focused = _app.NameBox;
@@ -106,7 +106,7 @@ public sealed class DispatcherTests : IDisposable
     }
 
     [Fact]
-    public void Check與Uncheck()
+    public void CheckAndUncheck()
     {
         Ok(_app.Open());
         Ok(_app.Run("check", ("target", "id=agreeCheck")));
@@ -119,7 +119,7 @@ public sealed class DispatcherTests : IDisposable
     }
 
     [Fact]
-    public void Select_ComboBox與清單()
+    public void SelectInComboBoxAndList()
     {
         Ok(_app.Open());
         Ok(_app.Run("select", ("target", "id=colorCombo"), ("item", "Green")));
@@ -135,7 +135,7 @@ public sealed class DispatcherTests : IDisposable
     }
 
     [Fact]
-    public void Press解析按鍵()
+    public void PressParsesKeys()
     {
         Ok(_app.Open());
         Ok(_app.Run("press", ("keys", "Ctrl+S")));
@@ -144,7 +144,7 @@ public sealed class DispatcherTests : IDisposable
     }
 
     [Fact]
-    public void YAML形式的斷言()
+    public void YamlStyleAssertions()
     {
         Ok(_app.Open());
         Ok(_app.Run("assert", ("target", "id=CalculatorResults"), ("contains", "is 0")));
@@ -155,17 +155,17 @@ public sealed class DispatcherTests : IDisposable
     }
 
     [Fact]
-    public void Wait狀態()
+    public void WaitStates()
     {
         Ok(_app.Open());
         Ok(_app.Run("wait", ("target", "id=num1Button")));
         Ok(_app.Run("wait", ("target", "id=nope"), ("state", "gone")));
         var r = _app.Run("wait", ("target", "id=disabledButton"), ("state", "enabled"), ("timeout", "200"));
-        Assert.Contains("逾時", r.Error);
+        Assert.Contains("Timed out", r.Error);
     }
 
     [Fact]
-    public void 錄製時ref轉成穩定選擇器()
+    public void RecordingReplacesRefsWithStableSelectors()
     {
         Ok(_app.Open());
         Ok(_app.Run("record", ("action", "start"), ("name", "demo")));
@@ -173,7 +173,7 @@ public sealed class DispatcherTests : IDisposable
         var oneRef = _app.Session.Refs.GetOrAssign(_app.One);
 
         Ok(_app.Run("click", ("target", oneRef)));
-        Ok(_app.Run("fill", ("target", "id=nameInput"), ("text", "Bob"), ("note", "輸入名字")));
+        Ok(_app.Run("fill", ("target", "id=nameInput"), ("text", "Bob"), ("note", "Enter the name")));
         Ok(_app.Run("click", ("target", "name=Dup&&nth=1")));
 
         var stop = _app.Run("record", ("action", "stop"), ("out", "rec.yaml"));
@@ -184,12 +184,12 @@ public sealed class DispatcherTests : IDisposable
         Assert.Equal("Calculator", doc.App?.Window);
         Assert.Equal(3, doc.Steps.Count);
         Assert.Equal("id=num1Button", doc.Steps[0].Get("target"));
-        Assert.Equal("輸入名字", doc.Steps[1].Get("note"));
+        Assert.Equal("Enter the name", doc.Steps[1].Get("note"));
         Assert.Equal("name=Dup&&nth=1", doc.Steps[2].Get("target"));
     }
 
     [Fact]
-    public void 唯讀指令不會被錄製()
+    public void ReadOnlyCommandsAreNotRecorded()
     {
         Ok(_app.Open());
         Ok(_app.Run("record", ("action", "start")));
@@ -200,28 +200,28 @@ public sealed class DispatcherTests : IDisposable
     }
 
     [Fact]
-    public void 操作文件自動截圖並產生Markdown與HTML()
+    public void DocumentModeCapturesStepsAndExportsMarkdownAndHtml()
     {
         Ok(_app.Open());
-        Ok(_app.Run("doc", ("action", "start"), ("title", "計算機教學")));
+        Ok(_app.Run("doc", ("action", "start"), ("title", "Calculator tutorial")));
         Ok(_app.Run("click", ("target", "id=num1Button")));
-        Ok(_app.Run("click", ("target", "id=plusButton"), ("note", "按下加號")));
-        Ok(_app.Run("doc", ("action", "step"), ("text", "完成")));
+        Ok(_app.Run("click", ("target", "id=plusButton"), ("note", "Press plus")));
+        Ok(_app.Run("doc", ("action", "step"), ("text", "Done")));
         var r = _app.Run("doc", ("action", "stop"), ("out", "manual"));
         Ok(r);
 
         var dir = Path.Combine(_app.Cwd, "manual");
         var md = File.ReadAllText(Path.Combine(dir, "index.md"));
-        Assert.Contains("# 計算機教學", md);
-        Assert.Contains("## 步驟 1：點擊「One」按鈕", md);
-        Assert.Contains("## 步驟 2：按下加號", md);
-        Assert.Contains("## 步驟 3：完成", md);
+        Assert.Contains("# Calculator tutorial", md);
+        Assert.Contains("## Step 1: Click the \"One\" button", md);
+        Assert.Contains("## Step 2: Press plus", md);
+        Assert.Contains("## Step 3: Done", md);
         Assert.Equal(3, Directory.GetFiles(Path.Combine(dir, "images"), "*.png").Length);
         Assert.Contains("data:image/png;base64,", File.ReadAllText(Path.Combine(dir, "index.html")));
     }
 
     [Fact]
-    public void Close結束session並關閉視窗()
+    public void CloseEndsTheSessionAndClosesTheWindow()
     {
         Ok(_app.Open());
         var r = _app.Run("close");
@@ -232,7 +232,7 @@ public sealed class DispatcherTests : IDisposable
     }
 
     [Fact]
-    public void Windows與視窗狀態()
+    public void WindowsAndWindowState()
     {
         Ok(_app.Open());
         Assert.Contains("[0] window \"Calculator\"", _app.Run("windows").Text);
@@ -243,18 +243,18 @@ public sealed class DispatcherTests : IDisposable
     }
 
     [Fact]
-    public void Find搜尋文字()
+    public void FindSearchesText()
     {
         Ok(_app.Open());
         var r = _app.Run("find", ("text", "display"));
         Ok(r);
-        Assert.Contains("找到 1 個元素", r.Text);
+        Assert.Contains("Found 1 element(s)", r.Text);
         Assert.Contains("CalculatorResults", r.Text);
         Assert.False(_app.Run("find", ("text", "("), ("regex", "true")).Ok);
     }
 
     [Fact]
-    public void Screenshot輸出檔案()
+    public void ScreenshotWritesAFile()
     {
         Ok(_app.Open());
         var r = _app.Run("screenshot", ("filename", "shot.png"), ("highlight", "id=num1Button\nid=num2Button"));
@@ -263,7 +263,7 @@ public sealed class DispatcherTests : IDisposable
     }
 
     [Fact]
-    public void UWP共用宿主程序的其他視窗不列入搜尋範圍()
+    public void OtherWindowsOfASharedUwpHostAreExcluded()
     {
         _app.Window.ClassName = "ApplicationFrameWindow";
         var other = new FakeElement(ControlKind.Window, "Settings") { ProcessId = _app.Window.ProcessId, Bounds = new(500, 0, 300, 300) };
@@ -277,7 +277,7 @@ public sealed class DispatcherTests : IDisposable
     }
 
     [Fact]
-    public void 一般程序的其他頂層視窗視為popup()
+    public void OtherTopLevelWindowsOfANormalProcessArePopups()
     {
         var popup = new FakeElement(ControlKind.Menu, "Context") { ProcessId = _app.Window.ProcessId, Bounds = new(500, 0, 100, 100) };
         popup.Add(new FakeElement(ControlKind.MenuItem, "Copy", "copyItem") { Bounds = new(500, 0, 100, 20) });
@@ -290,7 +290,7 @@ public sealed class DispatcherTests : IDisposable
     }
 
     [Fact]
-    public void 視窗失效時以相同標題找回()
+    public void StaleWindowIsRecoveredByTitle()
     {
         Ok(_app.Open());
         _app.Window.Alive = false;
@@ -305,7 +305,7 @@ public sealed class DispatcherTests : IDisposable
     }
 
     [Fact]
-    public void Open優先選擇新出現的同名視窗()
+    public void OpenPrefersANewWindowWithTheSameTitle()
     {
         var old = new FakeElement(ControlKind.Window, "Calculator") { ProcessId = _app.Window.ProcessId, Bounds = new(600, 0, 100, 100), WindowHandle = 7 };
         _app.Driver.TopLevel.Add(old);
@@ -314,7 +314,7 @@ public sealed class DispatcherTests : IDisposable
     }
 
     [Fact]
-    public void 子視窗形式的對話框可被wait_window找到()
+    public void OwnedDialogsAreFoundByWaitWindow()
     {
         Ok(_app.Open());
         var dialog = new FakeElement(ControlKind.Window, "Confirm") { Bounds = new(50, 50, 200, 100) };
@@ -326,7 +326,7 @@ public sealed class DispatcherTests : IDisposable
     }
 
     [Fact]
-    public void 共用宿主視窗內的window元素不視為對話框()
+    public void WindowElementsInsideASharedHostAreNotDialogs()
     {
         _app.Window.ClassName = "ApplicationFrameWindow";
         _app.Window.Add(new FakeElement(ControlKind.Window, "Calculator", "TitleBar"));
@@ -335,11 +335,11 @@ public sealed class DispatcherTests : IDisposable
     }
 
     [Fact]
-    public void 元素消失後ref會依屬性重新尋找()
+    public void StaleRefIsResolvedAgainByItsProperties()
     {
         Ok(_app.Open());
         var r = _app.Session.Refs.GetOrAssign(_app.One);
-        // 模擬元素被重建：舊物件失效，新物件有相同的 AutomationId
+        // Simulate the element being recreated: the old object is gone, the new one has the same AutomationId
         _app.One.Alive = false;
         var replacement = new FakeElement(ControlKind.Button, "One", "num1Button") { Bounds = _app.One.Bounds };
         _app.Window.Add(replacement);

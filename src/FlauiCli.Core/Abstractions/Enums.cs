@@ -1,9 +1,10 @@
 namespace FlauiCli.Core.Abstractions;
 
-// 自有列舉：輸出格式、selector 與腳本只依賴這些值，不直接依賴 FlaUI 的列舉，
-// FlaUI 改版時由 Driver 層的對應表吸收差異（並由契約測試檢查對應是否完整）。
+// Core-owned enums: output formats, selectors and scripts depend only on these values and
+// never on FlaUI's enums directly. Differences between FlaUI versions are absorbed by the
+// mapping table in the driver layer (and its completeness is checked by the contract tests).
 
-/// <summary>元素控制項類型（對應 UIA ControlType）。</summary>
+/// <summary>Control type of an element (maps to UIA ControlType).</summary>
 public enum ControlKind
 {
     Unknown,

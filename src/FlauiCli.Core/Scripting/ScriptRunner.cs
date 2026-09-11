@@ -10,14 +10,14 @@ namespace FlauiCli.Core.Scripting;
 
 public sealed record RunOptions
 {
-    /// <summary>產生操作文件的資料夾（null 表示不產生）。</summary>
+    /// <summary>Folder for the generated document (null = no document).</summary>
     public string? DocDir { get; init; }
 
     public IReadOnlyList<string> DocFormats { get; init; } = ["md", "html"];
 
     public string Cwd { get; init; } = Environment.CurrentDirectory;
 
-    /// <summary>每個步驟完成時的回呼（console reporter 用）。</summary>
+    /// <summary>Called after each step (used by the console reporter).</summary>
     public Action<StepResult>? OnStep { get; init; }
 }
 
@@ -35,7 +35,7 @@ public sealed class ScriptResult
     public IReadOnlyList<string> DocFiles { get; set; } = [];
 }
 
-/// <summary>在程序內直接執行 YAML 腳本（不經過 daemon）。</summary>
+/// <summary>Runs YAML scripts in-process (without a daemon).</summary>
 public sealed class ScriptRunner(Func<IUiDriver> driverFactory)
 {
     public ScriptResult Run(ScriptDocument doc, RunOptions options)
@@ -63,7 +63,7 @@ public sealed class ScriptRunner(Func<IUiDriver> driverFactory)
             var step = new StepResult(index, CommandFormatter.ToCli(call.Clone().Remove("note").Remove("timeout")), r.Ok, r.Error, sw.Elapsed, isSetup);
             result.Steps.Add(step);
             options.OnStep?.Invoke(step);
-            if (!r.Ok) result.Error = $"{(isSetup ? "啟動應用程式" : $"第 {index} 步")}失敗：{r.Error}";
+            if (!r.Ok) result.Error = $"{(isSetup ? "Launching the application" : $"Step {index}")} failed: {r.Error}";
             return r.Ok;
         }
 
@@ -80,7 +80,7 @@ public sealed class ScriptRunner(Func<IUiDriver> driverFactory)
             if (session.Doc is { Steps.Count: > 0 } d && options.DocDir is not null)
             {
                 try { result.DocFiles = d.Export(options.DocDir, options.DocFormats); }
-                catch (Exception ex) { result.Error ??= $"產生操作文件失敗：{ex.Message}"; }
+                catch (Exception ex) { result.Error ??= $"Failed to create the document: {ex.Message}"; }
             }
 
             var close = doc.App?.Close ?? launched;

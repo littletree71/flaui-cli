@@ -4,12 +4,13 @@ using System.Text.Json.Serialization;
 namespace FlauiCli.Core.Protocol;
 
 /// <summary>
-/// 一次指令呼叫。CLI、Daemon、YAML 腳本與錄製器都使用這個統一模型：
-/// 指令名稱 + 以名稱為鍵的參數字典（值一律為字串，多值以換行分隔）。
+/// A single command invocation. The CLI, the daemon, YAML scripts and the recorder all share this
+/// model: a command name plus a dictionary of named arguments (values are always strings; multiple
+/// values are separated by new lines).
 /// </summary>
 public sealed class CommandCall
 {
-    /// <summary>多值參數（例如多個 --highlight）的分隔字元。</summary>
+    /// <summary>Separator for multi-valued arguments (for example several --highlight options).</summary>
     public const char MultiValueSeparator = '\n';
 
     public CommandCall() { }
@@ -27,7 +28,7 @@ public sealed class CommandCall
 
     public Dictionary<string, string> Args { get; set; } = new();
 
-    /// <summary>呼叫端的工作目錄；相對路徑一律以此為基準解析。</summary>
+    /// <summary>Working directory of the caller; relative paths are resolved against it.</summary>
     public string? Cwd { get; set; }
 
     [JsonIgnore]
@@ -53,7 +54,7 @@ public sealed class CommandCall
     {
         var v = Get(key);
         if (string.IsNullOrEmpty(v))
-            throw new CliException($"指令 {Command} 缺少必要參數 <{key}>");
+            throw new CliException($"Command '{Command}' is missing the required argument <{key}>");
         return v;
     }
 
@@ -71,7 +72,7 @@ public sealed class CommandCall
         if (string.IsNullOrWhiteSpace(v)) return null;
         return int.TryParse(v, NumberStyles.Integer, CultureInfo.InvariantCulture, out var i)
             ? i
-            : throw new CliException($"參數 {key} 必須是整數，收到：{v}");
+            : throw new CliException($"Argument '{key}' must be an integer, got: {v}");
     }
 
     public bool GetBool(string key, bool defaultValue = false)
@@ -82,13 +83,13 @@ public sealed class CommandCall
         {
             "" or "true" or "1" or "yes" or "on" => true,
             "false" or "0" or "no" or "off" => false,
-            _ => throw new CliException($"參數 {key} 必須是布林值，收到：{v}"),
+            _ => throw new CliException($"Argument '{key}' must be a boolean, got: {v}"),
         };
     }
 
     public CommandCall Clone() => new(Command, Args) { Cwd = Cwd };
 
-    /// <summary>把相對路徑以呼叫端工作目錄解析成絕對路徑。</summary>
+    /// <summary>Resolves a relative path against the caller's working directory.</summary>
     public string ResolvePath(string path) =>
         Path.IsPathRooted(path) ? path : Path.GetFullPath(Path.Combine(Cwd ?? Environment.CurrentDirectory, path));
 

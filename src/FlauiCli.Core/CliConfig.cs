@@ -4,7 +4,7 @@ using System.Text.Json.Serialization;
 namespace FlauiCli.Core;
 
 /// <summary>
-/// 設定檔 <c>.flaui-cli/config.json</c>（相對於呼叫端工作目錄）。
+/// Configuration file <c>.flaui-cli/config.json</c> (relative to the caller's working directory).
 /// </summary>
 public sealed class CliConfig
 {
@@ -12,32 +12,32 @@ public sealed class CliConfig
 
     public TimeoutConfig Timeouts { get; set; } = new();
 
-    /// <summary>輸出目錄（snapshot、截圖等），相對於工作目錄。</summary>
+    /// <summary>Output directory for snapshots, screenshots and so on, relative to the working directory.</summary>
     public string OutputDir { get; set; } = DefaultDirName;
 
-    /// <summary>動作指令完成後是否自動存一份 snapshot 檔。</summary>
+    /// <summary>Whether action commands automatically save a snapshot file afterwards.</summary>
     public bool AutoSnapshot { get; set; } = true;
 
     public SnapshotConfig Snapshot { get; set; } = new();
 
-    /// <summary>Daemon 閒置多久（分鐘）後自動結束。</summary>
+    /// <summary>Minutes of inactivity after which the daemon exits.</summary>
     public int DaemonIdleMinutes { get; set; } = 30;
 
     public sealed class TimeoutConfig
     {
-        /// <summary>尋找元素 / 自動等待的預設逾時（毫秒）。</summary>
+        /// <summary>Default timeout (ms) for finding elements and auto-waiting.</summary>
         public int Action { get; set; } = 5000;
 
-        /// <summary>啟動應用程式並等待視窗的逾時（毫秒）。</summary>
+        /// <summary>Timeout (ms) for launching an application and waiting for its window.</summary>
         public int Launch { get; set; } = 20000;
     }
 
     public sealed class SnapshotConfig
     {
-        /// <summary>最大深度，0 表示不限。</summary>
+        /// <summary>Maximum depth; 0 means unlimited.</summary>
         public int Depth { get; set; }
 
-        /// <summary>是否包含畫面外（IsOffscreen）的元素。</summary>
+        /// <summary>Whether off-screen (IsOffscreen) elements are included.</summary>
         public bool IncludeOffscreen { get; set; }
     }
 
@@ -51,7 +51,7 @@ public sealed class CliConfig
         DefaultIgnoreCondition = JsonIgnoreCondition.Never,
     };
 
-    /// <summary>從工作目錄載入設定；檔案不存在時回傳預設值。</summary>
+    /// <summary>Loads the configuration from the working directory; returns defaults when the file does not exist.</summary>
     public static CliConfig Load(string? cwd)
     {
         var path = Path.Combine(cwd ?? Environment.CurrentDirectory, DefaultDirName, "config.json");
@@ -62,7 +62,7 @@ public sealed class CliConfig
         }
         catch (JsonException ex)
         {
-            throw new CliException($"設定檔格式錯誤：{path}：{ex.Message}", ex);
+            throw new CliException($"Invalid configuration file {path}: {ex.Message}", ex);
         }
     }
 

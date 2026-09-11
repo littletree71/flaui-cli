@@ -5,27 +5,28 @@ namespace FlauiCli.Core.Tests;
 public class ProtocolTests
 {
     [Fact]
-    public void CommandCall_JSON往返()
+    public void CommandCallJsonRoundTrip()
     {
-        var call = new CommandCall("fill") { Cwd = @"C:\work" }.Set("target", "id=a").Set("text", "中文 \"引號\"");
+        // Non-ASCII text and quotes must survive the pipe protocol
+        var call = new CommandCall("fill") { Cwd = @"C:\work" }.Set("target", "id=a").Set("text", "héllo 中文 \"quotes\"");
         var back = ProtocolJson.DeserializeCall(ProtocolJson.Serialize(call));
         Assert.Equal("fill", back.Command);
         Assert.Equal(@"C:\work", back.Cwd);
-        Assert.Equal("中文 \"引號\"", back.Get("text"));
+        Assert.Equal("héllo 中文 \"quotes\"", back.Get("text"));
     }
 
     [Fact]
-    public void CommandResult_JSON往返()
+    public void CommandResultJsonRoundTrip()
     {
-        var result = CommandResult.Failure("斷言失敗：x", ExitCodes.AssertionFailed);
+        var result = CommandResult.Failure("Assertion failed: x", ExitCodes.AssertionFailed);
         var back = ProtocolJson.DeserializeResult(ProtocolJson.Serialize(result));
         Assert.False(back.Ok);
         Assert.True(back.IsAssertionFailure);
-        Assert.Equal("斷言失敗：x", back.Error);
+        Assert.Equal("Assertion failed: x", back.Error);
     }
 
     [Fact]
-    public void 參數鍵值正規化()
+    public void ArgumentKeysAreNormalized()
     {
         var call = new CommandCall("x").Set("--Timeout", "100");
         Assert.Equal(100, call.GetInt("timeout"));
@@ -39,11 +40,11 @@ public class ProtocolTests
     [InlineData("", true)]
     [InlineData("no", false)]
     [InlineData("0", false)]
-    public void 布林參數(string value, bool expected) =>
+    public void BooleanArguments(string value, bool expected) =>
         Assert.Equal(expected, new CommandCall("x").Set("flag", value).GetBool("flag"));
 
     [Fact]
-    public void 無效的整數與布林()
+    public void InvalidIntegersAndBooleansThrow()
     {
         var call = new CommandCall("x").Set("n", "abc").Set("b", "maybe");
         Assert.Throws<CliException>(() => call.GetInt("n"));
@@ -52,7 +53,7 @@ public class ProtocolTests
     }
 
     [Fact]
-    public void 相對路徑以呼叫端工作目錄解析()
+    public void RelativePathsResolveAgainstTheCallersDirectory()
     {
         var call = new CommandCall("x") { Cwd = @"C:\work" };
         Assert.Equal(@"C:\work\out\a.png", call.ResolvePath(@"out\a.png"));

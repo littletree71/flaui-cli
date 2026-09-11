@@ -2,7 +2,7 @@ using FlauiCli.Core.Abstractions;
 
 namespace FlauiCli.Core.Targeting;
 
-/// <summary>依 <see cref="Selector"/> 在指定根元素之下尋找元素（不含 ref 解析）。</summary>
+/// <summary>Finds elements under the given roots using a <see cref="Selector"/> (refs are resolved elsewhere).</summary>
 internal static class ElementFinder
 {
     private static readonly Dictionary<string, ControlKind> Aliases = new(StringComparer.OrdinalIgnoreCase)
@@ -21,12 +21,12 @@ internal static class ElementFinder
     {
         if (Enum.TryParse<ControlKind>(value, ignoreCase: true, out var k) && Enum.IsDefined(k) && !int.TryParse(value, out _)) return k;
         if (Aliases.TryGetValue(value, out k)) return k;
-        throw new CliException($"未知的 type：{value}。可用值：{string.Join(", ", Enum.GetNames<ControlKind>())}");
+        throw new CliException($"Unknown type: {value}. Valid values: {string.Join(", ", Enum.GetNames<ControlKind>())}");
     }
 
     public static List<IUiElement> FindAll(Selector selector, IReadOnlyList<IUiElement> roots)
     {
-        if (selector.IsRef) throw new InvalidOperationException("ref 必須由 TargetResolver 解析");
+        if (selector.IsRef) throw new InvalidOperationException("Refs must be resolved by TargetResolver");
 
         IReadOnlyList<IUiElement> current = roots;
         foreach (var part in selector.Parts)
@@ -40,7 +40,7 @@ internal static class ElementFinder
                 }
             }
 
-            // 可見元素優先（穩定排序，保留原本的樹狀順序）
+            // Visible elements first (stable sort keeps tree order)
             next = [.. next.OrderBy(e => e.IsOffscreen)];
             if (part.Nth is int nth) next = nth < next.Count ? [next[nth]] : [];
             current = next;

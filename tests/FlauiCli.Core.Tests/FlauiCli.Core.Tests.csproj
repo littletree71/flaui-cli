@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- 純邏輯單元測試：使用 FakeDriver，不引用 FlaUI、不需要桌面環境 -->
+  <!-- Pure logic unit tests: use FakeDriver, do not reference FlaUI and need no desktop session -->
   <PropertyGroup>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>

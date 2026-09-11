@@ -2,12 +2,12 @@ using FlauiCli.Core.Protocol;
 
 namespace FlauiCli;
 
-/// <summary>送往 daemon 執行的指令。</summary>
+/// <summary>Commands executed by the daemon.</summary>
 internal static class RemoteCommands
 {
     public static int Execute(CommandCall call, string session, bool json)
     {
-        // record capture --out：阻塞等待使用者操作完成後直接輸出 YAML
+        // record capture --out: block until the user finishes, then write the YAML directly
         if (call.Command == "record" && call.Get("action") == "capture" && call.Get("out") is not null)
             return RecordCapture(call, session, json);
 
@@ -24,7 +24,7 @@ internal static class RemoteCommands
         Output.Print(started, json);
         if (!started.Ok) return started.ExitCode;
 
-        if (!json) Console.WriteLine("錄製中… 直接操作應用程式，按 Ctrl+Shift+Q（或在此按 Ctrl+C）結束");
+        if (!json) Console.WriteLine("Capturing... use the application directly and press Ctrl+Shift+Q (or Ctrl+C here) to finish");
 
         using var cancel = new CancellationTokenSource();
         ConsoleCancelEventHandler onCancel = (_, e) =>

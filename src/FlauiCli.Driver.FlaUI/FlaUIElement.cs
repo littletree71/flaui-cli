@@ -9,10 +9,10 @@ using FlauiCli.Core.Abstractions;
 
 namespace FlauiCli.Drivers;
 
-/// <summary>以 FlaUI <see cref="AutomationElement"/> 實作 <see cref="IUiElement"/>。</summary>
+/// <summary>Implements <see cref="IUiElement"/> on top of a FlaUI <see cref="AutomationElement"/>.</summary>
 public sealed class FlaUIElement : IUiElement
 {
-    /// <summary>GetProperty 可讀取的屬性（明確對應，不使用反射，FlaUI 改版時由編譯器發現差異）。</summary>
+    /// <summary>Properties readable through GetProperty (explicit mapping instead of reflection, so FlaUI changes surface as compile errors).</summary>
     private static readonly Dictionary<string, Func<IPropertyLibrary, PropertyId>> ExtraProperties =
         new(StringComparer.OrdinalIgnoreCase)
         {
@@ -94,7 +94,7 @@ public sealed class FlaUIElement : IUiElement
     public string? Value =>
         Props.Ref<string>(Inner, Lib.Value.Value) ?? (Kind == ControlKind.ComboBox ? SelectedItemName(Inner) : null);
 
-    /// <summary>不可編輯的 ComboBox（例如 WPF）沒有 ValuePattern，改用 SelectionPattern 取得選取項目。</summary>
+    /// <summary>Non-editable ComboBoxes (for example in WPF) have no ValuePattern, so the selection is read through SelectionPattern.</summary>
     internal static string? SelectedItemName(AutomationElement element)
     {
         try
@@ -107,6 +107,7 @@ public sealed class FlaUIElement : IUiElement
             return null;
         }
     }
+
     public bool? IsReadOnly => Props.Val<bool>(Inner, Lib.Value.IsReadOnly);
 
     public ExpandValue? Expand =>
@@ -175,14 +176,15 @@ public sealed class FlaUIElement : IUiElement
     public IReadOnlyList<IUiElement> FindByXPath(string xpath)
     {
         try { return [.. Inner.FindAllByXPath(xpath).Select(e => new FlaUIElement(e))]; }
-        catch (Exception ex) { throw new CliException($"XPath 錯誤：{xpath}：{ex.Message}", ex); }
+        catch (Exception ex) { throw new CliException($"Invalid XPath {xpath}: {ex.Message}", ex); }
     }
 
     /// <summary>
-    /// 自行產生 XPath，而不使用 FlaUI.Core.Debug.GetXPathToElement：
-    /// FlaUI 5.0.0 的版本會漏掉根元素下的第一層（例如產生 /TabItem[1]/Button[1] 而非 /Tab/TabItem[1]/Button[1]），
-    /// 導致無法用 FindAllByXPath 反查（由 DriverContractTests.XPath往返 抓到）。
-    /// 這裡用與 FlaUI XPath 查詢相同的 Control View walker 列舉兄弟元素，確保可以往返。
+    /// Builds the XPath ourselves instead of using FlaUI.Core.Debug.GetXPathToElement: in FlaUI 5.0.0 that
+    /// function drops the first level below the root (it produces /TabItem[1]/Button[1] instead of
+    /// /Tab/TabItem[1]/Button[1]), so the result cannot be resolved with FindAllByXPath (caught by
+    /// DriverContractTests.XPathRoundTrip). Siblings are enumerated with the same Control View walker that
+    /// FlaUI's XPath lookup uses, so the path always round-trips.
     /// </summary>
     public string? GetXPathFrom(IUiElement root)
     {
@@ -195,7 +197,7 @@ public sealed class FlaUIElement : IUiElement
             while (true)
             {
                 var parent = walker.GetParent(current);
-                if (parent is null) return null; // root 不是祖先
+                if (parent is null) return null; // root is not an ancestor
                 var type = current.ControlType;
 
                 var index = 1;
@@ -267,7 +269,7 @@ public sealed class FlaUIElement : IUiElement
             if (item is null) return false;
             selected = item.Text;
             if (string.IsNullOrEmpty(selected)) selected = item.Name;
-            try { if (cb.IsEditable == false) cb.Collapse(); } catch { /* 部分 ComboBox 不支援收合 */ }
+            try { if (cb.IsEditable == false) cb.Collapse(); } catch { /* some ComboBoxes cannot be collapsed */ }
             return true;
         }
         catch

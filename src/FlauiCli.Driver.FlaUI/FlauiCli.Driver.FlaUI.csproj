@@ -1,9 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- 唯一引用 FlaUI 的專案：把 FlaUI 轉接成 FlauiCli.Core.Abstractions 的介面 -->
+  <!-- The only project that references FlaUI: adapts FlaUI to the FlauiCli.Core.Abstractions interfaces -->
   <PropertyGroup>
     <RootNamespace>FlauiCli.Drivers</RootNamespace>
-    <!-- LibraryImport 原始碼產生器需要 -->
+    <!-- Required by the LibraryImport source generator -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
