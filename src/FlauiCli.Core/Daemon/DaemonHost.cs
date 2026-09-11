@@ -120,7 +120,7 @@ public static class DaemonHost
             try
             {
                 var call = ProtocolJson.DeserializeCall(line);
-                log($"> {call}");
+                log($"> {call.Redacted()}"); // never persist typed text: it may be a password
                 result = call.Command == "ping"
                     ? CommandResult.Success("pong")
                     : await worker.InvokeAsync(() => dispatcher.Execute(call));

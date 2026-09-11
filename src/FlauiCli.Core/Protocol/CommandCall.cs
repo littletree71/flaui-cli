@@ -89,6 +89,20 @@ public sealed class CommandCall
 
     public CommandCall Clone() => new(Command, Args) { Cwd = Cwd };
 
+    /// <summary>Placeholder written instead of a secret value (passwords) in logs, scripts and documents.</summary>
+    public const string Masked = "********";
+
+    /// <summary>
+    /// A copy safe for persistent logs: the text typed by <c>fill</c> / <c>type</c> is masked because the
+    /// target may be a password field (which is only known once the element has been resolved).
+    /// </summary>
+    public CommandCall Redacted()
+    {
+        var copy = Clone();
+        if (Command is "fill" or "type" && copy.Has("text")) copy.Set("text", Masked);
+        return copy;
+    }
+
     /// <summary>Resolves a relative path against the caller's working directory.</summary>
     public string ResolvePath(string path) =>
         Path.IsPathRooted(path) ? path : Path.GetFullPath(Path.Combine(Cwd ?? Environment.CurrentDirectory, path));

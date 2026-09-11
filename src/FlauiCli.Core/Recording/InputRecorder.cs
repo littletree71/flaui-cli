@@ -27,6 +27,7 @@ public sealed class InputRecorder : IDisposable
     private readonly Func<IUiDriver> _driverFactory;
     private readonly ScriptRecorder _recorder;
     private readonly nint _rootHwnd;
+    private readonly int _rootPid;
     private readonly HashSet<int> _pids;
     private readonly BlockingCollection<RawInput> _queue = new();
 
@@ -52,6 +53,11 @@ public sealed class InputRecorder : IDisposable
         _recorder = recorder;
         _rootHwnd = rootHwnd;
         _pids = [.. pids.Where(p => p != 0)];
+        if (rootHwnd != 0)
+        {
+            NativeMethods.GetWindowThreadProcessId(rootHwnd, out var pid);
+            _rootPid = (int)pid;
+        }
     }
 
     public bool IsRunning => _running;
@@ -156,7 +162,9 @@ public sealed class InputRecorder : IDisposable
                     return 1; // Swallow the stop hotkey so the application does not receive it
                 }
                 var caps = (NativeMethods.GetKeyState(NativeMethods.VK_CAPITAL) & 1) != 0;
-                Enqueue(RawInput.Key((ushort)info.vkCode, info.scanCode, ctrl, shift, alt, win, caps, info.time));
+                // Remember which window received the key so that typing in other applications is not recorded
+                var foreground = NativeMethods.GetForegroundWindow();
+                Enqueue(RawInput.Key((ushort)info.vkCode, info.scanCode, ctrl, shift, alt, win, caps, info.time, foreground));
             }
         }
         return NativeMethods.CallNextHookEx(0, nCode, wParam, lParam);
@@ -221,6 +229,17 @@ public sealed class InputRecorder : IDisposable
 
     private bool InScope(IUiElement el, Point p) => _pids.Contains(el.ProcessId) || _root!.Bounds.Contains(p);
 
+    private bool InScope(IUiElement el) => _pids.Contains(el.ProcessId) || el.ProcessId == _rootPid;
+
+    /// <summary>Whether a key went to the captured application (keys typed in other windows are ignored).</summary>
+    private bool InScope(nint foregroundHwnd)
+    {
+        if (foregroundHwnd == 0) return false;
+        if (foregroundHwnd == _rootHwnd) return true;
+        NativeMethods.GetWindowThreadProcessId(foregroundHwnd, out var pid);
+        return _pids.Contains((int)pid) || (int)pid == _rootPid;
+    }
+
     private void OnMouse(RawInput ev)
     {
         FlushText();
@@ -248,6 +267,11 @@ public sealed class InputRecorder : IDisposable
     {
         var vk = ev.Vk;
         if (KeyParser.IsModifier(vk)) return;
+        if (!InScope(ev.Hwnd))
+        {
+            FlushText(); // the user switched away; close the pending text step but do not record foreign input
+            return;
+        }
 
         if (ev.Ctrl || ev.Alt || ev.Win)
         {
@@ -274,6 +298,7 @@ public sealed class InputRecorder : IDisposable
         }
 
         var focused = _driver!.GetFocusedElement();
+        if (focused is not null && !InScope(focused)) focused = null; // focus already moved to another application
         if (_textElement is null || focused is null || !focused.Equals(_textElement))
         {
             FlushText();
@@ -296,7 +321,7 @@ public sealed class InputRecorder : IDisposable
         {
             _recorder.Add(new CommandCall("fill")
                 .Set("target", SelectorGenerator.Generate(el, Roots()))
-                .Set("text", "********")
+                .Set("text", CommandCall.Masked)
                 .Set("note", "Password field: the value is not recorded; replace it with the real value"));
             return;
         }
@@ -335,14 +360,14 @@ public sealed class InputRecorder : IDisposable
 
     private sealed record RawInput(
         RawInputKind Kind, Point Point, MouseButtonKind Button, ushort Vk, uint Scan,
-        bool Ctrl, bool Shift, bool Alt, bool Win, bool Caps, uint Time)
+        bool Ctrl, bool Shift, bool Alt, bool Win, bool Caps, uint Time, nint Hwnd)
     {
-        public static readonly RawInput StopSignal = new(RawInputKind.Stop, default, default, 0, 0, false, false, false, false, false, 0);
+        public static readonly RawInput StopSignal = new(RawInputKind.Stop, default, default, 0, 0, false, false, false, false, false, 0, 0);
 
         public static RawInput Mouse(Point p, MouseButtonKind b, uint time) =>
-            new(RawInputKind.Mouse, p, b, 0, 0, false, false, false, false, false, time);
+            new(RawInputKind.Mouse, p, b, 0, 0, false, false, false, false, false, time, 0);
 
-        public static RawInput Key(ushort vk, uint scan, bool ctrl, bool shift, bool alt, bool win, bool caps, uint time) =>
-            new(RawInputKind.Key, default, default, vk, scan, ctrl, shift, alt, win, caps, time);
+        public static RawInput Key(ushort vk, uint scan, bool ctrl, bool shift, bool alt, bool win, bool caps, uint time, nint hwnd) =>
+            new(RawInputKind.Key, default, default, vk, scan, ctrl, shift, alt, win, caps, time, hwnd);
     }
 }

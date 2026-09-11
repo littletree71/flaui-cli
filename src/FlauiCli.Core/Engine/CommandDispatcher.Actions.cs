@@ -1,4 +1,5 @@
 using FlauiCli.Core.Abstractions;
+using FlauiCli.Core.Protocol;
 
 namespace FlauiCli.Core.Engine;
 
@@ -70,6 +71,8 @@ public sealed partial class CommandDispatcher
         var text = ctx.Call.Get("text") ?? "";
         var label = Label(el);
         var secret = el.IsPassword;
+        // Password fields: mask the value before it reaches documents, recordings and the result (same as InputRecorder)
+        if (secret) ctx.Call.Set("text", CommandCall.Masked);
 
         BeforeAction(ctx, el, secret ? $"Enter the password in {Friendly(el)}" : $"Type \"{text}\" into {Friendly(el)}");
         EnsureInteractable(ctx, el);
@@ -83,7 +86,7 @@ public sealed partial class CommandDispatcher
         }
 
         Input.WaitUntilIdle();
-        return $"### Result\nFilled {label} with \"{(secret ? "********" : text)}\"";
+        return $"### Result\nFilled {label} with \"{(secret ? CommandCall.Masked : text)}\"";
     }
 
     private string TypeText(CommandContext ctx)

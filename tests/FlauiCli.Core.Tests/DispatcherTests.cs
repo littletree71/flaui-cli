@@ -189,6 +189,31 @@ public sealed class DispatcherTests : IDisposable
     }
 
     [Fact]
+    public void PasswordsAreMaskedInRecordingsAndDocuments()
+    {
+        _app.NameBox.IsPassword = true;
+        Ok(_app.Open());
+        Ok(_app.Run("record", ("action", "start"), ("name", "login")));
+        Ok(_app.Run("doc", ("action", "start"), ("title", "Login")));
+
+        var r = _app.Run("fill", ("target", "id=nameInput"), ("text", "S3cret!"));
+        Ok(r);
+        Assert.Equal("S3cret!", _app.NameBox.Value); // the application still receives the real value
+        Assert.DoesNotContain("S3cret!", r.Text);
+
+        Ok(_app.Run("record", ("action", "stop"), ("out", "login.yaml")));
+        Ok(_app.Run("doc", ("action", "stop"), ("out", "login")));
+        var yaml = File.ReadAllText(Path.Combine(_app.Cwd, "login.yaml"));
+        var md = File.ReadAllText(Path.Combine(_app.Cwd, "login", "index.md"));
+        var html = File.ReadAllText(Path.Combine(_app.Cwd, "login", "index.html"));
+        Assert.DoesNotContain("S3cret!", yaml);
+        Assert.Contains(CommandCall.Masked, yaml);
+        Assert.DoesNotContain("S3cret!", md);
+        Assert.DoesNotContain("S3cret!", html);
+        Assert.Contains("Enter the password", md);
+    }
+
+    [Fact]
     public void ReadOnlyCommandsAreNotRecorded()
     {
         Ok(_app.Open());

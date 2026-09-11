@@ -25,6 +25,19 @@ public class ProtocolTests
         Assert.Equal("Assertion failed: x", back.Error);
     }
 
+    [Theory]
+    [InlineData("fill")]
+    [InlineData("type")]
+    public void RedactedMasksTypedTextForTheDaemonLog(string command)
+    {
+        var call = new CommandCall(command).Set("target", "id=pwd").Set("text", "S3cret!");
+        var log = call.Redacted().ToString();
+        Assert.DoesNotContain("S3cret!", log);
+        Assert.Contains(CommandCall.Masked, log);
+        Assert.Equal("S3cret!", call.Get("text")); // the original is untouched
+        Assert.Contains("S3cret!", new CommandCall("assert").Set("text", "S3cret!").Redacted().ToString());
+    }
+
     [Fact]
     public void ArgumentKeysAreNormalized()
     {
