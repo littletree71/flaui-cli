@@ -17,7 +17,7 @@
 需求：Windows 10/11 x64，不需要安裝 .NET runtime。
 
 從 [Releases](https://github.com/littletree71/flaui-cli/releases) 下載 `flaui-cli-<版本>-win-x64.zip`，解壓縮後把資料夾加入 PATH 即可。
-每個 release 都附有 SHA-256 雜湊值與建置來源證明（build provenance attestation），可以用 [GitHub CLI](https://cli.github.com/) 驗證下載的檔案確實由本 repo 的 CI 建置：
+每個 release 都附有 SHA-256 雜湊值；repo 公開後，release 另會附上建置來源證明（build provenance attestation），可以用 [GitHub CLI](https://cli.github.com/) 驗證下載的檔案確實由本 repo 的 CI 建置：
 
 ```bash
 gh attestation verify flaui-cli.exe -R littletree71/flaui-cli

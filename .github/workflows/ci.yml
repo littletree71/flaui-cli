@@ -71,7 +71,9 @@ jobs:
           Pop-Location
           "zip=$zip" >> $env:GITHUB_OUTPUT
 
+      # Artifact attestations are only available for public repositories on the free plans
       - name: Attest build provenance
+        if: ${{ !github.event.repository.private }}
         uses: actions/attest-build-provenance@v4
         with:
           subject-path: |
@@ -82,9 +84,14 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
+          ATTESTED: ${{ !github.event.repository.private }}
         run: |
           $tag = '${{ github.ref_name }}'
           $sums = Get-Content dist/SHA256SUMS.txt -Raw
+          $verify = if ($env:ATTESTED -eq 'true') {
+            "Verify that a file was built by this repository's CI with the GitHub CLI:`n`n``````n" +
+            "gh attestation verify flaui-cli.exe -R ${{ github.repository }}`n``````"
+          } else { "" }
           $notes = @"
           Self-contained single-file build for Windows x64 - no .NET runtime needs to be installed.
 
@@ -92,11 +99,8 @@ jobs:
           - ``flaui-cli.exe``: the executable alone
 
           The executable is not code-signed yet, so Windows SmartScreen may warn on first run.
-          Verify that a file was built by this repository's CI with the GitHub CLI:
 
-          ``````
-          gh attestation verify flaui-cli.exe -R ${{ github.repository }}
-          ``````
+          $verify
 
           SHA-256:
 
