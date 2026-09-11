@@ -1,0 +1,15 @@
+<Project>
+  <!-- 所有專案共用的建置設定 -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- NuGet 弱點稽核只警告、不中斷建置 -->
+    <WarningsNotAsErrors>NU1901;NU1902;NU1903;NU1904</WarningsNotAsErrors>
+    <SatelliteResourceLanguages>en;zh-Hant</SatelliteResourceLanguages>
+    <Version>0.1.0</Version>
+    <Authors>eric8271</Authors>
+  </PropertyGroup>
+</Project>

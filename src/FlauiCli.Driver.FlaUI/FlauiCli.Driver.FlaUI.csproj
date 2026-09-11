@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 唯一引用 FlaUI 的專案：把 FlaUI 轉接成 FlauiCli.Core.Abstractions 的介面 -->
+  <PropertyGroup>
+    <RootNamespace>FlauiCli.Drivers</RootNamespace>
+    <!-- LibraryImport 原始碼產生器需要 -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="FlaUI.Core" />
+    <PackageReference Include="FlaUI.UIA3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\FlauiCli.Core\FlauiCli.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="FlauiCli.E2E.Tests" />
+  </ItemGroup>
+
+</Project>

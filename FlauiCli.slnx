@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/FlauiCli.Core/FlauiCli.Core.csproj" />
+    <Project Path="src/FlauiCli.Driver.FlaUI/FlauiCli.Driver.FlaUI.csproj" />
+    <Project Path="src/FlauiCli/FlauiCli.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/FlauiCli.Core.Tests/FlauiCli.Core.Tests.csproj" />
+    <Project Path="tests/FlauiCli.E2E.Tests/FlauiCli.E2E.Tests.csproj" />
+    <Project Path="tests/TestApps/WpfSample/WpfSample.csproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 注意：Core 刻意不引用 FlaUI，只依賴 Abstractions 內的介面。 -->
+  <PropertyGroup>
+    <RootNamespace>FlauiCli.Core</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.Drawing.Common" />
+    <PackageReference Include="YamlDotNet" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="FlauiCli.Core.Tests" />
+    <InternalsVisibleTo Include="FlauiCli.E2E.Tests" />
+  </ItemGroup>
+
+</Project>

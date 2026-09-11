@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    發佈方式：單一自含執行檔（dotnet publish -p:PublishProfile=win-x64）。
+    不使用 dotnet tool：.NET SDK 不允許含平台識別碼（net10.0-windows）的專案 PackAsTool（NETSDK1146），
+    而 FlaUI 只提供 Windows 目標框架。
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>FlauiCli</RootNamespace>
+    <AssemblyName>flaui-cli</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Description>以 FlaUI 包裝、仿 playwright-cli 的 Windows 桌面 UI 自動化命令列工具（適合 AI Agent 使用）。</Description>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.CommandLine" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\FlauiCli.Core\FlauiCli.Core.csproj" />
+    <ProjectReference Include="..\FlauiCli.Driver.FlaUI\FlauiCli.Driver.FlaUI.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- SKILL.md 隨執行檔一起發佈，供 install-skill 複製 -->
+    <None Include="..\..\skills\flaui-cli\SKILL.md" Link="skills\SKILL.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>
