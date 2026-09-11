@@ -12,7 +12,18 @@ Supports WPF, WinForms, Win32 and UWP apps (for example Windows Calculator).
 
 ## Installation
 
-Requirements: Windows 10/11. Building from source needs the .NET 10 SDK.
+Requirements: Windows 10/11 x64. No .NET runtime needs to be installed.
+
+Download `flaui-cli-<version>-win-x64.zip` from [Releases](https://github.com/littletree71/flaui-cli/releases), extract it and add the folder to PATH.
+Every release lists SHA-256 checksums and carries a build provenance attestation; verify a download with the [GitHub CLI](https://cli.github.com/):
+
+```bash
+gh attestation verify flaui-cli.exe -R littletree71/flaui-cli
+```
+
+The executable is not code-signed yet, so Windows SmartScreen may warn on first run.
+
+Building from source needs the .NET 10 SDK:
 
 ```bash
 # Publish a self-contained single-file executable (no .NET runtime needed on the target machine)

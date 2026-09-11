@@ -14,7 +14,18 @@
 
 ## 安裝
 
-需求：Windows 10/11；從原始碼建置需要 .NET 10 SDK。
+需求：Windows 10/11 x64，不需要安裝 .NET runtime。
+
+從 [Releases](https://github.com/littletree71/flaui-cli/releases) 下載 `flaui-cli-<版本>-win-x64.zip`，解壓縮後把資料夾加入 PATH 即可。
+每個 release 都附有 SHA-256 雜湊值與建置來源證明（build provenance attestation），可以用 [GitHub CLI](https://cli.github.com/) 驗證下載的檔案確實由本 repo 的 CI 建置：
+
+```bash
+gh attestation verify flaui-cli.exe -R littletree71/flaui-cli
+```
+
+執行檔目前尚未做程式碼簽章，第一次執行時 Windows SmartScreen 可能會跳出警告。
+
+從原始碼建置需要 .NET 10 SDK：
 
 ```bash
 # 發佈成單一執行檔（自含 runtime，目標電腦不需要安裝 .NET）

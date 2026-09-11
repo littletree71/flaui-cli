@@ -1,0 +1,108 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and unit tests
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Build
+        run: dotnet build FlauiCli.slnx -c Release
+
+      # The E2E tests need an interactive desktop and are run locally, not on CI
+      - name: Unit tests
+        run: dotnet test tests/FlauiCli.Core.Tests -c Release --no-build
+
+  release:
+    name: Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: windows-latest
+    permissions:
+      contents: write      # create the GitHub release
+      id-token: write      # sign the build provenance attestation
+      attestations: write  # store the attestation
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Check that the tag matches VersionPrefix
+        shell: pwsh
+        run: |
+          $tag = '${{ github.ref_name }}'.TrimStart('v')
+          $version = ([xml](Get-Content Directory.Build.props)).Project.PropertyGroup.VersionPrefix | Where-Object { $_ } | Select-Object -First 1
+          if ($tag -ne $version) { throw "Tag v$tag does not match VersionPrefix $version in Directory.Build.props" }
+
+      - name: Publish self-contained single-file executable
+        run: dotnet publish src/FlauiCli -p:PublishProfile=win-x64
+
+      - name: Package
+        id: package
+        shell: pwsh
+        run: |
+          $tag = '${{ github.ref_name }}'
+          $zip = "flaui-cli-$tag-win-x64.zip"
+          New-Item -ItemType Directory -Force dist | Out-Null
+          # Ship the executable with its license notices and agent skill; debug symbols are not needed
+          Get-ChildItem artifacts/flaui-cli -Exclude *.pdb | Compress-Archive -DestinationPath "dist/$zip"
+          Copy-Item artifacts/flaui-cli/flaui-cli.exe dist/flaui-cli.exe
+          Push-Location dist
+          Get-ChildItem -File | Where-Object Name -ne 'SHA256SUMS.txt' | ForEach-Object {
+            "{0}  {1}" -f (Get-FileHash $_.Name -Algorithm SHA256).Hash.ToLowerInvariant(), $_.Name
+          } | Set-Content SHA256SUMS.txt -Encoding ascii
+          Pop-Location
+          "zip=$zip" >> $env:GITHUB_OUTPUT
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: |
+            dist/flaui-cli.exe
+            dist/${{ steps.package.outputs.zip }}
+
+      - name: Create GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = '${{ github.ref_name }}'
+          $sums = Get-Content dist/SHA256SUMS.txt -Raw
+          $notes = @"
+          Self-contained single-file build for Windows x64 - no .NET runtime needs to be installed.
+
+          - ``flaui-cli-$tag-win-x64.zip``: ``flaui-cli.exe`` with LICENSE, THIRD-PARTY-NOTICES and the agent skill (``skills/SKILL.md``)
+          - ``flaui-cli.exe``: the executable alone
+
+          The executable is not code-signed yet, so Windows SmartScreen may warn on first run.
+          Verify that a file was built by this repository's CI with the GitHub CLI:
+
+          ``````
+          gh attestation verify flaui-cli.exe -R ${{ github.repository }}
+          ``````
+
+          SHA-256:
+
+          ``````
+          $sums
+          ``````
+          "@
+          $notes | Set-Content release-notes.md -Encoding utf8
+          gh release create $tag dist/* --title "flaui-cli $tag" --notes-file release-notes.md --verify-tag
