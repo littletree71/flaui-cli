@@ -76,6 +76,9 @@ flaui-cli run tests/login.flow.yaml --reporter junit --output out/report.xml
 ```
 
 Recording real user input: `flaui-cli record capture --out flow.yaml` (the user operates the app; Ctrl+Shift+Q stops).
+This one command runs a separate executable, `flaui-cli-record.exe`, which must sit next to `flaui-cli.exe`; if it is missing or
+blocked by security software, only `record capture` fails and everything else keeps working. Input sent to other applications
+while the capture runs is ignored, so only steps in the target app are recorded.
 
 Script format:
 
@@ -105,4 +108,6 @@ Scripts can produce documents directly: `flaui-cli run flow.yaml --doc docs/flow
 
 - The window of a UWP app (Calculator etc.) belongs to ApplicationFrameHost, so `open` always needs `--window`.
 - Actions move the real mouse; do not use the computer while they run. Use `click --invoke` to avoid moving the mouse.
+- `fill` on a password field is masked: the value is replaced with `********` in the command result, recorded scripts, generated
+  documents and the daemon log, so never expect a real password to appear in the output.
 - When an element cannot be found, check with `snapshot` or `find <text>`; popups such as drop-downs and menus also appear in snapshots.
