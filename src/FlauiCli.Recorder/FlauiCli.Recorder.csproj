@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The input recorder: a separate executable that flaui-cli starts only for "record capture".
+    It is the only place where the low-level keyboard/mouse hook APIs are declared, so that
+    flaui-cli.exe itself never imports them. Nothing may reference this assembly: flaui-cli talks
+    to it as a child process (see FlauiCli.Core/Recording/InputCapture.cs).
+
+    Distribution: published like flaui-cli.exe and into the same folder
+    (dotnet publish src/FlauiCli.Recorder -p:PublishProfile=win-x64).
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>FlauiCli.Recorder</RootNamespace>
+    <AssemblyName>flaui-cli-record</AssemblyName>
+    <AssemblyTitle>flaui-cli-record - input recorder for flaui-cli</AssemblyTitle>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Description>Captures real mouse and keyboard input for "flaui-cli record capture" and reports it as script steps. Started by flaui-cli; runs only while a capture is in progress.</Description>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\FlauiCli.Core\FlauiCli.Core.csproj" />
+    <ProjectReference Include="..\FlauiCli.Driver.FlaUI\FlauiCli.Driver.FlaUI.csproj" />
+  </ItemGroup>
+
+</Project>

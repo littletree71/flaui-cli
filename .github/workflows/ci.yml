@@ -51,8 +51,11 @@ jobs:
           $version = ([xml](Get-Content Directory.Build.props)).Project.PropertyGroup.VersionPrefix | Where-Object { $_ } | Select-Object -First 1
           if ($tag -ne $version) { throw "Tag v$tag does not match VersionPrefix $version in Directory.Build.props" }
 
-      - name: Publish self-contained single-file executable
-        run: dotnet publish src/FlauiCli -p:PublishProfile=win-x64
+      # The input recorder is a separate executable so that flaui-cli.exe does not contain the hook APIs
+      - name: Publish self-contained single-file executables
+        run: |
+          dotnet publish src/FlauiCli -p:PublishProfile=win-x64
+          dotnet publish src/FlauiCli.Recorder -p:PublishProfile=win-x64
 
       - name: Package
         id: package
@@ -61,9 +64,10 @@ jobs:
           $tag = '${{ github.ref_name }}'
           $zip = "flaui-cli-$tag-win-x64.zip"
           New-Item -ItemType Directory -Force dist | Out-Null
-          # Ship the executable with its license notices and agent skill; debug symbols are not needed
+          # Ship the executables with the license notices and agent skill; debug symbols are not needed
           Get-ChildItem artifacts/flaui-cli -Exclude *.pdb | Compress-Archive -DestinationPath "dist/$zip"
           Copy-Item artifacts/flaui-cli/flaui-cli.exe dist/flaui-cli.exe
+          Copy-Item artifacts/flaui-cli/flaui-cli-record.exe dist/flaui-cli-record.exe
           Push-Location dist
           Get-ChildItem -File | Where-Object Name -ne 'SHA256SUMS.txt' | ForEach-Object {
             "{0}  {1}" -f (Get-FileHash $_.Name -Algorithm SHA256).Hash.ToLowerInvariant(), $_.Name
@@ -78,6 +82,7 @@ jobs:
         with:
           subject-path: |
             dist/flaui-cli.exe
+            dist/flaui-cli-record.exe
             dist/${{ steps.package.outputs.zip }}
 
       - name: Create GitHub release
@@ -95,10 +100,11 @@ jobs:
           $notes = @"
           Self-contained single-file build for Windows x64 - no .NET runtime needs to be installed.
 
-          - ``flaui-cli-$tag-win-x64.zip``: ``flaui-cli.exe`` with LICENSE, THIRD-PARTY-NOTICES and the agent skill (``skills/SKILL.md``)
-          - ``flaui-cli.exe``: the executable alone
+          - ``flaui-cli-$tag-win-x64.zip``: ``flaui-cli.exe`` and ``flaui-cli-record.exe`` with LICENSE, THIRD-PARTY-NOTICES and the agent skill (``skills/SKILL.md``)
+          - ``flaui-cli.exe``: the executable alone (everything except ``record capture``)
+          - ``flaui-cli-record.exe``: the input recorder used by ``record capture``; keep it next to ``flaui-cli.exe``. It is the only file that installs keyboard/mouse hooks, and only while a capture runs
 
-          The executable is not code-signed yet, so Windows SmartScreen may warn on first run.
+          The executables are not code-signed yet, so Windows SmartScreen may warn on first run.
 
           $verify
 

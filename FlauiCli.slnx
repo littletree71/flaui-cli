@@ -2,6 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/FlauiCli.Core/FlauiCli.Core.csproj" />
     <Project Path="src/FlauiCli.Driver.FlaUI/FlauiCli.Driver.FlaUI.csproj" />
+    <Project Path="src/FlauiCli.Recorder/FlauiCli.Recorder.csproj" />
     <Project Path="src/FlauiCli/FlauiCli.csproj" />
   </Folder>
   <Folder Name="/tests/">

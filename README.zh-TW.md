@@ -30,7 +30,8 @@ gh attestation verify flaui-cli.exe -R littletree71/flaui-cli
 ```bash
 # 發佈成單一執行檔（自含 runtime，目標電腦不需要安裝 .NET）
 dotnet publish src/FlauiCli -p:PublishProfile=win-x64
-# 產出 artifacts/flaui-cli/flaui-cli.exe，把這個資料夾加入 PATH 即可
+dotnet publish src/FlauiCli.Recorder -p:PublishProfile=win-x64   # 只有 record capture 需要
+# 產出 artifacts/flaui-cli/flaui-cli.exe（以及 flaui-cli-record.exe），把這個資料夾加入 PATH 即可
 ```
 
 為什麼不是 `dotnet tool` 或 Native AOT？
@@ -164,6 +165,7 @@ src/
   FlauiCli/                CLI 前端（System.CommandLine）、daemon client、本機指令
   FlauiCli.Core/           自動化引擎：抽象介面、selector、snapshot、dispatcher、腳本、錄製、文件、daemon
   FlauiCli.Driver.FlaUI/   唯一引用 FlaUI 的轉接層（實作 IUiDriver / IUiElement）
+  FlauiCli.Recorder/       flaui-cli-record.exe：真人操作錄製工具，唯一宣告 hook API 的專案
 tests/
   FlauiCli.Core.Tests/     單元測試（FakeDriver，不需要桌面）
   FlauiCli.E2E.Tests/      DriverContractTests（FlaUI 轉接層契約）+ CLI 端對端測試
@@ -178,7 +180,7 @@ tests/
 flaui-cli 的某些行為會被安全軟體特別留意，以下都是刻意的設計：
 
 - **模擬輸入與截圖**：動作會送出真實的滑鼠鍵盤輸入（`SendInput`），截圖會擷取螢幕。
-- **全域鍵盤滑鼠 hook**：**只有**在執行 `record capture` 期間才會安裝，結束即移除，平時完全不安裝。
+- **全域鍵盤滑鼠 hook**：放在獨立的執行檔 `flaui-cli-record.exe`，**只有**在執行 `record capture` 期間由 daemon 以一般子行程啟動，結束擷取時移除 hook 並結束行程。`flaui-cli.exe` 本身從不安裝 hook，程式碼裡也沒有宣告 hook API，所以即使錄製工具被擋或被刪除，平常的自動化仍可正常使用（只有 `record capture` 會失敗並顯示明確訊息）。這些 API 以一般靜態匯入公開宣告，不做動態載入或混淆。若安全軟體需要設定例外，只需針對 `flaui-cli-record.exe`。
 - **背景 daemon**：就是同一個 `flaui-cli.exe`，以 `flaui-cli.exe daemon --session <名稱>` 執行、不開主控台視窗。只有在呼叫端的 Job 會連帶結束它時才脫離 Job；閒置 30 分鐘自動結束（`close` / `kill-all` 可立即結束）。
 - **本機檔案**：session 檔與記錄檔在 `%LOCALAPPDATA%\flaui-cli`，snapshot 與截圖在工作目錄的 `.flaui-cli`。
 - 執行檔不要求提權（`asInvoker`），發佈版不壓縮、不加殼。

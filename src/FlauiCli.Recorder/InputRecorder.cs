@@ -2,30 +2,30 @@ using System.Collections.Concurrent;
 using System.Drawing;
 using System.Runtime.InteropServices;
 using System.Text;
+using FlauiCli.Core;
 using FlauiCli.Core.Abstractions;
 using FlauiCli.Core.Engine;
-using FlauiCli.Core.Native;
 using FlauiCli.Core.Protocol;
 using FlauiCli.Core.Targeting;
 
-namespace FlauiCli.Core.Recording;
+namespace FlauiCli.Recorder;
 
 /// <summary>
 /// Captures real mouse and keyboard input and turns it into script steps (similar to playwright codegen).
 /// <list type="bullet">
 /// <item>The low-level hooks are only installed while capturing and are removed when it stops.</item>
 /// <item>The hook thread only queues events (hook callbacks must return quickly).</item>
-/// <item>The processing thread uses its own driver instance for FromPoint / selector generation and never
-/// shares UIA objects with the daemon's main thread.</item>
+/// <item>The processing thread uses its own driver instance for FromPoint / selector generation; the steps
+/// are reported to flaui-cli through the <see cref="StepWriter"/>.</item>
 /// <item>Injected input (FlaUI's SendInput) is ignored, so CLI commands and real input can be recorded together.</item>
 /// </list>
 /// </summary>
-public sealed class InputRecorder : IDisposable
+internal sealed class InputRecorder : IDisposable
 {
     private const ushort VkQ = 0x51;
 
     private readonly Func<IUiDriver> _driverFactory;
-    private readonly ScriptRecorder _recorder;
+    private readonly StepWriter _recorder;
     private readonly nint _rootHwnd;
     private readonly int _rootPid;
     private readonly HashSet<int> _pids;
@@ -36,8 +36,8 @@ public sealed class InputRecorder : IDisposable
     private uint _hookThreadId;
     private nint _mouseHook;
     private nint _keyboardHook;
-    private NativeMethods.HookProc? _mouseProc;
-    private NativeMethods.HookProc? _keyboardProc;
+    private HookNativeMethods.HookProc? _mouseProc;
+    private HookNativeMethods.HookProc? _keyboardProc;
     private volatile bool _running;
 
     // State owned by the processing thread
@@ -47,7 +47,7 @@ public sealed class InputRecorder : IDisposable
     private readonly StringBuilder _typed = new();
     private (string Selector, uint Time)? _lastClick;
 
-    public InputRecorder(Func<IUiDriver> driverFactory, ScriptRecorder recorder, nint rootHwnd, IEnumerable<int> pids)
+    public InputRecorder(Func<IUiDriver> driverFactory, StepWriter recorder, nint rootHwnd, IEnumerable<int> pids)
     {
         _driverFactory = driverFactory;
         _recorder = recorder;
@@ -55,7 +55,7 @@ public sealed class InputRecorder : IDisposable
         _pids = [.. pids.Where(p => p != 0)];
         if (rootHwnd != 0)
         {
-            NativeMethods.GetWindowThreadProcessId(rootHwnd, out var pid);
+            HookNativeMethods.GetWindowThreadProcessId(rootHwnd, out var pid);
             _rootPid = (int)pid;
         }
     }
@@ -90,9 +90,16 @@ public sealed class InputRecorder : IDisposable
             _queue.CompleteAdding();
         }
         _worker?.Join(TimeSpan.FromSeconds(5));
-        if (_hookThreadId != 0) NativeMethods.PostThreadMessageW(_hookThreadId, NativeMethods.WM_QUIT, 0, 0);
+        if (_hookThreadId != 0) HookNativeMethods.PostThreadMessageW(_hookThreadId, HookNativeMethods.WM_QUIT, 0, 0);
         _hookThread?.Join(TimeSpan.FromSeconds(2));
         _running = false;
+    }
+
+    /// <summary>Blocks until the capture has ended (stop hotkey, <see cref="Stop"/> or a fatal error).</summary>
+    public void WaitForExit()
+    {
+        _worker?.Join();
+        _hookThread?.Join(TimeSpan.FromSeconds(2));
     }
 
     public void Dispose() => Stop();
@@ -101,25 +108,25 @@ public sealed class InputRecorder : IDisposable
 
     private void HookLoop(ManualResetEventSlim ready)
     {
-        _hookThreadId = NativeMethods.GetCurrentThreadId();
+        _hookThreadId = HookNativeMethods.GetCurrentThreadId();
         _mouseProc = MouseProc;
         _keyboardProc = KeyboardProc;
-        var module = NativeMethods.GetModuleHandleW(null);
-        _mouseHook = NativeMethods.SetWindowsHookExW(NativeMethods.WH_MOUSE_LL, _mouseProc, module, 0);
-        _keyboardHook = NativeMethods.SetWindowsHookExW(NativeMethods.WH_KEYBOARD_LL, _keyboardProc, module, 0);
+        var module = HookNativeMethods.GetModuleHandleW(null);
+        _mouseHook = HookNativeMethods.SetWindowsHookExW(HookNativeMethods.WH_MOUSE_LL, _mouseProc, module, 0);
+        _keyboardHook = HookNativeMethods.SetWindowsHookExW(HookNativeMethods.WH_KEYBOARD_LL, _keyboardProc, module, 0);
         if (_mouseHook == 0 || _keyboardHook == 0) LastError = $"Win32 error {Marshal.GetLastWin32Error()}";
         ready.Set();
 
         if (LastError is null)
         {
-            while (NativeMethods.GetMessageW(out _, 0, 0, 0) > 0)
+            while (HookNativeMethods.GetMessageW(out _, 0, 0, 0) > 0)
             {
                 // Low-level hooks need a message loop
             }
         }
 
-        if (_mouseHook != 0) NativeMethods.UnhookWindowsHookEx(_mouseHook);
-        if (_keyboardHook != 0) NativeMethods.UnhookWindowsHookEx(_keyboardHook);
+        if (_mouseHook != 0) HookNativeMethods.UnhookWindowsHookEx(_mouseHook);
+        if (_keyboardHook != 0) HookNativeMethods.UnhookWindowsHookEx(_keyboardHook);
     }
 
     private nint MouseProc(int nCode, nint wParam, nint lParam)
@@ -127,50 +134,50 @@ public sealed class InputRecorder : IDisposable
         if (nCode >= 0 && _running)
         {
             var msg = (int)wParam;
-            if (msg is NativeMethods.WM_LBUTTONDOWN or NativeMethods.WM_RBUTTONDOWN or NativeMethods.WM_MBUTTONDOWN)
+            if (msg is HookNativeMethods.WM_LBUTTONDOWN or HookNativeMethods.WM_RBUTTONDOWN or HookNativeMethods.WM_MBUTTONDOWN)
             {
-                var info = Marshal.PtrToStructure<NativeMethods.MSLLHOOKSTRUCT>(lParam);
-                if ((info.flags & NativeMethods.LLMHF_INJECTED) == 0)
+                var info = Marshal.PtrToStructure<HookNativeMethods.MSLLHOOKSTRUCT>(lParam);
+                if ((info.flags & HookNativeMethods.LLMHF_INJECTED) == 0)
                 {
                     var button = msg switch
                     {
-                        NativeMethods.WM_RBUTTONDOWN => MouseButtonKind.Right,
-                        NativeMethods.WM_MBUTTONDOWN => MouseButtonKind.Middle,
+                        HookNativeMethods.WM_RBUTTONDOWN => MouseButtonKind.Right,
+                        HookNativeMethods.WM_MBUTTONDOWN => MouseButtonKind.Middle,
                         _ => MouseButtonKind.Left,
                     };
                     Enqueue(RawInput.Mouse(new Point(info.pt.X, info.pt.Y), button, info.time));
                 }
             }
         }
-        return NativeMethods.CallNextHookEx(0, nCode, wParam, lParam);
+        return HookNativeMethods.CallNextHookEx(0, nCode, wParam, lParam);
     }
 
     private nint KeyboardProc(int nCode, nint wParam, nint lParam)
     {
-        if (nCode >= 0 && _running && (wParam == NativeMethods.WM_KEYDOWN || wParam == NativeMethods.WM_SYSKEYDOWN))
+        if (nCode >= 0 && _running && (wParam == HookNativeMethods.WM_KEYDOWN || wParam == HookNativeMethods.WM_SYSKEYDOWN))
         {
-            var info = Marshal.PtrToStructure<NativeMethods.KBDLLHOOKSTRUCT>(lParam);
-            if ((info.flags & NativeMethods.LLKHF_INJECTED) == 0)
+            var info = Marshal.PtrToStructure<HookNativeMethods.KBDLLHOOKSTRUCT>(lParam);
+            if ((info.flags & HookNativeMethods.LLKHF_INJECTED) == 0)
             {
-                var ctrl = Down(NativeMethods.VK_CONTROL);
-                var shift = Down(NativeMethods.VK_SHIFT);
-                var alt = Down(NativeMethods.VK_MENU);
-                var win = Down(NativeMethods.VK_LWIN) || Down(NativeMethods.VK_RWIN);
+                var ctrl = Down(HookNativeMethods.VK_CONTROL);
+                var shift = Down(HookNativeMethods.VK_SHIFT);
+                var alt = Down(HookNativeMethods.VK_MENU);
+                var win = Down(HookNativeMethods.VK_LWIN) || Down(HookNativeMethods.VK_RWIN);
                 if (ctrl && shift && info.vkCode == VkQ)
                 {
                     Enqueue(RawInput.StopSignal);
                     return 1; // Swallow the stop hotkey so the application does not receive it
                 }
-                var caps = (NativeMethods.GetKeyState(NativeMethods.VK_CAPITAL) & 1) != 0;
+                var caps = (HookNativeMethods.GetKeyState(HookNativeMethods.VK_CAPITAL) & 1) != 0;
                 // Remember which window received the key so that typing in other applications is not recorded
-                var foreground = NativeMethods.GetForegroundWindow();
+                var foreground = HookNativeMethods.GetForegroundWindow();
                 Enqueue(RawInput.Key((ushort)info.vkCode, info.scanCode, ctrl, shift, alt, win, caps, info.time, foreground));
             }
         }
-        return NativeMethods.CallNextHookEx(0, nCode, wParam, lParam);
+        return HookNativeMethods.CallNextHookEx(0, nCode, wParam, lParam);
     }
 
-    private static bool Down(int vk) => (NativeMethods.GetAsyncKeyState(vk) & 0x8000) != 0;
+    private static bool Down(int vk) => (HookNativeMethods.GetAsyncKeyState(vk) & 0x8000) != 0;
 
     private void Enqueue(RawInput input)
     {
@@ -184,7 +191,7 @@ public sealed class InputRecorder : IDisposable
     {
         try
         {
-            NativeMethods.EnsureDpiAware();
+            // DPI awareness (Per-Monitor V2) comes from app.manifest
             _driver = _driverFactory();
             _root = _driver.FromHandle(_rootHwnd) ?? throw new CliException("The window to capture was not found");
 
@@ -199,6 +206,7 @@ public sealed class InputRecorder : IDisposable
                 catch (Exception ex)
                 {
                     LastError = ex.Message;
+                    _recorder.Error(ex.Message);
                 }
             }
 
@@ -207,12 +215,13 @@ public sealed class InputRecorder : IDisposable
         catch (Exception ex)
         {
             LastError = ex.Message;
+            _recorder.Error(ex.Message);
         }
         finally
         {
             _running = false;
             try { _driver?.Dispose(); } catch { /* ignore */ }
-            if (_hookThreadId != 0) NativeMethods.PostThreadMessageW(_hookThreadId, NativeMethods.WM_QUIT, 0, 0);
+            if (_hookThreadId != 0) HookNativeMethods.PostThreadMessageW(_hookThreadId, HookNativeMethods.WM_QUIT, 0, 0);
         }
     }
 
@@ -236,7 +245,7 @@ public sealed class InputRecorder : IDisposable
     {
         if (foregroundHwnd == 0) return false;
         if (foregroundHwnd == _rootHwnd) return true;
-        NativeMethods.GetWindowThreadProcessId(foregroundHwnd, out var pid);
+        HookNativeMethods.GetWindowThreadProcessId(foregroundHwnd, out var pid);
         return _pids.Contains((int)pid) || (int)pid == _rootPid;
     }
 
@@ -249,7 +258,7 @@ public sealed class InputRecorder : IDisposable
 
         var selector = SelectorGenerator.Generate(el, Roots());
         if (ev.Button == MouseButtonKind.Left && _lastClick is { } last && last.Selector == selector
-            && ev.Time - last.Time <= NativeMethods.GetDoubleClickTime())
+            && ev.Time - last.Time <= HookNativeMethods.GetDoubleClickTime())
         {
             _recorder.ReplaceLast(new CommandCall("dblclick").Set("target", selector));
             _lastClick = null;
@@ -339,13 +348,13 @@ public sealed class InputRecorder : IDisposable
     private static char? ToChar(RawInput ev)
     {
         var state = new byte[256];
-        if (ev.Shift) state[NativeMethods.VK_SHIFT] = 0x80;
-        if (ev.Caps) state[NativeMethods.VK_CAPITAL] = 0x01;
-        var threadId = NativeMethods.GetWindowThreadProcessId(NativeMethods.GetForegroundWindow(), out _);
-        var layout = NativeMethods.GetKeyboardLayout(threadId);
+        if (ev.Shift) state[HookNativeMethods.VK_SHIFT] = 0x80;
+        if (ev.Caps) state[HookNativeMethods.VK_CAPITAL] = 0x01;
+        var threadId = HookNativeMethods.GetWindowThreadProcessId(HookNativeMethods.GetForegroundWindow(), out _);
+        var layout = HookNativeMethods.GetKeyboardLayout(threadId);
         var sb = new StringBuilder(8);
         // wFlags = 4: do not change the keyboard state (keeps dead keys working)
-        var n = NativeMethods.ToUnicodeEx(ev.Vk, ev.Scan, state, sb, sb.Capacity, 4, layout);
+        var n = HookNativeMethods.ToUnicodeEx(ev.Vk, ev.Scan, state, sb, sb.Capacity, 4, layout);
         if (n != 1) return null;
         var c = sb[0];
         return c < 0x20 ? null : c;

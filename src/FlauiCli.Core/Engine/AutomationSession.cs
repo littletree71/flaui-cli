@@ -16,7 +16,7 @@ public sealed record AppInfo(string? Launch, string? Args, string? Window, strin
 public sealed class AutomationSession : IDisposable
 {
     /// <param name="name">Session name.</param>
-    /// <param name="driverFactory">Creates drivers; input capture creates its own driver on another thread.</param>
+    /// <param name="driverFactory">Creates drivers.</param>
     public AutomationSession(string name, Func<IUiDriver> driverFactory)
     {
         NativeMethods.EnsureDpiAware();
@@ -76,7 +76,7 @@ public sealed class AutomationSession : IDisposable
 
     public ScriptRecorder? Recorder { get; internal set; }
 
-    public InputRecorder? InputCapture { get; internal set; }
+    public InputCapture? InputCapture { get; internal set; }
 
     public DocBuilder? Doc { get; internal set; }
 

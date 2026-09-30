@@ -60,7 +60,7 @@ public sealed partial class CommandDispatcher
                 _s.Recorder ??= new ScriptRecorder(ctx.Call.Get("name"), _s.AppInfo);
                 var pids = new List<int> { window.ProcessId };
                 if (_s.App is { HasExited: false } app) pids.Add(app.ProcessId);
-                var capture = new InputRecorder(_s.DriverFactory, _s.Recorder, window.WindowHandle, pids);
+                var capture = new InputCapture(_s.Recorder, window.WindowHandle, pids);
                 capture.Start();
                 _s.InputCapture = capture;
                 TryForeground(window);

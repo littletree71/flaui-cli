@@ -71,7 +71,7 @@ public sealed partial class CommandDispatcher
         var text = ctx.Call.Get("text") ?? "";
         var label = Label(el);
         var secret = el.IsPassword;
-        // Password fields: mask the value before it reaches documents, recordings and the result (same as InputRecorder)
+        // Password fields: mask the value before it reaches documents, recordings and the result (same as the input recorder)
         if (secret) ctx.Call.Set("text", CommandCall.Masked);
 
         BeforeAction(ctx, el, secret ? $"Enter the password in {Friendly(el)}" : $"Type \"{text}\" into {Friendly(el)}");

@@ -13,6 +13,8 @@
   <ItemGroup>
     <InternalsVisibleTo Include="FlauiCli.Core.Tests" />
     <InternalsVisibleTo Include="FlauiCli.E2E.Tests" />
+    <!-- The recorder executable (FlauiCli.Recorder) -->
+    <InternalsVisibleTo Include="flaui-cli-record" />
   </ItemGroup>
 
 </Project>

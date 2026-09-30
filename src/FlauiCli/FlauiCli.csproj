@@ -25,6 +25,24 @@
     <ProjectReference Include="..\FlauiCli.Driver.FlaUI\FlauiCli.Driver.FlaUI.csproj" />
   </ItemGroup>
 
+  <!--
+    The input recorder (flaui-cli-record.exe) is a separate executable and is deliberately NOT referenced
+    as an assembly: flaui-cli.exe must not contain or import the keyboard/mouse hook APIs.
+    For ordinary builds it is only built first and copied next to flaui-cli.exe so that
+    "record capture" works from the build output. Published builds publish it separately:
+      dotnet publish src/FlauiCli.Recorder -p:PublishProfile=win-x64
+  -->
+  <ItemGroup Condition="'$(RuntimeIdentifier)' == ''">
+    <ProjectReference Include="..\FlauiCli.Recorder\FlauiCli.Recorder.csproj" ReferenceOutputAssembly="false" Private="false" />
+  </ItemGroup>
+
+  <Target Name="CopyRecorder" AfterTargets="Build" Condition="'$(RuntimeIdentifier)' == ''">
+    <ItemGroup>
+      <RecorderFile Include="..\FlauiCli.Recorder\bin\$(Configuration)\$(TargetFramework)\flaui-cli-record.*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(RecorderFile)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+  </Target>
+
   <ItemGroup>
     <!-- Shipped next to the executable: the agent skill used by install-skill, plus the license notices -->
     <None Include="..\..\skills\flaui-cli\SKILL.md" Link="skills\SKILL.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />

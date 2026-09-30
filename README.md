@@ -28,7 +28,8 @@ Building from source needs the .NET 10 SDK:
 ```bash
 # Publish a self-contained single-file executable (no .NET runtime needed on the target machine)
 dotnet publish src/FlauiCli -p:PublishProfile=win-x64
-# Output: artifacts/flaui-cli/flaui-cli.exe - add that folder to PATH
+dotnet publish src/FlauiCli.Recorder -p:PublishProfile=win-x64   # only needed for record capture
+# Output: artifacts/flaui-cli/flaui-cli.exe (+ flaui-cli-record.exe) - add that folder to PATH
 ```
 
 Why not a `dotnet tool` or Native AOT?
@@ -160,6 +161,7 @@ src/
   FlauiCli/                CLI front-end (System.CommandLine), daemon client, local commands
   FlauiCli.Core/           Engine: abstractions, selectors, snapshots, dispatcher, scripts, recording, documents, daemon
   FlauiCli.Driver.FlaUI/   The only project that references FlaUI (implements IUiDriver / IUiElement)
+  FlauiCli.Recorder/       flaui-cli-record.exe: the input recorder, the only project that declares the hook APIs
 tests/
   FlauiCli.Core.Tests/     Unit tests (FakeDriver, no desktop needed)
   FlauiCli.E2E.Tests/      DriverContractTests (FlaUI adapter contract) + CLI end-to-end tests
@@ -174,7 +176,7 @@ tests/
 flaui-cli does things that security products watch closely. They are all intentional and documented here:
 
 - **Synthetic input and screenshots** - actions send real mouse/keyboard input (`SendInput`) and screenshots capture the screen.
-- **Global keyboard/mouse hooks** - installed **only** while `record capture` is running and removed when it stops. They are never installed otherwise.
+- **Global keyboard/mouse hooks** - live in a separate executable, `flaui-cli-record.exe`, which the daemon starts as an ordinary child process **only** while `record capture` is running; it removes the hooks and exits when the capture stops. `flaui-cli.exe` itself never installs a hook and its code does not declare the hook APIs, so everyday automation works even if the recorder is blocked or deleted (only `record capture` then fails, with a clear message). The APIs are declared openly as normal static imports - nothing is loaded dynamically or obfuscated. If your security product needs an exception, it is only needed for `flaui-cli-record.exe`.
 - **Background daemon** - the same `flaui-cli.exe` started as `flaui-cli.exe daemon --session <name>`, without a console window. It only breaks away from the caller's job object when that job would otherwise kill it, and it exits after 30 idle minutes (`close` / `kill-all` stop it immediately).
 - **Local files** - session files and logs under `%LOCALAPPDATA%\flaui-cli`, snapshots and screenshots under `.flaui-cli` in the working directory.
 - The executable requests no elevation (`asInvoker`) and the published build is neither compressed nor packed.
