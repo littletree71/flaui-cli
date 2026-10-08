@@ -15,13 +15,15 @@ Supports WPF, WinForms, Win32 and UWP apps (for example Windows Calculator).
 Requirements: Windows 10/11 x64. No .NET runtime needs to be installed.
 
 Download `flaui-cli-<version>-win-x64.zip` from [Releases](https://github.com/littletree71/flaui-cli/releases), extract it and add the folder to PATH.
+The zip contains `flaui-cli.exe`, the input recorder `flaui-cli-record.exe` (only used by `record capture`; keep it next to
+`flaui-cli.exe`), the license notices and the agent skill (`skills/SKILL.md`). Both executables are also attached on their own.
 Every release lists SHA-256 checksums. Once the repository is public, releases also carry a build provenance attestation; verify a download with the [GitHub CLI](https://cli.github.com/):
 
 ```bash
 gh attestation verify flaui-cli.exe -R littletree71/flaui-cli
 ```
 
-The executable is not code-signed yet, so Windows SmartScreen may warn on first run.
+The executables are not code-signed yet, so Windows SmartScreen may warn on first run.
 
 Building from source needs the .NET 10 SDK:
 
@@ -40,7 +42,8 @@ Why not a `dotnet tool` or Native AOT?
 Install the agent skill for Claude Code:
 
 ```bash
-flaui-cli install-skill        # copies SKILL.md to ./.claude/skills/flaui-cli/SKILL.md
+flaui-cli install-skill                  # copies SKILL.md to ./.claude/skills/flaui-cli/SKILL.md
+flaui-cli install-skill --dir <folder>   # or into another folder
 ```
 
 ## Quick start
@@ -61,8 +64,17 @@ Snapshot output:
 - window "Calculator" [ref=e1]
   - text "Display is 0" [ref=e5] id=CalculatorResults
   - button "One" [ref=e21] id=num1Button
+  - edit "Name" [ref=e30] id=nameInput value="Alice" [focused]
   - checkbox "I agree" [ref=e31] [checked]
 ```
+
+State markers: `[disabled]` `[checked]` `[mixed]` `[expanded]` `[collapsed]` `[selected]` `[focused]`.
+Unnamed containers and off-screen elements are left out; `snapshot --all` prints the full tree, `--depth N` limits the depth,
+`--root <target>` prints a subtree, `--boxes` adds element bounds and `--filename f.yml` saves to a file.
+After every action command a snapshot is saved automatically (`.flaui-cli/snapshot-*.yml`, turn off with `autoSnapshot`).
+
+`open` also accepts a Store app AUMID (any value containing `!`, for example
+`Microsoft.WindowsCalculator_8wekyb3d8bbwe!App`); `attach` takes a PID or process name, `--title <window title>`, or both.
 
 ## Targeting elements
 
@@ -72,6 +84,8 @@ Snapshot output:
 | `id=num1Button` | AutomationId |
 | `name="One"`, `One` | Exact name |
 | `text=Disp` | Name contains (case-insensitive) |
+| `type=Button` | ControlType (button, edit, checkbox, combobox, listitem...) |
+| `class=TextBox` | ClassName |
 | `type=Button&&name=OK` | Combined conditions |
 | `id=panel >> name=OK` | Nested search |
 | `type=ListItem&&nth=2` | The Nth match (zero-based) |
@@ -94,8 +108,11 @@ Run `flaui-cli --help` or `flaui-cli <command> --help` for details.
 | Recording | `record start\|capture\|status\|stop` |
 | Documents | `doc start\|step\|status\|stop` |
 | Scripts | `run` |
+| Other | `install-skill` |
 
-Global options: `-s, --session <name>` (parallel sessions), `--json` (structured output).
+Global options: `-s, --session <name>` (parallel sessions; defaults to the `FLAUI_CLI_SESSION` environment variable, then `default`),
+`--json` (structured output). Element commands take `--timeout <ms>`, and action commands take `--note <text>` for documents.
+`close` closes the window and stops the session's daemon; `close --keep-app` ends the session but leaves the application running.
 Exit codes: `0` success, `1` assertion failed, `2` error, `3` session not running.
 
 ## YAML test scripts
@@ -115,11 +132,22 @@ steps:
   - assert: { target: id=CalculatorResults, text: Display is 3 }
 ```
 
+- Top-level fields: `name`, `app`, `timeout` (default ms for every step), `steps`.
+- `app`: `launch` (exe or AUMID), `args`, `window`, `attach` (PID or process name) and `close` (close the app afterwards;
+  defaults to `true` for `launch` and `false` for `attach`). A plain string means `launch`.
+- A step is one command: a scalar is its first argument (`- click: id=ok`), a mapping gives named arguments and options
+  (`- fill: { target: id=name, text: Alice }`), and `doc:` describes the step in generated documents.
+  `run`, `list`, `install-skill` and the other local commands cannot be used in scripts.
+
 ```bash
 flaui-cli run samples/calculator.flow.yaml                                 # console report
 flaui-cli run tests/*.flow.yaml --reporter junit --output out/report.xml    # CI
-flaui-cli run samples/calculator.flow.yaml --doc out/calc-doc              # also produce a document
+flaui-cli run tests/*.flow.yaml --bail                                     # stop after the first failing script
+flaui-cli run samples/calculator.flow.yaml --doc out/calc-doc              # also produce a document (--doc-format md,html)
 ```
+
+`run` drives the application in its own process and does not need a running session. A failing script saves a failure screenshot,
+and the exit code is `1` when any script fails.
 
 ### Recording
 
@@ -128,17 +156,25 @@ flaui-cli record start --name Login        # records later CLI commands (refs be
 ...
 flaui-cli record stop --out login.flow.yaml
 
-flaui-cli record capture --out flow.yaml  # captures real mouse/keyboard input; Ctrl+Shift+Q stops
+flaui-cli record capture --name Login     # captures real mouse/keyboard input in the current window
+flaui-cli record status
+flaui-cli record stop --out login.flow.yaml   # or press Ctrl+Shift+Q in the app to stop capturing, then record stop
 ```
+
+`record capture` starts `flaui-cli-record.exe`, which must sit next to `flaui-cli.exe`. Input sent to other applications while
+the capture runs is ignored, so only steps in the target app are recorded.
 
 ## Documents
 
 ```bash
 flaui-cli doc start --title "Using the calculator"
-flaui-cli click id=num1Button --note "Press 1"
-flaui-cli doc step "Done"
-flaui-cli doc stop --out docs/calculator --format md,html
+flaui-cli click id=num1Button --note "Press 1"   # each action is captured with its target outlined by a numbered red box
+flaui-cli doc step "Done" --highlight id=CalculatorResults   # manual step; --highlight can be repeated
+flaui-cli doc status
+flaui-cli doc stop --out docs/calculator --format md,html    # index.md + images/ and a single-file index.html
 ```
+
+Generated step descriptions are in English (for example `Click the "One" button`); `--note` and the script `doc:` field accept any language.
 
 ## Configuration
 
@@ -178,6 +214,9 @@ flaui-cli does things that security products watch closely. They are all intenti
 - **Synthetic input and screenshots** - actions send real mouse/keyboard input (`SendInput`) and screenshots capture the screen.
 - **Global keyboard/mouse hooks** - live in a separate executable, `flaui-cli-record.exe`, which the daemon starts as an ordinary child process **only** while `record capture` is running; it removes the hooks and exits when the capture stops. `flaui-cli.exe` itself never installs a hook and its code does not declare the hook APIs, so everyday automation works even if the recorder is blocked or deleted (only `record capture` then fails, with a clear message). The APIs are declared openly as normal static imports - nothing is loaded dynamically or obfuscated. If your security product needs an exception, it is only needed for `flaui-cli-record.exe`.
 - **Background daemon** - the same `flaui-cli.exe` started as `flaui-cli.exe daemon --session <name>`, without a console window. It only breaks away from the caller's job object when that job would otherwise kill it, and it exits after 30 idle minutes (`close` / `kill-all` stop it immediately).
+- **Passwords stay out of output** - text typed into a password field with `fill` is replaced with `********` in command results,
+  recorded scripts and generated documents; `record capture` writes the same placeholder for password fields (replace it with the
+  real value before running the script). The daemon log never stores the text of `fill` / `type` at all.
 - **Local files** - session files and logs under `%LOCALAPPDATA%\flaui-cli`, snapshots and screenshots under `.flaui-cli` in the working directory.
 - The executable requests no elevation (`asInvoker`) and the published build is neither compressed nor packed.
 

@@ -17,6 +17,8 @@
 需求：Windows 10/11 x64，不需要安裝 .NET runtime。
 
 從 [Releases](https://github.com/littletree71/flaui-cli/releases) 下載 `flaui-cli-<版本>-win-x64.zip`，解壓縮後把資料夾加入 PATH 即可。
+zip 內含 `flaui-cli.exe`、真人操作錄製工具 `flaui-cli-record.exe`（只有 `record capture` 會用到，請與 `flaui-cli.exe` 放在同一個資料夾）、
+授權聲明與 Agent 技能說明（`skills/SKILL.md`）；兩個執行檔也會單獨附在 release 上。
 每個 release 都附有 SHA-256 雜湊值；repo 公開後，release 另會附上建置來源證明（build provenance attestation），可以用 [GitHub CLI](https://cli.github.com/) 驗證下載的檔案確實由本 repo 的 CI 建置：
 
 ```bash
@@ -42,7 +44,8 @@ dotnet publish src/FlauiCli.Recorder -p:PublishProfile=win-x64   # 只有 record
 安裝給 Claude Code 使用的技能說明：
 
 ```bash
-flaui-cli install-skill        # 複製到 ./.claude/skills/flaui-cli/SKILL.md
+flaui-cli install-skill                  # 複製到 ./.claude/skills/flaui-cli/SKILL.md
+flaui-cli install-skill --dir <資料夾>    # 或安裝到其他資料夾
 ```
 
 ## 快速開始
@@ -63,8 +66,16 @@ snapshot 輸出範例：
 - window "Calculator" [ref=e1]
   - text "Display is 0" [ref=e5] id=CalculatorResults
   - button "One" [ref=e21] id=num1Button
+  - edit "Name" [ref=e30] id=nameInput value="Alice" [focused]
   - checkbox "I agree" [ref=e31] [checked]
 ```
+
+狀態標記：`[disabled]` `[checked]` `[mixed]` `[expanded]` `[collapsed]` `[selected]` `[focused]`。
+未命名的容器與畫面外的元素預設不列出；`snapshot --all` 列出完整樹，`--depth N` 限制深度，`--root <目標>` 只列子樹，
+`--boxes` 附上元素座標，`--filename f.yml` 存成檔案。每個動作指令執行後都會自動存一份 snapshot（`.flaui-cli/snapshot-*.yml`，可用 `autoSnapshot` 關閉）。
+
+`open` 也接受 Store App 的 AUMID（含 `!` 的值，例如 `Microsoft.WindowsCalculator_8wekyb3d8bbwe!App`）；
+`attach` 可指定 PID 或程序名稱、`--title <視窗標題>`，或兩者併用。
 
 ## 元素定位
 
@@ -74,6 +85,8 @@ snapshot 輸出範例：
 | `id=num1Button` | AutomationId |
 | `name="One"`、`One` | Name 完全相符 |
 | `text=Disp` | Name 包含（不分大小寫） |
+| `type=Button` | ControlType（button、edit、checkbox、combobox、listitem…） |
+| `class=TextBox` | ClassName |
 | `type=Button&&name=OK` | 條件組合 |
 | `id=panel >> name=OK` | 階層 |
 | `type=ListItem&&nth=2` | 第 N 個（從 0 起算） |
@@ -96,8 +109,11 @@ selector 會自動等待元素出現，斷言會自動重試直到逾時（預�
 | 錄製 | `record start\|capture\|status\|stop` |
 | 文件 | `doc start\|step\|status\|stop` |
 | 腳本 | `run` |
+| 其他 | `install-skill` |
 
-全域選項：`-s, --session <名稱>`（多個 session 並行）、`--json`（結構化輸出）。
+全域選項：`-s, --session <名稱>`（多個 session 並行；未指定時用環境變數 `FLAUI_CLI_SESSION`，再沒有則為 `default`）、
+`--json`（結構化輸出）。元素相關指令可加 `--timeout <毫秒>`，動作指令可加 `--note <文字>` 作為文件的步驟說明。
+`close` 會關閉視窗並結束該 session 的 daemon；`close --keep-app` 只結束 session，保留應用程式繼續執行。
 結束碼：`0` 成功、`1` 斷言失敗、`2` 錯誤、`3` session 未啟動。
 
 ## YAML 測試腳本
@@ -117,11 +133,21 @@ steps:
   - assert: { target: id=CalculatorResults, text: Display is 3 }
 ```
 
+- 最上層欄位：`name`、`app`、`timeout`（每個步驟的預設逾時毫秒數）、`steps`。
+- `app`：`launch`（exe 或 AUMID）、`args`、`window`、`attach`（PID 或程序名稱）、`close`（結束後是否關閉程式；
+  `launch` 預設為 `true`、`attach` 預設為 `false`）。直接寫字串等同 `launch`。
+- 每個步驟是一個指令：純量值是第一個參數（`- click: id=ok`），mapping 則是具名參數與選項
+  （`- fill: { target: id=name, text: Alice }`），`doc:` 是操作文件中的步驟說明。
+  `run`、`list`、`install-skill` 等本機指令不能用在腳本中。
+
 ```bash
 flaui-cli run samples/calculator.flow.yaml                                 # console 報告
 flaui-cli run tests/*.flow.yaml --reporter junit --output out/report.xml    # CI
-flaui-cli run samples/calculator.flow.yaml --doc out/calc-doc              # 同時產生操作文件
+flaui-cli run tests/*.flow.yaml --bail                                     # 第一個腳本失敗就停止
+flaui-cli run samples/calculator.flow.yaml --doc out/calc-doc              # 同時產生操作文件（--doc-format md,html）
 ```
+
+`run` 在自己的行程中操作應用程式，不需要事先啟動 session。腳本失敗時會存一張失敗截圖，任何腳本失敗時結束碼為 `1`。
 
 ### 錄製
 
@@ -130,16 +156,22 @@ flaui-cli record start --name 登入         # 記錄之後執行的 CLI 指令�
 ...
 flaui-cli record stop --out login.flow.yaml
 
-flaui-cli record capture --out flow.yaml  # 捕捉真人滑鼠鍵盤操作，Ctrl+Shift+Q 結束
+flaui-cli record capture --name 登入       # 捕捉目前視窗中真人的滑鼠鍵盤操作
+flaui-cli record status
+flaui-cli record stop --out login.flow.yaml   # 或在程式中按 Ctrl+Shift+Q 停止捕捉，再執行 record stop
 ```
+
+`record capture` 會啟動 `flaui-cli-record.exe`，它必須與 `flaui-cli.exe` 放在同一個資料夾。捕捉期間送往其他程式的輸入會被忽略，
+只會錄下目標程式中的步驟。
 
 ## 操作文件
 
 ```bash
 flaui-cli doc start --title "小算盤使用說明"
-flaui-cli click id=num1Button --note "按下數字 1"
-flaui-cli doc step "完成"
-flaui-cli doc stop --out docs/calculator --format md,html
+flaui-cli click id=num1Button --note "按下數字 1"            # 每個動作都會截圖，並以編號紅框標註操作的元素
+flaui-cli doc step "完成" --highlight id=CalculatorResults   # 手動加入步驟；--highlight 可重複
+flaui-cli doc status
+flaui-cli doc stop --out docs/calculator --format md,html    # index.md + images/ 與單檔 index.html
 ```
 
 自動產生的步驟說明是英文（例如 `Click the "One" button`）；用 `--note` 或腳本的 `doc:` 可以寫任何語言。
@@ -182,6 +214,8 @@ flaui-cli 的某些行為會被安全軟體特別留意，以下都是刻意的�
 - **模擬輸入與截圖**：動作會送出真實的滑鼠鍵盤輸入（`SendInput`），截圖會擷取螢幕。
 - **全域鍵盤滑鼠 hook**：放在獨立的執行檔 `flaui-cli-record.exe`，**只有**在執行 `record capture` 期間由 daemon 以一般子行程啟動，結束擷取時移除 hook 並結束行程。`flaui-cli.exe` 本身從不安裝 hook，程式碼裡也沒有宣告 hook API，所以即使錄製工具被擋或被刪除，平常的自動化仍可正常使用（只有 `record capture` 會失敗並顯示明確訊息）。這些 API 以一般靜態匯入公開宣告，不做動態載入或混淆。若安全軟體需要設定例外，只需針對 `flaui-cli-record.exe`。
 - **背景 daemon**：就是同一個 `flaui-cli.exe`，以 `flaui-cli.exe daemon --session <名稱>` 執行、不開主控台視窗。只有在呼叫端的 Job 會連帶結束它時才脫離 Job；閒置 30 分鐘自動結束（`close` / `kill-all` 可立即結束）。
+- **密碼不會出現在輸出中**：用 `fill` 輸入密碼欄位的文字，在指令結果、錄製的腳本與產生的文件中都會以 `********` 取代；
+  `record capture` 遇到密碼欄位也會寫入同樣的佔位字（執行腳本前請換成真正的值）。daemon 記錄檔完全不保存 `fill` / `type` 的文字。
 - **本機檔案**：session 檔與記錄檔在 `%LOCALAPPDATA%\flaui-cli`，snapshot 與截圖在工作目錄的 `.flaui-cli`。
 - 執行檔不要求提權（`asInvoker`），發佈版不壓縮、不加殼。
 
