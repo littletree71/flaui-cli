@@ -231,6 +231,7 @@ dotnet test tests/FlauiCli.E2E.Tests                                    # 需要
 
 - 動作會移動真實滑鼠、送出真實按鍵，執行期間請勿操作電腦（`click --invoke` 可避免移動滑鼠）。
 - WinForms 程式中，若控制項開啟了強制回應（modal）對話框，InvokePattern 會等到對話框關閉才返回；`click --invoke` / `invoke` 會在 `--timeout` 後停止等待。會開對話框的按鈕建議用一般 `click`。
+- 部分 WinForms 對話框（例如 .NET Framework MDI 程式以 `ShowDialog()` 開啟的對話框）對 UI Automation 只呈現 `pane` 元素：`window <標題>`、`screenshot`、`close` 可以使用，但裡面的控制項只能用鍵盤操作。
 - UWP 程式的視窗由 ApplicationFrameHost 承載，`open` 需要 `--window` 指定標題；`close` 只會關閉視窗，不會結束共用程序。
 - 真人操作錄製依賴低階 hook，以滑鼠按下時的座標判斷元素，快速變動的 UI（例如動畫中的選單）可能錄到非預期元素。
 

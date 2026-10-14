@@ -128,6 +128,9 @@ Scripts can produce documents directly: `flaui-cli run flow.yaml --doc docs/flow
 - On WinForms apps, InvokePattern does not return while a modal dialog opened by the control is shown. `click --invoke` /
   `invoke` then stop waiting after `--timeout` and report that the call did not return; prefer a plain `click` for buttons
   that open a dialog. Find the dialog with `windows` / `wait-window <title>`.
+- Some WinForms dialogs (for example `ShowDialog()` dialogs of .NET Framework MDI apps) expose only `pane` elements to UI
+  Automation. `window <title>` still switches to them, so `screenshot`, `press Enter` / `press Escape` and `close` work, but
+  their buttons and fields cannot be targeted; use keyboard input (`press Tab`, `type`) instead.
 - `fill` on a password field is masked: the value is replaced with `********` in the command result, recorded scripts, generated
   documents and the daemon log, so never expect a real password to appear in the output. Scripts produced by `record capture`
   contain the same placeholder for password fields; replace it with the real value before running them.

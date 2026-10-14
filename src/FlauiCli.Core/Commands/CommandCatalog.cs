@@ -80,7 +80,7 @@ public static class CommandCatalog
         // ── Actions ──
         Element("click", "Click an element",
             new("button", "Mouse button: left|right|middle"), new("double", "Double-click", Flag: true),
-            new("invoke", "Use InvokePattern instead of moving the mouse", Flag: true)),
+            new("invoke", "Use InvokePattern instead of moving the mouse (stops waiting after --timeout if the element opens a modal dialog)", Flag: true)),
         Element("dblclick", "Double-click an element"),
         Element("hover", "Move the mouse over an element"),
         new("fill", "Actions", "Clear an input and type text (uses ValuePattern when available)",
