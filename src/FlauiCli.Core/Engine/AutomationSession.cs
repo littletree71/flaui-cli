@@ -49,6 +49,12 @@ public sealed class AutomationSession : IDisposable
         get => _currentWindow;
         internal set
         {
+            if (_currentWindow is { } previous && (value is null || !previous.Equals(value)))
+            {
+                _previousWindows.RemoveAll(previous.Equals);
+                _previousWindows.Add(previous);
+                if (_previousWindows.Count > MaxPreviousWindows) _previousWindows.RemoveAt(0);
+            }
             _currentWindow = value;
             if (value is null) return;
             // Remember title and PID so the window can be found again after its element goes stale
@@ -57,6 +63,31 @@ public sealed class AutomationSession : IDisposable
             WindowProcessId = value.ProcessId;
             IsSharedHostWindow = value.ClassName == SharedHostWindowClass;
         }
+    }
+
+    private const int MaxPreviousWindows = 10;
+    private readonly List<IUiElement> _previousWindows = [];
+
+    /// <summary>
+    /// The window that was current before <paramref name="window"/> and is still open (for example the MDI child a
+    /// dialog was opened from), most recent first; null when there is none.
+    /// </summary>
+    internal IUiElement? PreviousWindow(IUiElement window)
+    {
+        for (var i = _previousWindows.Count - 1; i >= 0; i--)
+        {
+            var w = _previousWindows[i];
+            if (w.Equals(window)) continue;
+            try
+            {
+                if (w.IsAlive) return w;
+            }
+            catch
+            {
+                // The window has gone
+            }
+        }
+        return null;
     }
 
     /// <summary>Frame window class of UWP apps; its process (ApplicationFrameHost) hosts the windows of every UWP app.</summary>
@@ -158,6 +189,7 @@ public sealed class AutomationSession : IDisposable
         LaunchedPid = null;
         AppInfo = null;
         CurrentWindow = null;
+        _previousWindows.Clear();
         WindowTitle = null;
         WindowProcessId = 0;
         IsSharedHostWindow = false;

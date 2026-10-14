@@ -56,7 +56,11 @@ public sealed class ScriptRunner(Func<IUiDriver> driverFactory)
         {
             call.Cwd = options.Cwd;
             if (doc.Timeout is int t && !call.Has("timeout") && CommandCatalog.Find(call.Command)?.Options.Any(o => o.Name == "timeout") == true)
-                call.Set("timeout", t.ToString());
+            {
+                // The step timeout is usually far shorter than an application needs to show its first window:
+                // launching waits at least the launch timeout
+                call.Set("timeout", (isSetup ? Math.Max(t, config.Timeouts.Launch) : t).ToString());
+            }
 
             var sw = Stopwatch.StartNew();
             var r = dispatcher.Execute(call);
@@ -83,13 +87,27 @@ public sealed class ScriptRunner(Func<IUiDriver> driverFactory)
                 catch (Exception ex) { result.Error ??= $"Failed to create the document: {ex.Message}"; }
             }
 
-            var close = doc.App?.Close ?? launched;
-            if (close && session.CurrentWindow is not null)
-                dispatcher.Execute(new CommandCall("close") { Cwd = options.Cwd });
+            if (doc.App?.Close ?? launched) CloseApp(session, dispatcher, options.Cwd);
         }
 
         result.Duration = total.Elapsed;
         return result;
+    }
+
+    /// <summary>
+    /// Closes the application at the end of a script: its window through the close command (which also terminates the
+    /// launched process when it does not exit), or, when no window was found (the launch timed out), the process the
+    /// script launched. Processes the script only attached to are never terminated.
+    /// </summary>
+    private static void CloseApp(AutomationSession session, CommandDispatcher dispatcher, string cwd)
+    {
+        if (session.CurrentWindow is not null)
+        {
+            dispatcher.Execute(new CommandCall("close") { Cwd = cwd });
+            return;
+        }
+        if (session.LaunchedPid is int pid && session.App is { HasExited: false } app && app.ProcessId == pid)
+            app.Kill();
     }
 
     private static CommandCall? BuildSetup(AppSpec? app)
