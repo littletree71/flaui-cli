@@ -28,7 +28,7 @@ public sealed partial class CommandDispatcher
         else
         {
             TryForeground(window);
-            region = window.Bounds;
+            region = WindowBounds(window);
             foreach (var h in highlights) region = Rectangle.Union(region, h.Bounds);
         }
 
@@ -132,7 +132,7 @@ public sealed partial class CommandDispatcher
                 var window = _s.RequireWindow();
                 var highlights = ctx.Call.GetList("highlight").Select(h => Resolve(ctx, h)).ToList();
                 TryForeground(window);
-                var region = window.Bounds;
+                var region = WindowBounds(window);
                 foreach (var h in highlights) region = Rectangle.Union(region, h.Bounds);
                 using var bmp = Screenshotter.CaptureRegion(_s.Driver.Screen, region, out var captured);
                 Screenshotter.Annotate(bmp, captured.Location, [.. highlights.Select(h => h.Bounds)],

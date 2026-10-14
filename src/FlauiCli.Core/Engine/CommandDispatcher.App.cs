@@ -256,7 +256,14 @@ public sealed partial class CommandDispatcher
         sb.AppendLine($"- Driver: {_s.Driver.Description}");
         sb.AppendLine($"- Started: {_s.StartedAt:yyyy-MM-dd HH:mm:ss}");
         if (_s.AppInfo is { } app) sb.AppendLine($"- Application: {app.Launch ?? app.Attach}");
-        if (_s.CurrentWindow is { } w)
+        var invokePending = IsInvokePending;
+        if (invokePending)
+        {
+            // Do not touch UI Automation: it waits for the pending invoke
+            sb.AppendLine($"- Current window: {_s.WindowTitle} (PID {_s.WindowProcessId})");
+            sb.AppendLine($"- Waiting: InvokePattern on {_pendingInvoke!.Label} has not returned (a modal dialog is probably open)");
+        }
+        else if (_s.CurrentWindow is { } w)
         {
             var alive = w.IsAlive;
             sb.AppendLine($"- Current window: {(alive ? $"{w.Name} (PID {w.ProcessId})" : "(closed)")}");
@@ -275,7 +282,15 @@ public sealed partial class CommandDispatcher
         ctx.Data["recording"] = recording ? "true" : "false";
         ctx.Data["capturing"] = capturing ? "true" : "false";
         ctx.Data["steps"] = (_s.Recorder?.Count ?? 0).ToString();
-        if (_s.CurrentWindow is { IsAlive: true } cw) ctx.Data["window"] = cw.Name;
+        if (invokePending)
+        {
+            ctx.Data["invokePending"] = "true";
+            if (_s.WindowTitle is { } title) ctx.Data["window"] = title;
+        }
+        else if (_s.CurrentWindow is { IsAlive: true } cw)
+        {
+            ctx.Data["window"] = cw.Name;
+        }
         return sb.ToString();
     }
 }

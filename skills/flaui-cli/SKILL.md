@@ -126,11 +126,9 @@ Scripts can produce documents directly: `flaui-cli run flow.yaml --doc docs/flow
 - The window of a UWP app (Calculator etc.) belongs to ApplicationFrameHost, so `open` always needs `--window`.
 - Actions move the real mouse; do not use the computer while they run. Use `click --invoke` to avoid moving the mouse.
 - On WinForms apps, InvokePattern does not return while a modal dialog opened by the control is shown. `click --invoke` /
-  `invoke` then stop waiting after `--timeout` and report that the call did not return; prefer a plain `click` for buttons
-  that open a dialog. Find the dialog with `windows` / `wait-window <title>`.
-- Some WinForms dialogs (for example `ShowDialog()` dialogs of .NET Framework MDI apps) expose only `pane` elements to UI
-  Automation. `window <title>` still switches to them, so `screenshot`, `press Enter` / `press Escape` and `close` work, but
-  their buttons and fields cannot be targeted; use keyboard input (`press Tab`, `type`) instead.
+  `invoke` then fail after `--timeout` (exit code 2), and until the dialog closes every command except `status`, `sleep` and
+  `press <keys>` (without `--target`) fails immediately, because UI Automation calls to the app would wait. Close the dialog
+  with `press Escape` / `press Enter`. Use a plain `click` (without `--invoke`) for buttons that open a dialog.
 - `fill` on a password field is masked: the value is replaced with `********` in the command result, recorded scripts, generated
   documents and the daemon log, so never expect a real password to appear in the output. Scripts produced by `record capture`
   contain the same placeholder for password fields; replace it with the real value before running them.

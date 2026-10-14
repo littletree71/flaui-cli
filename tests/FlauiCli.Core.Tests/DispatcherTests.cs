@@ -366,7 +366,7 @@ public sealed class DispatcherTests : IDisposable
     }
 
     [Fact]
-    public void InvokeThatDoesNotReturnIsBoundedByTheTimeout()
+    public void InvokeThatDoesNotReturnFailsAfterTheTimeoutAndLaterCommandsFailFast()
     {
         Ok(_app.Open());
         using var release = new ManualResetEventSlim();
@@ -377,17 +377,41 @@ public sealed class DispatcherTests : IDisposable
             var sw = System.Diagnostics.Stopwatch.StartNew();
             var r = _app.Run("click", ("target", "id=num1Button"), ("invoke", "true"), ("timeout", "300"));
             sw.Stop();
-            Ok(r);
-            Assert.Contains("did not return", r.Text);
+            Assert.False(r.Ok);
+            Assert.Equal(ExitCodes.Error, r.ExitCode);
+            Assert.Contains("did not return", r.Error);
             Assert.True(sw.ElapsedMilliseconds < 10_000, $"click --invoke took {sw.ElapsedMilliseconds}ms");
 
-            // The dispatcher is free for the next command while the invoke is still pending
-            Ok(_app.Run("status"));
+            // status answers without UI Automation; other commands fail fast instead of waiting for the dialog
+            var status = _app.Run("status");
+            Ok(status);
+            Assert.Contains("has not returned", status.Text);
+            var snapshot = _app.Run("snapshot");
+            Assert.False(snapshot.Ok);
+            Assert.Contains("has not returned yet", snapshot.Error);
+
+            // Keyboard input still reaches the dialog
+            Ok(_app.Run("press", ("keys", "Escape")));
+            Assert.Contains("press 0x1B", _app.Driver.Input.Log);
         }
         finally
         {
             release.Set();
         }
+
+        // Once the invoke has returned, commands work again
+        Assert.True(DispatcherPoll(() => _app.Run("snapshot").Ok));
+    }
+
+    private static bool DispatcherPoll(Func<bool> condition)
+    {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        while (sw.ElapsedMilliseconds < 5000)
+        {
+            if (condition()) return true;
+            Thread.Sleep(50);
+        }
+        return false;
     }
 
     [Fact]

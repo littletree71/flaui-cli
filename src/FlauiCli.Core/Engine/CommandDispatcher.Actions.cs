@@ -27,12 +27,10 @@ public sealed partial class CommandDispatcher
             : button == MouseButtonKind.Right ? $"Right-click {Friendly(el)}"
             : $"Click {Friendly(el)}");
 
-        var note = "";
         if (ctx.Call.GetBool("invoke"))
         {
             EnsureInteractable(ctx, el);
-            if (!InvokeBounded(ctx, el, out var pending)) throw new CliException($"{label} does not support InvokePattern; use a normal click instead");
-            if (pending) note = PendingInvokeNote(ctx);
+            InvokeBounded(ctx, el, label, $"{label} does not support InvokePattern; use a normal click instead");
         }
         else
         {
@@ -43,7 +41,7 @@ public sealed partial class CommandDispatcher
         }
 
         Input.WaitUntilIdle();
-        return $"### Result\n{(dbl ? "Double-clicked" : button == MouseButtonKind.Right ? "Right-clicked" : "Clicked")} {label}{note}";
+        return $"### Result\n{(dbl ? "Double-clicked" : button == MouseButtonKind.Right ? "Right-clicked" : "Clicked")} {label}";
     }
 
     private string DoubleClick(CommandContext ctx)
@@ -107,6 +105,13 @@ public sealed partial class CommandDispatcher
         var keys = ctx.Call.Require("keys");
         var vks = KeyParser.Parse(keys);
         var hasTarget = ctx.Call.Get("target") is not null;
+        if (IsInvokePending && !hasTarget)
+        {
+            // UI Automation is blocked by the pending invoke; send the keys to the foreground window (the dialog)
+            Input.PressChord(vks);
+            Input.WaitUntilIdle();
+            return $"### Result\nPressed {keys} (sent to the foreground window; UI Automation is waiting for {_pendingInvoke!.Label})";
+        }
         var target = hasTarget ? ResolveArg(ctx) : _s.Driver.GetFocusedElement();
 
         BeforeAction(ctx, target, $"Press {keys}");
@@ -213,36 +218,36 @@ public sealed partial class CommandDispatcher
         var label = Label(el);
         BeforeAction(ctx, el, $"Invoke {Friendly(el)}");
         EnsureInteractable(ctx, el);
-        if (!InvokeBounded(ctx, el, out var pending)) throw new CliException($"{label} does not support InvokePattern");
+        InvokeBounded(ctx, el, label, $"{label} does not support InvokePattern");
         Input.WaitUntilIdle();
-        return $"### Result\nInvoked {label}{(pending ? PendingInvokeNote(ctx) : "")}";
+        return $"### Result\nInvoked {label}";
     }
 
     /// <summary>
     /// Calls InvokePattern on a separate thread and waits at most the command timeout.
     /// For WinForms controls, Invoke does not return until a modal dialog opened by the handler
-    /// (Form.ShowDialog) is closed; running it on the UIA worker thread would block the whole daemon.
-    /// When the call is still running after the timeout it is left to finish on its own and
-    /// <paramref name="pending"/> is true.
+    /// (Form.ShowDialog) is closed. While it is pending, UI Automation calls to the application queue
+    /// behind it, so the command fails and later commands fail fast (see <see cref="ThrowIfInvokePending"/>)
+    /// instead of hanging until the dialog is closed.
     /// </summary>
-    private static bool InvokeBounded(CommandContext ctx, IUiElement el, out bool pending)
+    private void InvokeBounded(CommandContext ctx, IUiElement el, string label, string notSupported)
     {
         var task = Task.Factory.StartNew<bool>(el.TryInvoke, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
         if (Task.WhenAny(task, Task.Delay(ctx.Timeout)).GetAwaiter().GetResult() == task)
         {
-            pending = false;
-            return task.GetAwaiter().GetResult();
+            if (!task.GetAwaiter().GetResult()) throw new CliException(notSupported);
+            return;
         }
 
         // Observe a late failure so it does not surface as an unobserved task exception
         _ = task.ContinueWith(t => _ = t.Exception, TaskContinuationOptions.OnlyOnFaulted);
-        pending = true;
-        return true;
+        _pendingInvoke = new PendingInvoke(task, label);
+        throw new CliException(
+            $"InvokePattern on {label} did not return within {ctx.Timeout}ms: it probably opened a modal dialog " +
+            "and only returns when the dialog closes. Until then UI Automation calls to this application wait, so other " +
+            "commands fail; press Escape / press Enter (without --target) still work. Use a plain click (without --invoke) " +
+            "for controls that open a dialog.");
     }
-
-    private static string PendingInvokeNote(CommandContext ctx) =>
-        $"\n(InvokePattern did not return within {ctx.Timeout}ms; the element probably opened a modal dialog. " +
-        "Use windows / wait-window to find it.)";
 
     private string Scroll(CommandContext ctx)
     {

@@ -231,8 +231,7 @@ dotnet test tests/FlauiCli.E2E.Tests                                    # needs 
 ## Known limitations
 
 - Actions move the real mouse and send real key presses; do not use the computer while they run (`click --invoke` avoids moving the mouse).
-- On WinForms apps, InvokePattern does not return while a modal dialog it opened is shown; `click --invoke` / `invoke` stop waiting after `--timeout`. Prefer a plain `click` for buttons that open a dialog.
-- Some WinForms dialogs (for example `ShowDialog()` dialogs of .NET Framework MDI apps) expose only `pane` elements to UI Automation: `window <title>`, `screenshot` and `close` work on them, but their controls have to be driven with the keyboard.
+- On WinForms apps, InvokePattern does not return while a modal dialog it opened is shown: `click --invoke` / `invoke` fail after `--timeout`, and until the dialog closes only `status`, `sleep` and `press <keys>` work. Use a plain `click` for buttons that open a dialog.
 - UWP windows are hosted by ApplicationFrameHost, so `open` needs `--window <title>`; `close` only closes the window and never kills the shared process.
 - Input capture relies on low-level hooks and identifies elements by the position of the mouse press, so fast-changing UI (such as animated menus) may be recorded as an unexpected element.
 

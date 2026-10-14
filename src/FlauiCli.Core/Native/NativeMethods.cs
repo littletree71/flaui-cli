@@ -119,12 +119,42 @@ internal static class NativeMethods
         {
             if (!w.ClassName.Contains("tooltips_class32", StringComparison.OrdinalIgnoreCase)) continue;
             SendMessageTimeoutW(w.Handle, TTM_POP, 0, 0, SMTO_ABORTIFHUNG, 200, out _);
+            // Tracking tooltips (WinForms ToolStrip) ignore TTM_POP, so hide the window as well
+            ShowWindowAsync(w.Handle, SW_HIDE);
             any = true;
         }
         return any;
     }
 
     private const uint SMTO_ABORTIFHUNG = 0x0002;
+    private const int SW_HIDE = 0;
+    private const int DWMWA_EXTENDED_FRAME_BOUNDS = 9;
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool ShowWindowAsync(nint hwnd, int command);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct RECT
+    {
+        public int Left, Top, Right, Bottom;
+    }
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmGetWindowAttribute(nint hwnd, int attribute, out RECT value, int size);
+
+    /// <summary>
+    /// The visible frame of a top-level window, without the invisible resize borders that Windows 10/11 add around it
+    /// (UIA's BoundingRectangle includes them). Returns false for child windows or when DWM cannot tell.
+    /// </summary>
+    public static bool TryGetVisibleFrame(nint hwnd, out System.Drawing.Rectangle frame)
+    {
+        frame = System.Drawing.Rectangle.Empty;
+        if (hwnd == 0) return false;
+        if (DwmGetWindowAttribute(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, out RECT r, Marshal.SizeOf<RECT>()) != 0) return false;
+        frame = System.Drawing.Rectangle.FromLTRB(r.Left, r.Top, r.Right, r.Bottom);
+        return frame.Width > 0 && frame.Height > 0;
+    }
 
     [DllImport("user32.dll")]
     private static extern nint SendMessageTimeoutW(nint hwnd, uint msg, nint wParam, nint lParam, uint flags, uint timeoutMs, out nint result);
