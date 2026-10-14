@@ -124,6 +124,12 @@ public sealed partial class CommandDispatcher
     /// Finds a window by title on the desktop, among the application's owned dialogs and among the windows only Win32
     /// lists, trying each pass of <paramref name="match"/> on all of them before the next (looser) pass.
     /// Among equal matches, new windows (not in <paramref name="existing"/>) win, then the preferred PID.
+    /// <para>
+    /// Windows in <paramref name="existing"/> (open before the application was launched) only match on the first pass, the
+    /// exact title: while a slow application (a UWP app) has not shown its window yet, a looser pass would otherwise accept
+    /// an unrelated window whose title merely starts with or contains the text, such as an editor showing
+    /// "calculator.flow.yaml", and a later close would close that window.
+    /// </para>
     /// </summary>
     private IUiElement? FindTopLevelByTitle(TitleMatch match, int? preferPid, HashSet<nint>? existing = null)
     {
@@ -137,14 +143,18 @@ public sealed partial class CommandDispatcher
         IReadOnlyList<IUiElement>? owned = null;
         List<NativeMethods.TopLevelWindow>? win32 = null;
 
+        var pass = 0;
         foreach (var matches in match.Passes())
         {
-            var found = all.Where(w => matches(w.Name)).OrderBy(Rank).FirstOrDefault();
+            var loose = pass++ > 0;
+            bool Allowed(nint hwnd) => !loose || existing is null || !existing.Contains(hwnd);
+
+            var found = all.Where(w => matches(w.Name) && Allowed(w.WindowHandle)).OrderBy(Rank).FirstOrDefault();
             if (found is not null) return found;
 
             // Owned dialogs of WPF / WinForms apps live under their owner window in the UIA tree, not on the desktop
             owned ??= ChildWindows();
-            found = owned.FirstOrDefault(w => matches(w.Name));
+            found = owned.FirstOrDefault(w => matches(w.Name) && Allowed(w.WindowHandle));
             if (found is not null) return found;
 
             // Last resort: windows Win32 sees but UIA does not list (for example ShowDialog dialogs of .NET Framework
@@ -152,7 +162,7 @@ public sealed partial class CommandDispatcher
             win32 ??= [.. NativeMethods.VisibleTopLevelWindows()
                 .Where(w => w.Title.Length > 0)
                 .OrderBy(w => (existing is not null && existing.Contains(w.Handle) ? 2 : 0) + (w.ProcessId == preferPid ? 0 : 1))];
-            var hit = win32.FirstOrDefault(w => matches(w.Title));
+            var hit = win32.FirstOrDefault(w => matches(w.Title) && Allowed(w.Handle));
             if (hit.Handle != 0) return _s.Driver.FromHandle(hit.Handle);
         }
         return null;

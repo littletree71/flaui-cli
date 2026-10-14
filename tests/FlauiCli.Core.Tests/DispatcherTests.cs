@@ -196,6 +196,61 @@ public sealed class DispatcherTests : IDisposable
     }
 
     [Fact]
+    public void OpenDoesNotMistakeAnExistingWindowWithASimilarTitleForTheApp()
+    {
+        // An editor that was already open shows a file whose name starts with the window title being waited for
+        var editor = new FakeElement(ControlKind.Window, "calculator.flow.yaml - flaui-cli - Visual Studio Code")
+            { ProcessId = 900, WindowHandle = 900, Bounds = new(0, 0, 800, 600) };
+        _app.Driver.TopLevel.Add(editor);
+        // The application shows its window only after a while (like a UWP app)
+        _app.Window.Alive = false;
+        using var shown = new Timer(_ => _app.Window.Alive = true, null, 700, Timeout.Infinite);
+
+        Ok(_app.Open());
+        Assert.Same(_app.Window, _app.Session.CurrentWindow);
+        Ok(_app.Run("close"));
+        Assert.DoesNotContain("close", editor.Actions);
+    }
+
+    [Fact]
+    public void OpenStillAcceptsAnAlreadyOpenWindowWithTheExactTitle()
+    {
+        // A single-instance app (UWP Calculator) reuses the window that was already open
+        _app.Driver.TopLevel.Add(_app.Window);
+        Ok(_app.Open());
+        Assert.Same(_app.Window, _app.Session.CurrentWindow);
+    }
+
+    [Fact]
+    public void VerboseEndsTheResultWithATimingBreakdown()
+    {
+        Ok(_app.Open());
+        var r = _app.Run("click", ("target", "id=num1Button"), ("verbose", "true"));
+        Ok(r);
+        Assert.Matches(@"### Timing\r?\n- find: \d+\.\d\d s\r?\n- action: \d+\.\d\d s\r?\n- total: \d+\.\d\d s$", r.Text);
+        Assert.True(r.Data?.ContainsKey("timing.findMs"));
+
+        // Without --verbose there is no breakdown
+        Assert.DoesNotContain("### Timing", _app.Run("click", ("target", "id=num1Button")).Text);
+
+        // A lookup that times out reports where the time went
+        var miss = _app.Run("click", ("target", "id=noSuchButton"), ("timeout", "200"), ("verbose", "true"));
+        Assert.False(miss.Ok);
+        Assert.Contains("- find: 0.", miss.Text);
+    }
+
+    [Fact]
+    public void VerboseIsNotRecorded()
+    {
+        Ok(_app.Open());
+        Ok(_app.Run("record", ("action", "start")));
+        Ok(_app.Run("click", ("target", "id=num1Button"), ("verbose", "true")));
+        Ok(_app.Run("record", ("action", "stop"), ("out", "verbose.yaml")));
+        var step = Assert.Single(ScriptYaml.Load(Path.Combine(_app.Cwd, "verbose.yaml")).Steps);
+        Assert.Null(step.Get("verbose"));
+    }
+
+    [Fact]
     public void RecordingReplacesRefsWithStableSelectors()
     {
         Ok(_app.Open());

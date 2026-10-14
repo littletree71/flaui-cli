@@ -70,7 +70,7 @@ public sealed partial class CommandDispatcher
         };
 
         var timeout = ctx.Timeout;
-        if (!Poll(timeout, () => satisfied(_resolver.TryResolveOnce(raw))))
+        if (!Poll(timeout, () => satisfied(TryResolveOnce(ctx, raw))))
             throw new CliException($"Timed out after {timeout}ms: {raw} did not reach state '{state}'");
         return $"### Result\n{raw} reached state '{state}'";
     }
@@ -174,7 +174,7 @@ public sealed partial class CommandDispatcher
         // Assertions retry until the timeout (like Playwright's expect)
         var passed = Poll(ctx.Timeout, () =>
         {
-            failure = EvaluateAssertion(kind, expected, _resolver.TryResolveOnce(raw), raw);
+            failure = EvaluateAssertion(kind, expected, TryResolveOnce(ctx, raw), raw);
             return failure is null;
         });
         if (!passed) throw new AssertionFailedException($"Assertion failed: {failure}");

@@ -111,7 +111,9 @@ Run `flaui-cli --help` or `flaui-cli <command> --help` for details.
 | Other | `install-skill` |
 
 Global options: `-s, --session <name>` (parallel sessions; defaults to the `FLAUI_CLI_SESSION` environment variable, then `default`),
-`--json` (structured output). Element commands take `--timeout <ms>`, and action commands take `--note <text>` for documents.
+`--json` (structured output), `--verbose` (end the result with a timing breakdown: finding elements, the action, the
+automatic snapshot, the total in the daemon and the total including the round trip). Element commands take
+`--timeout <ms>`, and action commands take `--note <text>` for documents.
 `close` closes the window and stops the session's daemon; `close --keep-app` ends the session but leaves the application running.
 `close-window [index|ref|title]` closes a single window or dialog (WindowPattern, else `WM_CLOSE`, so dialogs without a Cancel
 button close too) and keeps the session; when it was the current window, the session switches to another window of the app.
@@ -208,6 +210,7 @@ which is slow for windows with thousands of elements (especially .NET Framework 
 - Use `snapshot --depth N` or `snapshot --root <target>`: only that part of the tree is read. `find <text>` searches without printing the tree.
 - Prefer selectors with `id=`, `name=`, `class=` or `type=`: they stop at the first match. `text=`, `nth=` and `xpath=` need every match.
 - Scope selectors with `>>` (for example `id=toolStrip1 >> name=Query`), and close windows you no longer need (`close-window`).
+- Add `--verbose` to see where the time goes (`find` / `action` / `snapshot`); include it when reporting a slow command.
 - Raise `--timeout` (or `timeouts.action`) when lookups take longer than the default 5 seconds.
 
 UIA3 descendant searches stop after visiting about 512 elements on some providers (seen with WinForms), without an error.

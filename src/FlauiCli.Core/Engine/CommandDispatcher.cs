@@ -20,6 +20,12 @@ internal sealed class CommandContext(CommandCall call, CliConfig config)
 
     public int Timeout => Call.GetInt("timeout") ?? Config.Timeouts.Action;
 
+    /// <summary>Whether the result ends with a timing breakdown (<c>--verbose</c>).</summary>
+    public bool Verbose => Call.GetBool(CommandCall.VerboseKey);
+
+    /// <summary>Time spent resolving targets (selectors and refs), for the timing breakdown.</summary>
+    public TimeSpan FindTime { get; set; }
+
     /// <summary>Stable selectors for the refs used by this command (for recording and documents).</summary>
     public Dictionary<string, string> RefSelectors { get; } = new(StringComparer.OrdinalIgnoreCase);
 
@@ -99,9 +105,13 @@ public sealed partial class CommandDispatcher
 
     public CommandResult Execute(CommandCall call)
     {
+        var total = Stopwatch.StartNew();
+        CommandContext? ctx = null;
+        var handlerTime = TimeSpan.Zero;
+        TimeSpan? snapshotTime = null;
         try
         {
-            var ctx = new CommandContext(call, CliConfig.Load(call.Cwd));
+            ctx = new CommandContext(call, CliConfig.Load(call.Cwd));
             if (!_handlers.TryGetValue(call.Command, out var handler))
                 throw new CliException($"Unknown command: {call.Command} (run flaui-cli --help for the list of commands)");
 
@@ -110,31 +120,62 @@ public sealed partial class CommandDispatcher
             // Fallback searches on large trees share the command's timeout
             using (SearchBudget.Begin(ctx.Timeout))
             {
-                text = handler(ctx);
+                try { text = handler(ctx); }
+                finally { handlerTime = total.Elapsed; }
             }
             RecordIfNeeded(ctx);
 
             if (AutoSnapshot && ctx.Config.AutoSnapshot && _s.CurrentWindow is not null && !IsInvokePending
                 && CommandCatalog.ActionCommands.Contains(call.Command))
             {
+                var start = total.Elapsed;
                 text += AutoSnapshotSection(ctx);
+                snapshotTime = total.Elapsed - start;
             }
 
-            return CommandResult.Success(text.TrimEnd(), ctx.Data.Count > 0 ? ctx.Data : null);
+            text = text.TrimEnd();
+            if (ctx.Verbose) text += "\n\n" + Timing(ctx, handlerTime, snapshotTime, total.Elapsed);
+            return CommandResult.Success(text, ctx.Data.Count > 0 ? ctx.Data : null);
         }
         catch (AssertionFailedException ex)
         {
-            return CommandResult.Failure(ex.Message, ExitCodes.AssertionFailed);
+            return CommandResult.Failure(ex.Message, ExitCodes.AssertionFailed, FailureTiming(ctx, handlerTime, total.Elapsed));
         }
         catch (CliException ex)
         {
-            return CommandResult.Failure(ex.Message);
+            return CommandResult.Failure(ex.Message, text: FailureTiming(ctx, handlerTime, total.Elapsed));
         }
         catch (Exception ex)
         {
-            return CommandResult.Failure($"{ex.GetType().Name}: {ex.Message}");
+            return CommandResult.Failure($"{ex.GetType().Name}: {ex.Message}", text: FailureTiming(ctx, handlerTime, total.Elapsed));
         }
     }
+
+    /// <summary>
+    /// The <c>--verbose</c> breakdown: finding the target element(s), the rest of the command (the action itself), the
+    /// snapshot saved after actions, and the total inside the daemon. Values are also added to the result data.
+    /// </summary>
+    private static string Timing(CommandContext ctx, TimeSpan handler, TimeSpan? snapshot, TimeSpan total)
+    {
+        var action = handler - ctx.FindTime;
+        var sb = new StringBuilder("### Timing\n");
+        sb.AppendLine($"- find: {Seconds(ctx.FindTime)}");
+        sb.AppendLine($"- action: {Seconds(action < TimeSpan.Zero ? TimeSpan.Zero : action)}");
+        if (snapshot is { } s) sb.AppendLine($"- snapshot: {Seconds(s)}");
+        sb.Append($"- total: {Seconds(total)}");
+
+        ctx.Data["timing.findMs"] = ((long)ctx.FindTime.TotalMilliseconds).ToString();
+        ctx.Data["timing.actionMs"] = ((long)Math.Max(0, action.TotalMilliseconds)).ToString();
+        if (snapshot is { } sn) ctx.Data["timing.snapshotMs"] = ((long)sn.TotalMilliseconds).ToString();
+        ctx.Data["timing.totalMs"] = ((long)total.TotalMilliseconds).ToString();
+        return sb.ToString();
+    }
+
+    /// <summary>The breakdown for a failed command (a lookup that timed out is exactly what a performance report needs).</summary>
+    private static string FailureTiming(CommandContext? ctx, TimeSpan handler, TimeSpan total) =>
+        ctx is { Verbose: true } ? Timing(ctx, handler == TimeSpan.Zero ? total : handler, null, total) : "";
+
+    internal static string Seconds(TimeSpan t) => $"{t.TotalSeconds.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)} s";
 
     // ───────────────────────── Pending invoke ─────────────────────────
 
@@ -171,13 +212,24 @@ public sealed partial class CommandDispatcher
 
     private IUiElement Resolve(CommandContext ctx, string raw)
     {
-        var el = _resolver.Resolve(raw, ctx.Timeout);
+        var sw = Stopwatch.StartNew();
+        IUiElement el;
+        try { el = _resolver.Resolve(raw, ctx.Timeout); }
+        finally { ctx.FindTime += sw.Elapsed; }
         if ((_s.Recorder is not null || _s.Doc is not null) && Selector.LooksLikeRef(raw) && !ctx.RefSelectors.ContainsKey(raw))
             ctx.RefSelectors[raw] = StableSelector(el);
         return el;
     }
 
     private IUiElement ResolveArg(CommandContext ctx, string arg = "target") => Resolve(ctx, ctx.Call.Require(arg));
+
+    /// <summary>One lookup without waiting (wait / assert poll with it); counted as find time.</summary>
+    private IUiElement? TryResolveOnce(CommandContext ctx, string raw)
+    {
+        var sw = Stopwatch.StartNew();
+        try { return _resolver.TryResolveOnce(raw); }
+        finally { ctx.FindTime += sw.Elapsed; }
+    }
 
     private string StableSelector(IUiElement el)
     {
@@ -340,7 +392,7 @@ public sealed partial class CommandDispatcher
     /// <summary>The command with refs replaced by stable selectors (for recording, documents and reports).</summary>
     private static CommandCall Recordable(CommandContext ctx)
     {
-        var rec = ctx.Call.Clone();
+        var rec = ctx.Call.Clone().Remove(CommandCall.VerboseKey);
         rec.Cwd = null;
         foreach (var arg in CommandCatalog.TargetArgNames)
         {
