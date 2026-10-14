@@ -16,6 +16,23 @@ public sealed record ElementQuery(
 }
 
 /// <summary>
+/// Depth limit for <see cref="IUiElement.CaptureTree"/>, counted the way a snapshot prints levels: nodes for which
+/// <see cref="IsTransparent"/> returns true (unnamed containers that are not printed) do not count as a level.
+/// Drivers may capture more than this (the formatter applies the limit again), but never less.
+/// </summary>
+public sealed record CaptureDepth(int MaxDepth, Func<ElementNode, bool> IsTransparent)
+{
+    /// <summary>
+    /// Whether the children of a node on printed level <paramref name="level"/> (the root is level 0) need their own
+    /// children. A printed node on the last level only needs to know that it has children (the snapshot shows "…").
+    /// </summary>
+    public bool ExpandsChildren(int level, bool transparent) => transparent || level + 1 < MaxDepth;
+
+    /// <summary>Printed level of the children of a node: a transparent node is not printed, so they stay on its level.</summary>
+    public static int ChildLevel(int level, bool transparent) => transparent ? level : level + 1;
+}
+
+/// <summary>
 /// Abstraction of a UI element. Properties are read live; when a read fails (element gone,
 /// property not supported) a default value is returned instead of throwing.
 /// Operations prefixed with Try return false when the element does not support the pattern.
@@ -64,13 +81,19 @@ public interface IUiElement : IEquatable<IUiElement>
 
     IReadOnlyList<IUiElement> FindAll(ElementQuery query, SearchScope scope = SearchScope.Descendants);
 
+    /// <summary>First descendant (in tree order) that matches, or null. Stops searching at the first match.</summary>
+    IUiElement? FindFirst(ElementQuery query);
+
     IReadOnlyList<IUiElement> FindByXPath(string xpath);
 
     /// <summary>XPath from <paramref name="root"/> to this element, or null when it cannot be built.</summary>
     string? GetXPathFrom(IUiElement root);
 
-    /// <summary>Fetches a property snapshot of the whole subtree in one go (Control View).</summary>
-    ElementNode CaptureTree();
+    /// <summary>
+    /// Fetches a property snapshot of the subtree (Control View); with <paramref name="depth"/>, only as deep as a
+    /// snapshot limited to that depth prints, so large trees are not walked completely.
+    /// </summary>
+    ElementNode CaptureTree(CaptureDepth? depth = null);
 
     void Focus();
     void SetForeground();

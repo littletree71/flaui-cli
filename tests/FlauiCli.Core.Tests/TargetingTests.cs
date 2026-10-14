@@ -59,6 +59,47 @@ public class TargetingTests
         Assert.Same(t.Inner, found[0]);
     }
 
+    [Fact]
+    public void FindFirstStopsAtTheFirstVisibleMatch()
+    {
+        var t = Tree();
+        Assert.Same(t.Ok, ElementFinder.FindFirst(Selector.Parse("id=okButton"), [t.Root]));
+        Assert.Equal(1, t.Root.FindFirstCalls);
+        Assert.Same(t.Inner, ElementFinder.FindFirst(Selector.Parse("id=panel >> id=okButton"), [t.Root]));
+        Assert.Null(ElementFinder.FindFirst(Selector.Parse("id=missing"), [t.Root]));
+    }
+
+    [Theory]
+    [InlineData("id=okButton")]
+    [InlineData("name=Dup")]
+    [InlineData("name=Dup&&nth=1")]
+    [InlineData("text=pan")]
+    [InlineData("type=Button&&name=OK")]
+    [InlineData("id=top >> name=Dup")]
+    [InlineData("id=nothing")]
+    public void FindFirstAgreesWithFindAll(string selector)
+    {
+        foreach (var hide in new[] { "", "Ok", "DupA", "all" })
+        {
+            var t = Tree();
+            if (hide is "Ok" or "all") t.Ok.IsOffscreen = true;
+            if (hide is "DupA" or "all") t.DupA.IsOffscreen = true;
+            if (hide is "all") { t.Inner.IsOffscreen = true; t.DupB.IsOffscreen = true; }
+            var all = ElementFinder.FindAll(Selector.Parse(selector), [t.Root]);
+            Assert.Same(all.FirstOrDefault(), ElementFinder.FindFirst(Selector.Parse(selector), [t.Root]));
+        }
+    }
+
+    [Fact]
+    public void FindFirstPrefersAVisibleMatchInALaterRoot()
+    {
+        var t = Tree();
+        t.Ok.IsOffscreen = true;
+        t.Inner.IsOffscreen = true;
+        var popup = new FakeElement(ControlKind.Window, "Popup").Add(new FakeElement(ControlKind.Button, "OK", "okButton"));
+        Assert.Same(popup.Children[0], ElementFinder.FindFirst(Selector.Parse("id=okButton"), [t.Root, popup]));
+    }
+
     [Theory]
     [InlineData("button", ControlKind.Button)]
     [InlineData("textbox", ControlKind.Edit)]

@@ -20,10 +20,11 @@ internal static class SnapshotFormatter
     private static readonly HashSet<ControlKind> ValueKinds =
         [ControlKind.Edit, ControlKind.ComboBox, ControlKind.Document, ControlKind.Spinner, ControlKind.Slider, ControlKind.ProgressBar];
 
-    public static string Format(ElementNode root, RefRegistry refs, SnapshotOptions options)
+    /// <param name="collapse">RuntimeId of a node printed elsewhere (a window shown on its own): printed as one line without its children.</param>
+    public static string Format(ElementNode root, RefRegistry refs, SnapshotOptions options, string? collapse = null)
     {
         var sb = new StringBuilder();
-        Emit(sb, root, refs, options, indent: 0, depth: 0, isRoot: true);
+        Emit(sb, root, refs, options, collapse, indent: 0, depth: 0, isRoot: true);
         return sb.ToString().TrimEnd();
     }
 
@@ -55,7 +56,14 @@ internal static class SnapshotFormatter
         return sb.ToString();
     }
 
-    private static void Emit(StringBuilder sb, ElementNode n, RefRegistry refs, SnapshotOptions o, int indent, int depth, bool isRoot)
+    /// <summary>
+    /// Depth limit for <see cref="IUiElement.CaptureTree"/> that matches what <see cref="Format"/> prints with these
+    /// options (unprinted containers do not count as a level), or null when the depth is unlimited.
+    /// </summary>
+    public static CaptureDepth? CaptureDepthFor(SnapshotOptions o) =>
+        o.MaxDepth > 0 ? new CaptureDepth(o.MaxDepth, o.All ? _ => false : IsPureContainer) : null;
+
+    private static void Emit(StringBuilder sb, ElementNode n, RefRegistry refs, SnapshotOptions o, string? collapse, int indent, int depth, bool isRoot)
     {
         if (!o.All && !isRoot)
         {
@@ -64,13 +72,19 @@ internal static class SnapshotFormatter
             if (IsPureContainer(n))
             {
                 // Unnamed pure containers are not printed; their children move up one level
-                foreach (var c in n.Children) Emit(sb, c, refs, o, indent, depth, isRoot: false);
+                foreach (var c in n.Children) Emit(sb, c, refs, o, collapse, indent, depth, isRoot: false);
                 return;
             }
         }
 
         var r = refs.Assign(n);
         sb.Append(' ', indent * 2).Append("- ").Append(Line(n, r, o.Boxes));
+
+        if (!isRoot && collapse is not null && n.RuntimeId == collapse)
+        {
+            sb.AppendLine(" (current window, shown above)");
+            return;
+        }
 
         if (o.MaxDepth > 0 && depth + 1 >= o.MaxDepth)
         {
@@ -80,7 +94,7 @@ internal static class SnapshotFormatter
         }
 
         sb.AppendLine();
-        foreach (var c in n.Children) Emit(sb, c, refs, o, indent + 1, depth + 1, isRoot: false);
+        foreach (var c in n.Children) Emit(sb, c, refs, o, collapse, indent + 1, depth + 1, isRoot: false);
     }
 
     internal static bool IsPureContainer(ElementNode n) =>

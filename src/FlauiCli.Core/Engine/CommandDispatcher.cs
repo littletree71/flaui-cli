@@ -63,6 +63,7 @@ public sealed partial class CommandDispatcher
             ["restore"] = c => SetWindowState(c, WindowStateKind.Normal),
             ["resize"] = Resize,
             ["move"] = MoveWindow,
+            ["close-window"] = CloseWindow,
             ["snapshot"] = TakeSnapshot,
             ["find"] = Find,
             ["inspect"] = Inspect,
@@ -284,15 +285,31 @@ public sealed partial class CommandDispatcher
 
     private string BuildSnapshot(IUiElement root, SnapshotOptions options, bool includePopups)
     {
-        var sb = new StringBuilder(SnapshotFormatter.Format(root.CaptureTree(), _s.Refs, options));
+        var depth = SnapshotFormatter.CaptureDepthFor(options);
+        var others = new List<ElementNode>();
+        ElementNode? rootNode = null;
+        string? rootId = null;
         if (includePopups)
         {
+            rootId = root.RuntimeId;
             foreach (var w in _s.GetTopLevelWindows())
             {
                 if (w.Equals(root) || w.IsOffscreen) continue;
-                sb.AppendLine();
-                sb.Append(SnapshotFormatter.Format(w.CaptureTree(), _s.Refs, options));
+                var tree = w.CaptureTree(depth);
+                // A window inside another top-level window (an MDI child) is already part of that window's tree:
+                // reuse it instead of walking it a second time (only when the whole tree was captured)
+                if (rootNode is null && depth is null && rootId is not null)
+                    rootNode = tree.DescendantsAndSelf().FirstOrDefault(n => n.RuntimeId == rootId);
+                others.Add(tree);
             }
+        }
+
+        var sb = new StringBuilder(SnapshotFormatter.Format(rootNode ?? root.CaptureTree(depth), _s.Refs, options));
+        foreach (var tree in others)
+        {
+            sb.AppendLine();
+            // ... and print it only once, at the top
+            sb.Append(SnapshotFormatter.Format(tree, _s.Refs, options, collapse: rootId));
         }
         return sb.ToString();
     }

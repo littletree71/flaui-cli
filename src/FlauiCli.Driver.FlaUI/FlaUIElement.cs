@@ -156,6 +156,9 @@ public sealed class FlaUIElement : IUiElement
         return [.. found.Select(e => new FlaUIElement(e))];
     }
 
+    public IUiElement? FindFirst(ElementQuery query) =>
+        Inner.FindFirstDescendant(BuildCondition(query)) is { } e ? new FlaUIElement(e) : null;
+
     private ConditionBase BuildCondition(ElementQuery q)
     {
         var cf = Inner.Automation.ConditionFactory;
@@ -219,7 +222,7 @@ public sealed class FlaUIElement : IUiElement
         }
     }
 
-    public ElementNode CaptureTree() => TreeCapture.Capture(Inner);
+    public ElementNode CaptureTree(CaptureDepth? depth = null) => TreeCapture.Capture(Inner, depth);
 
     public void Focus() => Inner.Focus();
 

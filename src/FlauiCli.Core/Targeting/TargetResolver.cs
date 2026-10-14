@@ -17,8 +17,7 @@ internal sealed class TargetResolver(AutomationSession session)
         var sw = Stopwatch.StartNew();
         while (true)
         {
-            var all = ElementFinder.FindAll(selector, session.SearchRoots());
-            if (all.Count > 0) return all[0];
+            if (ElementFinder.FindFirst(selector, session.SearchRoots()) is { } found) return found;
             if (sw.ElapsedMilliseconds >= timeoutMs)
                 throw new ElementNotFoundException(raw, $"waited {timeoutMs}ms");
             Thread.Sleep(PollIntervalMs);
@@ -34,8 +33,7 @@ internal sealed class TargetResolver(AutomationSession session)
             try { return ResolveRef(selector.Ref!); }
             catch (CliException) { return null; }
         }
-        var all = ElementFinder.FindAll(selector, session.SearchRoots());
-        return all.Count > 0 ? all[0] : null;
+        return ElementFinder.FindFirst(selector, session.SearchRoots());
     }
 
     private IUiElement ResolveRef(string r)
