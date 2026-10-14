@@ -69,7 +69,8 @@ Element commands take `--timeout <ms>`; action commands take `--note <text>` (th
 `close` closes the window and stops the session's daemon; `close --keep-app` ends the session and leaves the app running.
 `open` treats a value containing `!` as a Store app AUMID (for example `Microsoft.WindowsCalculator_8wekyb3d8bbwe!App`).
 
-Exit codes: 0 success, 1 assertion failed, 2 error, 3 session not running. Add `--json` for structured output.
+Exit codes: 0 success, 1 assertion failed, 2 error, 3 session not running. Add `--json` for structured output and
+`--verbose` for a timing breakdown (`find` / `action` / `snapshot` / `total`) at the end of the result.
 Use `-s <name>` (or the `FLAUI_CLI_SESSION` environment variable) to run several sessions.
 
 ## Producing YAML test scripts
@@ -100,8 +101,9 @@ steps:
   - assert: { target: id=CalculatorResults, text: Display is 1 }
 ```
 
-- Top-level fields: `name`, `app`, `timeout` (default ms per step), `steps`.
+- Top-level fields: `name`, `app`, `timeout` (default ms per step; launching waits at least `timeouts.launch`, 20 s by default), `steps`.
 - `app`: `launch` (exe or AUMID), `args`, `window`, `attach` (PID or process name), `close` (default `true` for launch, `false` for attach).
+  A launched app is closed even when the script fails, and terminated when its window never appeared.
 - A scalar step value is the command's first argument; a mapping gives named arguments and options. Local commands (`run`, `list`...) are not allowed.
 - `run a.flow.yaml b.flow.yaml [--reporter junit --output report.xml] [--bail] [--doc out/docs --doc-format md,html]` runs in its
   own process (no session needed), saves a screenshot when a script fails and exits with 1 if any script fails.
@@ -138,7 +140,8 @@ Scripts can produce documents directly: `flaui-cli run flow.yaml --doc docs/flow
 - `wait-window` prefers an exact title, then one starting with the text, then one containing it. In MDI apps the parent's title
   contains the child's title, so use `--exact` or `--regex "^Child title"` when the child's title varies.
 - `close-window [title]` closes one window or dialog (also dialogs without a Cancel button, where `press Escape` does nothing)
-  and keeps the session; `close` ends the whole session.
+  and keeps the session; closing the current window switches back to the window that was current before it (the MDI
+  child a dialog came from). `close` ends the whole session.
 - `select` on a combo box checks that the value changed and otherwise sets it through ValuePattern; if it still fails, use `fill`.
 - WinForms ListView rows: the `listitem` box spans the whole row, so `click` may hit empty space. Use `select <list> <item>` or
   click the text inside the row (`id=lvItems >> type=text&&name=BRAVO`).
@@ -146,5 +149,6 @@ Scripts can produce documents directly: `flaui-cli run flow.yaml --doc docs/flow
   `snapshot --depth N` / `--root <t>`, prefer `id=` / `name=` / `type=` selectors (they stop at the first match), scope with `>>`,
   close unused windows and raise `--timeout`. Past about 512 elements UIA3 truncates searches silently; flaui-cli fills in
   the rest level by level within `--timeout`, so a selector that matches nothing waits out the timeout and a deep one may
-  need a larger timeout: scope it from a nearby container.
+  need a larger timeout: scope it from a nearby container. Add `--verbose` to see whether the time goes into finding the
+  element, the action or the automatic snapshot.
 - A snapshot of a minimized window has no content; run `restore` first.

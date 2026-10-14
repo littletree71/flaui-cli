@@ -13,6 +13,9 @@ public sealed class CommandCall
     /// <summary>Separator for multi-valued arguments (for example several --highlight options).</summary>
     public const char MultiValueSeparator = '\n';
 
+    /// <summary>Set by the global <c>--verbose</c> option: the result ends with a timing breakdown. Never recorded.</summary>
+    public const string VerboseKey = "verbose";
+
     public CommandCall() { }
 
     public CommandCall(string command, IDictionary<string, string>? args = null)

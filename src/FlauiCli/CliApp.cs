@@ -21,11 +21,18 @@ internal static class CliApp
         Recursive = true,
     };
 
+    private static readonly Option<bool> VerboseOption = new("--verbose")
+    {
+        Description = "End the result with a timing breakdown (find / action / snapshot / total)",
+        Recursive = true,
+    };
+
     public static int Run(string[] args)
     {
         var root = new RootCommand("flaui-cli: Windows desktop UI automation CLI powered by FlaUI (modelled on playwright-cli)");
         root.Options.Add(SessionOption);
         root.Options.Add(JsonOption);
+        root.Options.Add(VerboseOption);
         foreach (var spec in CommandCatalog.All) root.Subcommands.Add(Build(spec));
         return root.Parse(args).Invoke();
     }
@@ -96,6 +103,7 @@ internal static class CliApp
                 }
             }
 
+            if (pr.GetValue(VerboseOption)) call.Set(CommandCall.VerboseKey, "true");
             var session = pr.GetValue(SessionOption) ?? Environment.GetEnvironmentVariable(SessionEnvVar) ?? "default";
             var json = pr.GetValue(JsonOption);
             try

@@ -112,7 +112,8 @@ selector 會自動等待元素出現，斷言會自動重試直到逾時（預�
 | 其他 | `install-skill` |
 
 全域選項：`-s, --session <名稱>`（多個 session 並行；未指定時用環境變數 `FLAUI_CLI_SESSION`，再沒有則為 `default`）、
-`--json`（結構化輸出）。元素相關指令可加 `--timeout <毫秒>`，動作指令可加 `--note <文字>` 作為文件的步驟說明。
+`--json`（結構化輸出）、`--verbose`（在結果最後附上時間分解：尋找元素、動作本身、自動 snapshot、daemon 內的總時間，以及含往返的
+總時間）。元素相關指令可加 `--timeout <毫秒>`，動作指令可加 `--note <文字>` 作為文件的步驟說明。
 `close` 會關閉視窗並結束該 session 的 daemon；`close --keep-app` 只結束 session，保留應用程式繼續執行。
 `close-window [索引|ref|標題]` 只關閉單一視窗或對話框（優先用 WindowPattern，否則送 `WM_CLOSE`，沒有取消按鈕的對話框也能關），
 session 會繼續；關掉的是目前視窗時，會自動切換到應用程式的其他視窗。
@@ -207,6 +208,7 @@ WinForms 程式）會比較慢。加快的方法：
 - 優先使用 `id=`、`name=`、`class=`、`type=` 的 selector，找到第一個符合的就會停止；`text=`、`nth=`、`xpath=` 需要列出所有符合的元素。
 - 用 `>>` 縮小範圍（例如 `id=toolStrip1 >> name=Query`），並關掉用不到的視窗（`close-window`）。
 - 尋找元素超過預設 5 秒時，調高 `--timeout`（或 `timeouts.action`）。
+- 加上 `--verbose` 可以看到時間花在哪裡（`find` / `action` / `snapshot`）；回報指令太慢時請附上它的輸出。
 
 UIA3 的子孫搜尋在某些 provider（例如 WinForms）走訪約 512 個元素後就會停止，而且不會回報錯誤。flaui-cli 會保留 UIA 找到的
 結果並補上其餘部分：視窗透過列舉子視窗與擁有的視窗取得，其他 selector 在命令的 `--timeout` 內逐層往下找，`snapshot` 只重讀被

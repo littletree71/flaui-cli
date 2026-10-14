@@ -12,7 +12,14 @@ internal static class RemoteCommands
             return RecordCapture(call, session, json);
 
         var autoStart = call.Command is "open" or "attach";
+        var sw = System.Diagnostics.Stopwatch.StartNew();
         var result = DaemonClient.Send(session, call, autoStart);
+        // The daemon's breakdown plus what it cannot see: starting the daemon and the round trip
+        if (call.GetBool(CommandCall.VerboseKey) && result.Text.Contains("### Timing"))
+        {
+            result.Text += $"\n- total (client): {sw.Elapsed.TotalSeconds.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)} s";
+            if (result.Data is { } data) data["timing.clientMs"] = ((long)sw.Elapsed.TotalMilliseconds).ToString();
+        }
         Output.Print(result, json);
         return result.ExitCode;
     }
