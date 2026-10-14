@@ -56,7 +56,7 @@ internal static class NativeMethods
             if (!IsWindowVisible(hwnd)) return true;
             GetWindowThreadProcessId(hwnd, out var pid);
             if (processId is int wanted && pid != wanted) return true;
-            if (DwmGetWindowAttribute(hwnd, DWMWA_CLOAKED, out var cloaked, sizeof(int)) == 0 && cloaked != 0) return true;
+            if (DwmGetWindowAttribute(hwnd, DWMWA_CLOAKED, out int cloaked, sizeof(int)) == 0 && cloaked != 0) return true;
             result.Add(new TopLevelWindow(hwnd, pid, GetText(hwnd), GetClass(hwnd)));
             return true;
         };
@@ -134,14 +134,9 @@ internal static class NativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool ShowWindowAsync(nint hwnd, int command);
 
-    [StructLayout(LayoutKind.Sequential)]
-    private struct RECT
-    {
-        public int Left, Top, Right, Bottom;
-    }
-
-    [DllImport("dwmapi.dll")]
-    private static extern int DwmGetWindowAttribute(nint hwnd, int attribute, out RECT value, int size);
+    /// <summary>DwmGetWindowAttribute for RECT values, read as four ints: left, top, right, bottom.</summary>
+    [DllImport("dwmapi.dll", EntryPoint = "DwmGetWindowAttribute")]
+    private static extern int DwmGetWindowRect(nint hwnd, int attribute, [Out] int[] rect, int size);
 
     /// <summary>
     /// The visible frame of a top-level window, without the invisible resize borders that Windows 10/11 add around it
@@ -151,8 +146,9 @@ internal static class NativeMethods
     {
         frame = System.Drawing.Rectangle.Empty;
         if (hwnd == 0) return false;
-        if (DwmGetWindowAttribute(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, out RECT r, Marshal.SizeOf<RECT>()) != 0) return false;
-        frame = System.Drawing.Rectangle.FromLTRB(r.Left, r.Top, r.Right, r.Bottom);
+        var r = new int[4];
+        if (DwmGetWindowRect(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, r, r.Length * sizeof(int)) != 0) return false;
+        frame = System.Drawing.Rectangle.FromLTRB(r[0], r[1], r[2], r[3]);
         return frame.Width > 0 && frame.Height > 0;
     }
 
