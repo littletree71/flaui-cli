@@ -89,11 +89,34 @@ public sealed class FakeElement : IUiElement
         && (q.Kind is null || e.Kind == q.Kind)
         && (q.ProcessId is null || e.ProcessId == q.ProcessId);
 
+    public IUiElement? FindFirst(ElementQuery query)
+    {
+        FindFirstCalls++;
+        return Descendants().FirstOrDefault(e => e.Alive && Matches(e, query));
+    }
+
+    /// <summary>Number of FindFirst calls on this element.</summary>
+    public int FindFirstCalls { get; private set; }
+
     public IReadOnlyList<IUiElement> FindByXPath(string xpath) => [];
 
     public string? GetXPathFrom(IUiElement root) => null;
 
-    public ElementNode CaptureTree()
+    /// <summary>Number of CaptureTree calls on this element (not counting the recursion into children).</summary>
+    public int CaptureTreeCalls { get; private set; }
+
+    /// <summary>Depth passed to the last CaptureTree call.</summary>
+    public CaptureDepth? LastCaptureDepth { get; private set; }
+
+    public ElementNode CaptureTree(CaptureDepth? depth = null, bool complete = true)
+    {
+        CaptureTreeCalls++;
+        LastCaptureDepth = depth;
+        return Capture(depth, level: 0, transparent: false, expand: true);
+    }
+
+    /// <summary>Builds the node; with a depth, leaves out what the driver would not fetch (see TreeCapture in the FlaUI driver).</summary>
+    private ElementNode Capture(CaptureDepth? depth, int level, bool transparent, bool expand)
     {
         var node = new ElementNode
         {
@@ -112,7 +135,15 @@ public sealed class FakeElement : IUiElement
             IsSelected = IsSelected,
             HasFocus = HasFocus,
         };
-        foreach (var c in Children.Where(c => c.Alive)) node.Children.Add(c.CaptureTree());
+        if (!expand) return node;
+        var expandChildren = depth?.ExpandsChildren(level, transparent) ?? true;
+        var childLevel = CaptureDepth.ChildLevel(level, transparent);
+        foreach (var c in Children.Where(c => c.Alive))
+        {
+            var childNode = c.Capture(null, 0, false, expand: false);
+            var childTransparent = depth?.IsTransparent(childNode) ?? false;
+            node.Children.Add(c.Capture(depth, childLevel, childTransparent, expandChildren));
+        }
         return node;
     }
 
@@ -183,6 +214,9 @@ public sealed class FakeElement : IUiElement
 
     public bool TryScroll(ScrollDirection direction) => false;
 
+    /// <summary>False simulates a combo box that accepts the selection without applying it (WinForms ToolStripComboBox).</summary>
+    public bool SelectAppliesValue { get; set; } = true;
+
     public bool TrySelectComboBoxItem(string? text, int? index, out string? selected)
     {
         selected = null;
@@ -190,7 +224,7 @@ public sealed class FakeElement : IUiElement
         var items = Children.Where(c => c.Kind == ControlKind.ListItem).ToList();
         var item = index is int i ? items.ElementAtOrDefault(i) : items.FirstOrDefault(c => c.Name == text);
         if (item is null) return false;
-        Value = item.Name;
+        if (SelectAppliesValue) Value = item.Name;
         selected = item.Name;
         Actions.Add("combo:" + item.Name);
         return true;

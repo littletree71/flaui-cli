@@ -1,8 +1,10 @@
 using System.Diagnostics;
 using System.Text;
+using System.Text.RegularExpressions;
 using FlauiCli.Core.Abstractions;
 using FlauiCli.Core.Commands;
 using FlauiCli.Core.Native;
+using FlauiCli.Core.Protocol;
 
 namespace FlauiCli.Core.Engine;
 
@@ -83,39 +85,77 @@ public sealed partial class CommandDispatcher
     }
 
     /// <summary>
-    /// Finds a top-level desktop window by title: exact matches first, then "contains".
-    /// Among equal titles, new windows (not in <paramref name="existing"/>) win, then the preferred PID.
+    /// How a window title is matched. By default an exact title wins over one that starts with the text, which wins
+    /// over one that only contains it (so an MDI child is preferred over the MDI parent, whose title contains the
+    /// child's title). <see cref="ExactOnly"/> and <see cref="Pattern"/> (a regular expression) narrow that down.
     /// </summary>
-    private IUiElement? FindTopLevelByTitle(string title, int? preferPid, HashSet<nint>? existing = null)
+    internal sealed record TitleMatch(string Text, bool ExactOnly = false, Regex? Pattern = null)
+    {
+        public static TitleMatch FromCall(CommandCall call, string title)
+        {
+            var exact = call.GetBool("exact");
+            if (!call.GetBool("regex")) return new TitleMatch(title, exact);
+            if (exact) throw new CliException("Use either --exact or --regex, not both");
+            try { return new TitleMatch(title, Pattern: new Regex(title, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1))); }
+            catch (ArgumentException ex) { throw new CliException($"Invalid regular expression: {ex.Message}", ex); }
+        }
+
+        /// <summary>Predicates tried in order; the first one that matches any window decides.</summary>
+        public IEnumerable<Func<string, bool>> Passes()
+        {
+            if (Pattern is not null)
+            {
+                yield return t => Pattern.IsMatch(t);
+                yield break;
+            }
+            yield return t => string.Equals(t, Text, StringComparison.OrdinalIgnoreCase);
+            if (ExactOnly) yield break;
+            yield return t => t.StartsWith(Text, StringComparison.OrdinalIgnoreCase);
+            yield return t => t.Contains(Text, StringComparison.OrdinalIgnoreCase);
+        }
+
+        public override string ToString() => Pattern is not null ? $"matching /{Text}/" : ExactOnly ? $"titled exactly \"{Text}\"" : $"titled \"{Text}\"";
+    }
+
+    private IUiElement? FindTopLevelByTitle(string title, int? preferPid, HashSet<nint>? existing = null) =>
+        FindTopLevelByTitle(new TitleMatch(title), preferPid, existing);
+
+    /// <summary>
+    /// Finds a window by title on the desktop, among the application's owned dialogs and among the windows only Win32
+    /// lists, trying each pass of <paramref name="match"/> on all of them before the next (looser) pass.
+    /// Among equal matches, new windows (not in <paramref name="existing"/>) win, then the preferred PID.
+    /// </summary>
+    private IUiElement? FindTopLevelByTitle(TitleMatch match, int? preferPid, HashSet<nint>? existing = null)
     {
         var all = _s.Driver.GetTopLevelWindows()
             .Where(w => w.Kind is ControlKind.Window or ControlKind.Pane && w.Name.Length > 0)
             .ToList();
         int Rank(IUiElement w) =>
             (existing is not null && existing.Contains(w.WindowHandle) ? 2 : 0) + (w.ProcessId == preferPid ? 0 : 1);
-        var found = MatchTitle(all, title, Rank);
-        if (found is not null) return found;
 
-        // Owned dialogs of WPF / WinForms apps live under their owner window in the UIA tree, not on the desktop
-        found = MatchTitle(ChildWindows(), title, _ => 0);
-        if (found is not null) return found;
+        // Both are only needed when the desktop has no match, and are fetched once for all passes
+        IReadOnlyList<IUiElement>? owned = null;
+        List<NativeMethods.TopLevelWindow>? win32 = null;
 
-        // Last resort: windows Win32 sees but UIA does not list (for example ShowDialog dialogs of .NET Framework
-        // WinForms MDI apps). Match on the Win32 title first so only candidates are turned into UIA elements.
-        var win32 = NativeMethods.VisibleTopLevelWindows()
-            .Where(w => w.Title.Length > 0)
-            .OrderBy(w => (existing is not null && existing.Contains(w.Handle) ? 2 : 0) + (w.ProcessId == preferPid ? 0 : 1))
-            .ToList();
-        var hit = win32.FirstOrDefault(w => string.Equals(w.Title, title, StringComparison.OrdinalIgnoreCase));
-        if (hit.Handle == 0) hit = win32.FirstOrDefault(w => w.Title.Contains(title, StringComparison.OrdinalIgnoreCase));
-        return hit.Handle != 0 ? _s.Driver.FromHandle(hit.Handle) : null;
-    }
+        foreach (var matches in match.Passes())
+        {
+            var found = all.Where(w => matches(w.Name)).OrderBy(Rank).FirstOrDefault();
+            if (found is not null) return found;
 
-    private static IUiElement? MatchTitle(IEnumerable<IUiElement> windows, string title, Func<IUiElement, int> rank)
-    {
-        var list = windows.ToList();
-        return list.Where(w => string.Equals(w.Name, title, StringComparison.OrdinalIgnoreCase)).OrderBy(rank).FirstOrDefault()
-               ?? list.Where(w => w.Name.Contains(title, StringComparison.OrdinalIgnoreCase)).OrderBy(rank).FirstOrDefault();
+            // Owned dialogs of WPF / WinForms apps live under their owner window in the UIA tree, not on the desktop
+            owned ??= ChildWindows();
+            found = owned.FirstOrDefault(w => matches(w.Name));
+            if (found is not null) return found;
+
+            // Last resort: windows Win32 sees but UIA does not list (for example ShowDialog dialogs of .NET Framework
+            // WinForms MDI apps). Match on the Win32 title first so only candidates are turned into UIA elements.
+            win32 ??= [.. NativeMethods.VisibleTopLevelWindows()
+                .Where(w => w.Title.Length > 0)
+                .OrderBy(w => (existing is not null && existing.Contains(w.Handle) ? 2 : 0) + (w.ProcessId == preferPid ? 0 : 1))];
+            var hit = win32.FirstOrDefault(w => matches(w.Title));
+            if (hit.Handle != 0) return _s.Driver.FromHandle(hit.Handle);
+        }
+        return null;
     }
 
     /// <summary>

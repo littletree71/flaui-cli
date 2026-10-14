@@ -65,4 +65,29 @@ public sealed class ScreenshotterTests
         Assert.True(one > 0);
         Assert.True(two > one + 20, $"badge 12 covers {two} px, badge 9 covers {one} px");
     }
+
+    [Fact]
+    public void BadgesOfAdjacentElementsDoNotOverlap()
+    {
+        // A row of toolbar buttons that touch each other, outlined like Annotate does (inflated by 3)
+        var image = new Size(400, 200);
+        var placed = new List<Rectangle>();
+        for (var i = 0; i < 6; i++)
+        {
+            var outline = new Rectangle(50 + i * 24, 100, 24, 24);
+            outline.Inflate(3, 3);
+            var (x, y) = Screenshotter.BadgePosition(outline, 24, 24, image, placed);
+            var badge = new Rectangle(x, y, 24, 24);
+            Assert.DoesNotContain(placed, p => p.IntersectsWith(badge));
+            Assert.True(new Rectangle(Point.Empty, image).Contains(badge));
+            placed.Add(badge);
+        }
+    }
+
+    [Fact]
+    public void FirstBadgeKeepsTheTopLeftCorner()
+    {
+        var outline = new Rectangle(97, 97, 46, 26);
+        Assert.Equal((97 - 24 + 4, 97 - 24 + 4), Screenshotter.BadgePosition(outline, 24, 24, new Size(300, 200), []));
+    }
 }

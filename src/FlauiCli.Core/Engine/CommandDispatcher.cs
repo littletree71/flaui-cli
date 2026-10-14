@@ -63,6 +63,7 @@ public sealed partial class CommandDispatcher
             ["restore"] = c => SetWindowState(c, WindowStateKind.Normal),
             ["resize"] = Resize,
             ["move"] = MoveWindow,
+            ["close-window"] = CloseWindow,
             ["snapshot"] = TakeSnapshot,
             ["find"] = Find,
             ["inspect"] = Inspect,
@@ -105,7 +106,12 @@ public sealed partial class CommandDispatcher
                 throw new CliException($"Unknown command: {call.Command} (run flaui-cli --help for the list of commands)");
 
             ThrowIfInvokePending(call);
-            var text = handler(ctx);
+            string text;
+            // Fallback searches on large trees share the command's timeout
+            using (SearchBudget.Begin(ctx.Timeout))
+            {
+                text = handler(ctx);
+            }
             RecordIfNeeded(ctx);
 
             if (AutoSnapshot && ctx.Config.AutoSnapshot && _s.CurrentWindow is not null && !IsInvokePending
@@ -282,17 +288,33 @@ public sealed partial class CommandDispatcher
         return $"### Window\n- Title: {w.Name}\n- PID: {w.ProcessId}\n";
     }
 
-    private string BuildSnapshot(IUiElement root, SnapshotOptions options, bool includePopups)
+    private string BuildSnapshot(IUiElement root, SnapshotOptions options, bool includePopups, bool complete = true)
     {
-        var sb = new StringBuilder(SnapshotFormatter.Format(root.CaptureTree(), _s.Refs, options));
+        var depth = SnapshotFormatter.CaptureDepthFor(options);
+        var others = new List<ElementNode>();
+        ElementNode? rootNode = null;
+        string? rootId = null;
         if (includePopups)
         {
+            rootId = root.RuntimeId;
             foreach (var w in _s.GetTopLevelWindows())
             {
                 if (w.Equals(root) || w.IsOffscreen) continue;
-                sb.AppendLine();
-                sb.Append(SnapshotFormatter.Format(w.CaptureTree(), _s.Refs, options));
+                var tree = w.CaptureTree(depth, complete);
+                // A window inside another top-level window (an MDI child) is already part of that window's tree:
+                // reuse it instead of walking it a second time (only when the whole tree was captured)
+                if (rootNode is null && depth is null && rootId is not null)
+                    rootNode = tree.DescendantsAndSelf().FirstOrDefault(n => n.RuntimeId == rootId);
+                others.Add(tree);
             }
+        }
+
+        var sb = new StringBuilder(SnapshotFormatter.Format(rootNode ?? root.CaptureTree(depth, complete), _s.Refs, options));
+        foreach (var tree in others)
+        {
+            sb.AppendLine();
+            // ... and print it only once, at the top
+            sb.Append(SnapshotFormatter.Format(tree, _s.Refs, options, collapse: rootId));
         }
         return sb.ToString();
     }
@@ -303,7 +325,8 @@ public sealed partial class CommandDispatcher
         {
             var window = _s.RequireWindow();
             var options = new SnapshotOptions(ctx.Config.Snapshot.Depth, false, ctx.Config.Snapshot.IncludeOffscreen);
-            var text = BuildSnapshot(window, options, includePopups: true);
+            // Not completed when UIA cuts a large tree: this runs after every action and is only a record
+            var text = BuildSnapshot(window, options, includePopups: true, complete: false);
             var path = Path.Combine(ctx.OutputDir, $"snapshot-{Stamp()}.yml");
             File.WriteAllText(path, text);
             return $"\n{WindowSection()}### Snapshot\n[Snapshot]({ctx.Relative(path)})";

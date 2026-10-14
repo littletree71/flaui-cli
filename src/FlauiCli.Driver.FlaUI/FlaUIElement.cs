@@ -149,11 +149,29 @@ public sealed class FlaUIElement : IUiElement
 
     public IReadOnlyList<IUiElement> FindAll(ElementQuery query, SearchScope scope = SearchScope.Descendants)
     {
-        var condition = BuildCondition(query);
+        // Descendant searches go through UiaSearch: UIA3 silently truncates them after about 512 elements
         var found = scope == SearchScope.Children
-            ? Inner.FindAllChildren(condition)
-            : Inner.FindAllDescendants(condition);
+            ? Inner.FindAllChildren(BuildCondition(query))
+            : [.. UiaSearch.FindAllDescendants(Inner, query, Matcher(query))];
         return [.. found.Select(e => new FlaUIElement(e))];
+    }
+
+    public IUiElement? FindFirst(ElementQuery query) =>
+        UiaSearch.FindFirstDescendant(Inner, BuildCondition(query), query, Matcher(query)) is { } e ? new FlaUIElement(e) : null;
+
+    /// <summary>Client-side equivalent of <see cref="BuildCondition"/> (exact and case-sensitive, like a UIA PropertyCondition).</summary>
+    private static Func<AutomationElement, bool> Matcher(ElementQuery q)
+    {
+        ControlType? type = q.Kind is { } k ? Mapping.ToControlType(k) : null;
+        return e =>
+        {
+            var lib = e.Automation.PropertyLibrary;
+            return (q.AutomationId is null || Props.Ref<string>(e, lib.Element.AutomationId) == q.AutomationId)
+                && (q.Name is null || Props.Ref<string>(e, lib.Element.Name) == q.Name)
+                && (q.ClassName is null || Props.Ref<string>(e, lib.Element.ClassName) == q.ClassName)
+                && (type is null || Props.Val<ControlType>(e, lib.Element.ControlType) == type)
+                && (q.ProcessId is null || Props.Val<int>(e, lib.Element.ProcessId) == q.ProcessId);
+        };
     }
 
     private ConditionBase BuildCondition(ElementQuery q)
@@ -219,7 +237,7 @@ public sealed class FlaUIElement : IUiElement
         }
     }
 
-    public ElementNode CaptureTree() => TreeCapture.Capture(Inner);
+    public ElementNode CaptureTree(CaptureDepth? depth = null, bool complete = true) => TreeCapture.Capture(Inner, depth, complete);
 
     public void Focus() => Inner.Focus();
 

@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.RegularExpressions;
 using FlauiCli.Core.Abstractions;
+using FlauiCli.Core.Native;
 using FlauiCli.Core.Snapshot;
 using FlauiCli.Core.Targeting;
 
@@ -36,27 +37,57 @@ public sealed partial class CommandDispatcher
 
     private string SwitchWindow(CommandContext ctx)
     {
-        var key = ctx.Call.Require("window");
+        ActivateWindow(FindWindow(ctx, ctx.Call.Require("window")));
+        return $"### Result\nSwitched window\n{WindowSection()}";
+    }
+
+    /// <summary>A window by index (as listed by windows), ref or title.</summary>
+    private IUiElement FindWindow(CommandContext ctx, string key)
+    {
         var list = WindowList();
-        IUiElement? target;
         if (int.TryParse(key, out var index))
+            return index >= 0 && index < list.Count ? list[index] : throw new CliException($"Window index out of range: {index} ({list.Count} windows)");
+        if (Selector.LooksLikeRef(key)) return Resolve(ctx, key);
+        return list.FirstOrDefault(w => string.Equals(w.Name, key, StringComparison.OrdinalIgnoreCase))
+               ?? list.FirstOrDefault(w => w.Name.Contains(key, StringComparison.OrdinalIgnoreCase))
+               ?? FindTopLevelByTitle(key, _s.CurrentWindow?.ProcessId)
+               ?? throw new CliException($"Window not found: {key}");
+    }
+
+    /// <summary>
+    /// Closes one window: WindowPattern first, then WM_CLOSE (what the title bar close button sends), which also
+    /// closes WinForms dialogs that have no Cancel button. When the current window closes, the session switches to
+    /// another window of the application.
+    /// </summary>
+    private string CloseWindow(CommandContext ctx)
+    {
+        var current = _s.RequireWindow();
+        var target = ctx.Call.Get("window") is { } key ? FindWindow(ctx, key) : current;
+        var label = Label(target);
+        var isCurrent = target.Equals(current);
+        var fallback = isCurrent
+            ? _s.GetTopLevelWindows().FirstOrDefault(w => !w.Equals(target) && w.Kind == ControlKind.Window && w.Name.Length > 0)
+            : null;
+        var hwnd = target.WindowHandle;
+        var timeout = ctx.Timeout;
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+
+        var closing = false;
+        try { closing = target.TryClose(); }
+        catch { /* No WindowPattern and no close button: WM_CLOSE below */ }
+
+        if (!Poll(closing ? Math.Min(timeout, 1500) : 0, () => !target.IsAlive))
         {
-            target = index >= 0 && index < list.Count ? list[index] : throw new CliException($"Window index out of range: {index} ({list.Count} windows)");
-        }
-        else if (Selector.LooksLikeRef(key))
-        {
-            target = Resolve(ctx, key);
-        }
-        else
-        {
-            target = list.FirstOrDefault(w => string.Equals(w.Name, key, StringComparison.OrdinalIgnoreCase))
-                     ?? list.FirstOrDefault(w => w.Name.Contains(key, StringComparison.OrdinalIgnoreCase))
-                     ?? FindTopLevelByTitle(key, _s.CurrentWindow?.ProcessId)
-                     ?? throw new CliException($"Window not found: {key}");
+            var posted = false;
+            try { posted = NativeMethods.PostClose(hwnd); }
+            catch { /* Not available */ }
+            var remaining = (int)Math.Max(0, timeout - sw.ElapsedMilliseconds);
+            if (!(posted || closing) || !Poll(remaining, () => !target.IsAlive))
+                throw new CliException($"{label} did not close within {timeout}ms (it may be asking for confirmation; check with snapshot or screenshot)");
         }
 
-        ActivateWindow(target);
-        return $"### Result\nSwitched window\n{WindowSection()}";
+        if (isCurrent && fallback is not null) ActivateWindow(fallback);
+        return $"### Result\nClosed {label}\n{WindowSection()}";
     }
 
     private string Focus(CommandContext ctx)
@@ -74,6 +105,10 @@ public sealed partial class CommandDispatcher
         window.SetForeground();
         return $"### Result\nBrought the window to the foreground\n{WindowSection()}";
     }
+
+    /// <summary>Minimized windows report no content (and off-screen bounds around -32000).</summary>
+    private static bool IsMinimized(IUiElement window) =>
+        NativeMethods.IsMinimized(window.WindowHandle) || window.Bounds is { X: <= -32000, Y: <= -32000 };
 
     private string SetWindowState(CommandContext ctx, WindowStateKind state)
     {
@@ -111,6 +146,8 @@ public sealed partial class CommandDispatcher
             ctx.Call.GetBool("boxes"),
             ctx.Call.GetBool("all") || ctx.Config.Snapshot.IncludeOffscreen);
         var text = BuildSnapshot(root, options, includePopups: root.Equals(window));
+        if (root.Equals(window) && IsMinimized(window))
+            text += "\n# The window is minimized, so its content is not listed. Run restore first.";
 
         if (ctx.Call.Get("filename") is { } file)
         {

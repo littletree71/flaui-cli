@@ -145,9 +145,12 @@ public sealed partial class CommandDispatcher
         string selected;
         if (el.Kind == ControlKind.ComboBox)
         {
+            var before = el.Value;
             if (!el.TrySelectComboBoxItem(index is null ? item : null, index, out var s))
                 throw new CliException($"Cannot select \"{item}\" in {label}");
             selected = s ?? item;
+            Input.WaitUntilIdle();
+            EnsureComboBoxValue(el, before, selected, label);
         }
         else
         {
@@ -168,6 +171,28 @@ public sealed partial class CommandDispatcher
         Input.WaitUntilIdle();
         AfterAction(ctx, el, $"Select \"{item}\" in {Friendly(el)}");
         return $"### Result\nSelected \"{selected}\" in {label}";
+    }
+
+    /// <summary>
+    /// Some combo boxes accept the SelectionItemPattern call without applying it (for example the WinForms
+    /// ToolStripComboBox): their value stays what it was. In that case the value is set through ValuePattern (as
+    /// fill does); when that is not possible either, the command fails instead of reporting a selection that did
+    /// not happen. Combo boxes whose value cannot be read are trusted.
+    /// </summary>
+    private void EnsureComboBoxValue(IUiElement el, string? before, string selected, string label)
+    {
+        bool Applied() => el.Value is not { } v || v.Trim() == selected.Trim() || v != before;
+        if (before is null || before.Trim() == selected.Trim() || Poll(500, Applied, intervalMs: 100)) return;
+
+        if (el.TrySetValue(selected))
+        {
+            Input.WaitUntilIdle();
+            if (Poll(500, Applied, intervalMs: 100)) return;
+        }
+
+        throw new CliException(
+            $"Selected \"{selected}\" in {label}, but the selection did not take effect: the value is still \"{before}\". " +
+            $"Try fill {_s.Refs.GetOrAssign(el)} \"{selected}\" instead");
     }
 
     private string SetChecked(CommandContext ctx, bool check)

@@ -101,7 +101,7 @@ selector 會自動等待元素出現，斷言會自動重試直到逾時（預�
 | 類別 | 指令 |
 |---|---|
 | 應用程式 | `open` `attach` `close` `status` `list` `close-all` `kill-all` |
-| 視窗 | `windows` `window` `focus` `maximize` `minimize` `restore` `resize` `move` `wait-window` |
+| 視窗 | `windows` `window` `focus` `maximize` `minimize` `restore` `resize` `move` `wait-window` `close-window` |
 | 檢視 | `snapshot` `find` `inspect` |
 | 動作 | `click` `dblclick` `hover` `fill` `type` `press` `select` `check` `uncheck` `expand` `collapse` `invoke` `scroll` `drag` |
 | 讀取 / 等待 / 斷言 | `get` `wait` `assert` `sleep` |
@@ -114,6 +114,10 @@ selector 會自動等待元素出現，斷言會自動重試直到逾時（預�
 全域選項：`-s, --session <名稱>`（多個 session 並行；未指定時用環境變數 `FLAUI_CLI_SESSION`，再沒有則為 `default`）、
 `--json`（結構化輸出）。元素相關指令可加 `--timeout <毫秒>`，動作指令可加 `--note <文字>` 作為文件的步驟說明。
 `close` 會關閉視窗並結束該 session 的 daemon；`close --keep-app` 只結束 session，保留應用程式繼續執行。
+`close-window [索引|ref|標題]` 只關閉單一視窗或對話框（優先用 WindowPattern，否則送 `WM_CLOSE`，沒有取消按鈕的對話框也能關），
+session 會繼續；關掉的是目前視窗時，會自動切換到應用程式的其他視窗。
+`wait-window <標題>` 依序比對完全相同、以該文字開頭、包含該文字的標題；`--exact` 只接受完全相同的標題，
+`--regex` 把標題當成正規表示式（適合 MDI 子視窗，因為 MDI 主視窗的標題也會包含子視窗標題）。
 結束碼：`0` 成功、`1` 斷言失敗、`2` 錯誤、`3` session 未啟動。
 
 ## YAML 測試腳本
@@ -191,6 +195,23 @@ flaui-cli doc stop --out docs/calculator --format md,html    # index.md + images
 }
 ```
 
+## 大型應用程式
+
+每個指令都透過 UI Automation 在目前視窗與應用程式其他頂層視窗中尋找元素，元素數以千計的視窗（特別是 .NET Framework 的
+WinForms 程式）會比較慢。加快的方法：
+
+- 在設定檔設 `"autoSnapshot": false`，關閉每個動作後自動存的 snapshot；只用 selector 的腳本不需要它。
+- 使用 `snapshot --depth N` 或 `snapshot --root <目標>`：只會讀取那一部分的樹。`find <文字>` 不會印出整棵樹。
+- 優先使用 `id=`、`name=`、`class=`、`type=` 的 selector，找到第一個符合的就會停止；`text=`、`nth=`、`xpath=` 需要列出所有符合的元素。
+- 用 `>>` 縮小範圍（例如 `id=toolStrip1 >> name=Query`），並關掉用不到的視窗（`close-window`）。
+- 尋找元素超過預設 5 秒時，調高 `--timeout`（或 `timeouts.action`）。
+
+UIA3 的子孫搜尋在某些 provider（例如 WinForms）走訪約 512 個元素後就會停止，而且不會回報錯誤。flaui-cli 會保留 UIA 找到的
+結果並補上其餘部分：視窗透過列舉子視窗與擁有的視窗取得，其他 selector 在命令的 `--timeout` 內逐層往下找，`snapshot` 只重讀被
+截斷的部分（最多 10 秒）。每個動作後自動存的 snapshot 不會補完，以維持動作速度。在這種視窗中找不到任何符合的 selector 時，會一直
+找到逾時為止；用 `>>` 從靠近目標的容器開始找，可以讓搜尋維持在小範圍。大型視窗深處的元素來不及找到時，請調高 `--timeout`。
+以上都只透過 UI Automation 與視窗列舉，flaui-cli 不會讀寫受測程式的記憶體。
+
 ## 架構
 
 ```
@@ -232,6 +253,8 @@ dotnet test tests/FlauiCli.E2E.Tests                                    # 需要
 - 動作會移動真實滑鼠、送出真實按鍵，執行期間請勿操作電腦（`click --invoke` 可避免移動滑鼠）。
 - WinForms 程式中，若控制項開啟了強制回應（modal）對話框，InvokePattern 會等到對話框關閉才返回：`click --invoke` / `invoke` 會在 `--timeout` 後失敗，對話框關閉前只有 `status`、`sleep`、`press <按鍵>` 可用。會開對話框的按鈕請用一般 `click`。
 - UWP 程式的視窗由 ApplicationFrameHost 承載，`open` 需要 `--window` 指定標題；`close` 只會關閉視窗，不會結束共用程序。
+- WinForms `ListView`（Details 檢視、未開 `FullRowSelect`）的 `listitem` 元素範圍是整列，`click` 會點到文字右邊的空白處而選不到項目。
+  請改用 `select <清單> <項目>`，或點列中的文字元素（`click "id=lvItems >> type=text&&name=BRAVO"`）。
 - 真人操作錄製依賴低階 hook，以滑鼠按下時的座標判斷元素，快速變動的 UI（例如動畫中的選單）可能錄到非預期元素。
 
 ## 授權

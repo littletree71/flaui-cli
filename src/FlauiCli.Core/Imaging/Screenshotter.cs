@@ -36,6 +36,7 @@ internal static class Screenshotter
             LineAlignment = StringAlignment.Center,
         };
 
+        var placed = new List<Rectangle>();
         for (var i = 0; i < targets.Count; i++)
         {
             var r = targets[i];
@@ -49,7 +50,8 @@ internal static class Screenshotter
             var label = (firstNumber.Value + i).ToString();
             // One digit fits in a circle; longer numbers get a pill wide enough for the text
             var w = Math.Max(d, (int)Math.Ceiling(g.MeasureString(label, font, PointF.Empty, fmt).Width) + 10);
-            var (bx, by) = BadgePosition(local, w, d, bmp.Size);
+            var (bx, by) = BadgePosition(local, w, d, bmp.Size, placed);
+            placed.Add(new Rectangle(bx, by, w, d));
             FillBadge(g, brush, bx, by, w, d);
             g.DrawString(label, font, Brushes.White, new RectangleF(bx, by, w, d), fmt);
         }
@@ -58,8 +60,10 @@ internal static class Screenshotter
     /// <summary>
     /// Places the number badge outside the outline so it never covers the element itself (for example the text of a
     /// narrow input): diagonally off the top-left corner, else off another corner that fits in the image, else clamped.
+    /// Corners taken by the badges of earlier elements (<paramref name="placed"/>) are skipped; when every corner is
+    /// taken (adjacent toolbar buttons), the badge moves sideways until it no longer covers another badge.
     /// </summary>
-    private static (int X, int Y) BadgePosition(Rectangle outline, int width, int height, Size image)
+    internal static (int X, int Y) BadgePosition(Rectangle outline, int width, int height, Size image, IReadOnlyList<Rectangle>? placed = null)
     {
         const int touch = 4; // overlap with the outline so the badge visibly belongs to it
         (int X, int Y)[] candidates =
@@ -69,12 +73,33 @@ internal static class Screenshotter
             (outline.Left - width + touch, outline.Bottom - touch),
             (outline.Right - touch, outline.Bottom - touch),
         ];
-        foreach (var (x, y) in candidates)
+        bool Fits(int x, int y) => x >= 0 && y >= 0 && x + width <= image.Width && y + height <= image.Height;
+        bool Free(int x, int y) => placed is null || !placed.Any(p => p.IntersectsWith(new Rectangle(x, y, width, height)));
+
+        var fitting = candidates.Where(c => Fits(c.X, c.Y)).ToList();
+        foreach (var (x, y) in fitting)
         {
-            if (x >= 0 && y >= 0 && x + width <= image.Width && y + height <= image.Height) return (x, y);
+            if (Free(x, y)) return (x, y);
         }
-        var (fx, fy) = candidates[0];
-        return (Math.Clamp(fx, 0, Math.Max(0, image.Width - width)), Math.Clamp(fy, 0, Math.Max(0, image.Height - height)));
+
+        var (fx, fy) = fitting.Count > 0 ? fitting[0] : candidates[0];
+        fx = Math.Clamp(fx, 0, Math.Max(0, image.Width - width));
+        fy = Math.Clamp(fy, 0, Math.Max(0, image.Height - height));
+        if (Free(fx, fy)) return (fx, fy);
+
+        // Every corner is taken: slide along the row (left first, then right), then try the row below the outline
+        const int gap = 2;
+        foreach (var row in new[] { fy, Math.Clamp(outline.Bottom - touch, 0, Math.Max(0, image.Height - height)) })
+        {
+            for (var step = 1; step <= 8; step++)
+            {
+                foreach (var x in new[] { fx - step * (width + gap), fx + step * (width + gap) })
+                {
+                    if (Fits(x, row) && Free(x, row)) return (x, row);
+                }
+            }
+        }
+        return (fx, fy);
     }
 
     private static void FillBadge(Graphics g, Brush brush, int x, int y, int width, int height)

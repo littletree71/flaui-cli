@@ -67,6 +67,8 @@ public static class CommandCatalog
         new("restore", "Windows", "Restore the current window", [], []),
         new("resize", "Windows", "Resize the current window", [new("width", "Width in pixels"), new("height", "Height in pixels")], []),
         new("move", "Windows", "Move the current window", [new("x", "Left edge X"), new("y", "Top edge Y")], []),
+        new("close-window", "Windows", "Close one window or dialog (WindowPattern, else WM_CLOSE) and wait until it is gone; the session keeps running",
+            [new("window", "Index (as listed by windows), ref, or title; omit for the current window", Required: false)], [Timeout]),
 
         // ── Inspection ──
         new("snapshot", "Inspection", "Print the UI tree of the current window with element refs",
@@ -106,7 +108,10 @@ public static class CommandCatalog
         new("wait", "Wait", "Wait until an element reaches a state",
             [Target], [new("state", "visible|hidden|enabled|disabled|exists|gone (default visible)"), Timeout]),
         new("wait-window", "Wait", "Wait for a window whose title matches and switch to it",
-            [new("title", "Window title (exact or contains)")], [new("no-switch", "Do not switch the current window", Flag: true), Timeout]),
+            [new("title", "Window title: an exact title wins, then one that starts with it, then one that contains it")],
+            [new("exact", "Only accept an exact title (case-insensitive)", Flag: true),
+             new("regex", "Treat the title as a regular expression (case-insensitive)", Flag: true),
+             new("no-switch", "Do not switch the current window", Flag: true), Timeout]),
         new("assert", "Assert", "Assert an element state; exits with code 1 on failure",
             [new("kind", "exists|not-exists|visible|hidden|enabled|disabled|checked|unchecked|text|contains|matches|value"),
              Target, new("expected", "Expected value (required for text/contains/matches/value)", Required: false)],

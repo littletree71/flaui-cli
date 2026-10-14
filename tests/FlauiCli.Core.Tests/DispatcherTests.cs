@@ -135,6 +135,37 @@ public sealed class DispatcherTests : IDisposable
     }
 
     [Fact]
+    public void SelectSetsTheValueWhenTheComboBoxIgnoresTheSelection()
+    {
+        // WinForms ToolStripComboBox: SelectionItemPattern succeeds but the value does not change
+        Ok(_app.Open());
+        _app.Colors.Value = "Red";
+        _app.Colors.SelectAppliesValue = false;
+
+        Ok(_app.Run("select", ("target", "id=colorCombo"), ("item", "Green")));
+        Assert.Equal("Green", _app.Colors.Value);
+        Assert.Contains("setvalue:Green", _app.Colors.Actions);
+    }
+
+    [Fact]
+    public void SelectFailsWhenTheSelectionDoesNotTakeEffect()
+    {
+        Ok(_app.Open());
+        _app.Colors.Value = "Red";
+        _app.Colors.IsReadOnly = true;
+        _app.Colors.SelectAppliesValue = false;
+
+        var r = _app.Run("select", ("target", "id=colorCombo"), ("item", "Green"));
+        Assert.False(r.Ok);
+        Assert.Contains("did not take effect", r.Error);
+        Assert.Contains("fill", r.Error);
+        Assert.Equal("Red", _app.Colors.Value);
+
+        // Selecting the value it already has is not a failure
+        Ok(_app.Run("select", ("target", "id=colorCombo"), ("item", "Red")));
+    }
+
+    [Fact]
     public void PressParsesKeys()
     {
         Ok(_app.Open());
@@ -363,6 +394,114 @@ public sealed class DispatcherTests : IDisposable
         Assert.Contains("\"Add\"", _app.Run("windows").Text);
         Ok(_app.Run("window", ("window", "Add")));
         Assert.Same(dialog, _app.Session.CurrentWindow);
+    }
+
+    /// <summary>WinForms MDI: the parent's title contains the active child's title.</summary>
+    private (FakeElement Parent, FakeElement Child) Mdi()
+    {
+        var parent = new FakeElement(ControlKind.Window, "MainApp - [Module-Function(1.0.0.4)]")
+            { ProcessId = _app.Window.ProcessId, Bounds = new(0, 0, 800, 600), WindowHandle = 8 };
+        var child = new FakeElement(ControlKind.Window, "Module-Function(1.0.0.4)") { Bounds = new(10, 40, 600, 400) };
+        child.Add(new FakeElement(ControlKind.Button, "Query", "btnQuery") { Bounds = new(20, 50, 80, 30) });
+        parent.Add(new FakeElement(ControlKind.MenuBar, "Menu"), child);
+        _app.Driver.TopLevel.Add(parent);
+        return (parent, child);
+    }
+
+    [Fact]
+    public void WaitWindowPrefersATitleThatStartsWithTheTextOverOneThatContainsIt()
+    {
+        var (_, child) = Mdi();
+        Ok(_app.Open());
+        Ok(_app.Run("wait-window", ("title", "Module-Function(")));
+        Assert.Same(child, _app.Session.CurrentWindow);
+    }
+
+    [Fact]
+    public void WaitWindowExactAndRegex()
+    {
+        var (parent, child) = Mdi();
+        Ok(_app.Open());
+
+        var r = _app.Run("wait-window", ("title", "Module-Function("), ("exact", "true"), ("timeout", "200"));
+        Assert.False(r.Ok);
+        Assert.Contains("exactly", r.Error);
+
+        Ok(_app.Run("wait-window", ("title", @"^Module-Function\s*\("), ("regex", "true")));
+        Assert.Same(child, _app.Session.CurrentWindow);
+        Ok(_app.Run("wait-window", ("title", "^mainapp"), ("regex", "true")));
+        Assert.Same(parent, _app.Session.CurrentWindow);
+
+        Assert.False(_app.Run("wait-window", ("title", "x"), ("regex", "true"), ("exact", "true")).Ok);
+        Assert.Contains("Invalid regular expression", _app.Run("wait-window", ("title", "("), ("regex", "true")).Error);
+    }
+
+    [Fact]
+    public void SnapshotOfAnMdiChildDoesNotWalkItTwice()
+    {
+        var (parent, child) = Mdi();
+        Ok(_app.Open());
+        Ok(_app.Run("window", ("window", "Module-Function(1.0.0.4)")));
+        Assert.Same(child, _app.Session.CurrentWindow);
+
+        var r = _app.Run("snapshot");
+        Ok(r);
+        Assert.Single(r.Text.Split('\n'), l => l.Contains("\"Query\""));
+        Assert.Contains("(current window, shown above)", r.Text);
+        Assert.Contains("menubar \"Menu\"", r.Text);
+        Assert.StartsWith("- window \"Module-Function(1.0.0.4)\"", r.Text.Split("```yaml\n")[1]);
+        Assert.Equal(0, child.CaptureTreeCalls);
+        Assert.Equal(1, parent.CaptureTreeCalls);
+    }
+
+    [Fact]
+    public void SnapshotDepthLimitsTheCapture()
+    {
+        Ok(_app.Open());
+        Ok(_app.Run("snapshot", ("depth", "2")));
+        Assert.Equal(2, _app.Window.LastCaptureDepth?.MaxDepth);
+        Ok(_app.Run("snapshot"));
+        Assert.Null(_app.Window.LastCaptureDepth);
+    }
+
+    [Fact]
+    public void SnapshotHintsWhenTheWindowIsMinimized()
+    {
+        Ok(_app.Open());
+        Assert.DoesNotContain("minimized", _app.Run("snapshot").Text);
+        _app.Window.Bounds = new(-32000, -32000, 160, 28);
+        Assert.Contains("The window is minimized", _app.Run("snapshot").Text);
+    }
+
+    [Fact]
+    public void CloseWindowClosesOneDialogAndKeepsTheSession()
+    {
+        Ok(_app.Open());
+        var dialog = new FakeElement(ControlKind.Window, "Confirm") { Bounds = new(50, 50, 200, 100) };
+        _app.Window.Add(dialog);
+
+        Ok(_app.Run("close-window", ("window", "Confirm")));
+        Assert.Contains("close", dialog.Actions);
+        Assert.False(dialog.IsAlive);
+        Assert.True(_app.Window.IsAlive);
+        Assert.Same(_app.Window, _app.Session.CurrentWindow);
+        Ok(_app.Run("click", ("target", "id=num1Button")));
+    }
+
+    [Fact]
+    public void ClosingTheCurrentWindowSwitchesToAnotherWindow()
+    {
+        var (parent, _) = Mdi();
+        Ok(_app.Open());
+        var dialog = new FakeElement(ControlKind.Window, "Add") { Bounds = new(50, 50, 200, 100) };
+        parent.Add(dialog);
+        Ok(_app.Run("window", ("window", "Add")));
+
+        var r = _app.Run("close-window");
+        Ok(r);
+        Assert.False(dialog.IsAlive);
+        Assert.True(_app.Session.CurrentWindow is { IsAlive: true });
+        Assert.NotSame(dialog, _app.Session.CurrentWindow);
     }
 
     [Fact]

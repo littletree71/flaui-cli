@@ -77,11 +77,11 @@ public sealed partial class CommandDispatcher
 
     private string WaitWindow(CommandContext ctx)
     {
-        var title = ctx.Call.Require("title");
+        var match = TitleMatch.FromCall(ctx.Call, ctx.Call.Require("title"));
         var timeout = ctx.Timeout;
         IUiElement? found = null;
-        if (!Poll(timeout, () => (found = FindTopLevelByTitle(title, _s.CurrentWindow?.ProcessId)) is not null))
-            throw new CliException($"Timed out after {timeout}ms: no window titled \"{title}\"");
+        if (!Poll(timeout, () => (found = FindTopLevelByTitle(match, _s.CurrentWindow?.ProcessId)) is not null))
+            throw new CliException($"Timed out after {timeout}ms: no window {match}");
 
         if (!ctx.Call.GetBool("no-switch")) ActivateWindow(found!);
         return $"### Result\nWindow \"{found!.Name}\" appeared\n{WindowSection()}";

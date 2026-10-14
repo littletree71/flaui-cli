@@ -58,7 +58,7 @@ Selectors wait for the element to appear (5 s by default, change with `--timeout
 | Area | Commands |
 |---|---|
 | Application | `open <exe\|AUMID> [args] [--window title]`, `attach [pid\|name] [--title title]`, `close [--keep-app]`, `status`, `list`, `close-all`, `kill-all` |
-| Windows | `windows`, `window <index\|ref\|title>`, `focus [t]`, `wait-window <title> [--no-switch]`, `maximize`, `minimize`, `restore`, `resize W H`, `move X Y` |
+| Windows | `windows`, `window <index\|ref\|title>`, `focus [t]`, `wait-window <title> [--exact\|--regex] [--no-switch]`, `close-window [index\|ref\|title]`, `maximize`, `minimize`, `restore`, `resize W H`, `move X Y` |
 | Inspection | `snapshot`, `find <text> [--regex]`, `inspect <target>` (all properties, patterns and a suggested selector) |
 | Actions | `click <t> [--button right] [--double] [--invoke]`, `dblclick`, `hover`, `fill <t> <text> [--keyboard]`, `type <text>`, `press <keys> [--target t]` (`Enter`, `Ctrl+S`), `select <t> <item or #index>`, `check`, `uncheck`, `expand`, `collapse`, `invoke`, `scroll <t> [--dir down] [--amount 3]`, `drag <src> <dst>` |
 | Reading | `get text\|value\|name\|state\|rect <t>`, `get prop <t> HelpText` |
@@ -135,3 +135,16 @@ Scripts can produce documents directly: `flaui-cli run flow.yaml --doc docs/flow
 - `fill` uses ValuePattern when possible; add `--keyboard` when the app only reacts to real key presses.
 - Use `inspect <target>` to get a suggested stable selector for an element found in a snapshot.
 - When an element cannot be found, check with `snapshot` or `find <text>`; popups such as drop-downs and menus also appear in snapshots.
+- `wait-window` prefers an exact title, then one starting with the text, then one containing it. In MDI apps the parent's title
+  contains the child's title, so use `--exact` or `--regex "^Child title"` when the child's title varies.
+- `close-window [title]` closes one window or dialog (also dialogs without a Cancel button, where `press Escape` does nothing)
+  and keeps the session; `close` ends the whole session.
+- `select` on a combo box checks that the value changed and otherwise sets it through ValuePattern; if it still fails, use `fill`.
+- WinForms ListView rows: the `listitem` box spans the whole row, so `click` may hit empty space. Use `select <list> <item>` or
+  click the text inside the row (`id=lvItems >> type=text&&name=BRAVO`).
+- Large windows (hundreds of controls) make every lookup slow. Set `"autoSnapshot": false` in `.flaui-cli/config.json`, use
+  `snapshot --depth N` / `--root <t>`, prefer `id=` / `name=` / `type=` selectors (they stop at the first match), scope with `>>`,
+  close unused windows and raise `--timeout`. Past about 512 elements UIA3 truncates searches silently; flaui-cli fills in
+  the rest level by level within `--timeout`, so a selector that matches nothing waits out the timeout and a deep one may
+  need a larger timeout: scope it from a nearby container.
+- A snapshot of a minimized window has no content; run `restore` first.

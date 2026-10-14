@@ -100,7 +100,7 @@ Run `flaui-cli --help` or `flaui-cli <command> --help` for details.
 | Area | Commands |
 |---|---|
 | Application | `open` `attach` `close` `status` `list` `close-all` `kill-all` |
-| Windows | `windows` `window` `focus` `maximize` `minimize` `restore` `resize` `move` `wait-window` |
+| Windows | `windows` `window` `focus` `maximize` `minimize` `restore` `resize` `move` `wait-window` `close-window` |
 | Inspection | `snapshot` `find` `inspect` |
 | Actions | `click` `dblclick` `hover` `fill` `type` `press` `select` `check` `uncheck` `expand` `collapse` `invoke` `scroll` `drag` |
 | Read / wait / assert | `get` `wait` `assert` `sleep` |
@@ -113,6 +113,11 @@ Run `flaui-cli --help` or `flaui-cli <command> --help` for details.
 Global options: `-s, --session <name>` (parallel sessions; defaults to the `FLAUI_CLI_SESSION` environment variable, then `default`),
 `--json` (structured output). Element commands take `--timeout <ms>`, and action commands take `--note <text>` for documents.
 `close` closes the window and stops the session's daemon; `close --keep-app` ends the session but leaves the application running.
+`close-window [index|ref|title]` closes a single window or dialog (WindowPattern, else `WM_CLOSE`, so dialogs without a Cancel
+button close too) and keeps the session; when it was the current window, the session switches to another window of the app.
+`wait-window <title>` prefers an exact title, then one that starts with the text, then one that contains it; `--exact` only
+accepts an exact title and `--regex` treats the title as a regular expression (useful for MDI children, whose title also
+appears in the MDI parent's title).
 Exit codes: `0` success, `1` assertion failed, `2` error, `3` session not running.
 
 ## YAML test scripts
@@ -191,6 +196,25 @@ Most actions are captured before they run; `fill`, `type`, `select`, `check` and
 }
 ```
 
+## Large applications
+
+Every command looks elements up in the current window and the application's other top-level windows through UI Automation,
+which is slow for windows with thousands of elements (especially .NET Framework WinForms apps). To keep commands fast:
+
+- Turn off the snapshot saved after every action with `"autoSnapshot": false` in the config file; scripts that only use selectors do not need it.
+- Use `snapshot --depth N` or `snapshot --root <target>`: only that part of the tree is read. `find <text>` searches without printing the tree.
+- Prefer selectors with `id=`, `name=`, `class=` or `type=`: they stop at the first match. `text=`, `nth=` and `xpath=` need every match.
+- Scope selectors with `>>` (for example `id=toolStrip1 >> name=Query`), and close windows you no longer need (`close-window`).
+- Raise `--timeout` (or `timeouts.action`) when lookups take longer than the default 5 seconds.
+
+UIA3 descendant searches stop after visiting about 512 elements on some providers (seen with WinForms), without an error.
+flaui-cli keeps what UIA found and fills in the rest: windows by enumerating child and owned windows, other selectors by
+searching level by level within the command's `--timeout`, and `snapshot` by reading only the part that was cut (up to
+10 seconds). The snapshot saved after every action is not filled in, to keep actions fast. A selector that matches nothing
+in such a window keeps searching until the timeout; scoping with `>>` from a container near the element keeps lookups small.
+Raise `--timeout` if an element deep in a large window is not found in time. All of this goes through UI Automation and
+window enumeration only: flaui-cli never reads or writes the memory of the application under test.
+
 ## Architecture
 
 ```
@@ -233,6 +257,9 @@ dotnet test tests/FlauiCli.E2E.Tests                                    # needs 
 - Actions move the real mouse and send real key presses; do not use the computer while they run (`click --invoke` avoids moving the mouse).
 - On WinForms apps, InvokePattern does not return while a modal dialog it opened is shown: `click --invoke` / `invoke` fail after `--timeout`, and until the dialog closes only `status`, `sleep` and `press <keys>` work. Use a plain `click` for buttons that open a dialog.
 - UWP windows are hosted by ApplicationFrameHost, so `open` needs `--window <title>`; `close` only closes the window and never kills the shared process.
+- In a WinForms `ListView` (Details view without `FullRowSelect`) the `listitem` element spans the whole row, so `click` on it
+  hits the empty space right of the text and does not select the item. Use `select <list> <item>` or click the text inside the row
+  (`click "id=lvItems >> type=text&&name=BRAVO"`).
 - Input capture relies on low-level hooks and identifies elements by the position of the mouse press, so fast-changing UI (such as animated menus) may be recorded as an unexpected element.
 
 ## License

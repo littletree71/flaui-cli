@@ -154,4 +154,28 @@ internal static class NativeMethods
 
     [DllImport("user32.dll")]
     private static extern nint SendMessageTimeoutW(nint hwnd, uint msg, nint wParam, nint lParam, uint flags, uint timeoutMs, out nint result);
+
+    /// <summary>Whether a window is minimized; false when the handle is unknown or the call fails.</summary>
+    public static bool IsMinimized(nint hwnd)
+    {
+        if (hwnd == 0) return false;
+        try { return IsIconic(hwnd); }
+        catch { return false; }
+    }
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsIconic(nint hwnd);
+
+    private const uint WM_CLOSE = 0x0010;
+
+    /// <summary>
+    /// Posts WM_CLOSE to a window, the same message its title bar close button sends. Works for dialogs that have
+    /// no WindowPattern and no Cancel button. Returns false when the message could not be posted.
+    /// </summary>
+    public static bool PostClose(nint hwnd) => hwnd != 0 && PostMessageW(hwnd, WM_CLOSE, 0, 0);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool PostMessageW(nint hwnd, uint msg, nint wParam, nint lParam);
 }

@@ -28,6 +28,8 @@ internal static class TestEnvironment
 
     public static string WpfSampleExe => BuildOutput(Path.Combine("tests", "TestApps", "WpfSample"), "WpfSample.exe");
 
+    public static string WinFormsLargeTreeExe => BuildOutput(Path.Combine("tests", "TestApps", "WinFormsLargeTree"), "WinFormsLargeTree.exe");
+
     public static string CliExe => BuildOutput(Path.Combine("src", "FlauiCli"), "flaui-cli.exe");
 
     public static string NewTempDir()

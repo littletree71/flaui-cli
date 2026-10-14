@@ -80,4 +80,61 @@ public class SnapshotTests
         Assert.Equal("line1\\nline2 \\\"q\\\"", escaped);
         Assert.EndsWith("…", SnapshotFormatter.Escape(new string('x', 500)));
     }
+
+    private static FakeElement Deep()
+    {
+        // Nested unnamed containers (not printed, so they do not count as a level) between printed elements
+        return new FakeElement(ControlKind.Window, "App").Add(
+            new FakeElement(ControlKind.Pane).Add(
+                new FakeElement(ControlKind.Pane).Add(
+                    new FakeElement(ControlKind.Group, "Settings").Add(
+                        new FakeElement(ControlKind.Pane).Add(
+                            new FakeElement(ControlKind.Edit, "Name", "nameInput"),
+                            new FakeElement(ControlKind.Text).Add(new FakeElement(ControlKind.Button, "Inner"))),
+                        new FakeElement(ControlKind.Text)),
+                    new FakeElement(ControlKind.Button, "OK"))),
+            new FakeElement(ControlKind.Tree, "Files").Add(
+                new FakeElement(ControlKind.TreeItem, "src").Add(
+                    new FakeElement(ControlKind.TreeItem, "a.cs").Add(new FakeElement(ControlKind.TreeItem, "A")))));
+    }
+
+    [Theory]
+    [InlineData(1, false)]
+    [InlineData(2, false)]
+    [InlineData(3, false)]
+    [InlineData(4, false)]
+    [InlineData(5, false)]
+    [InlineData(2, true)]
+    [InlineData(4, true)]
+    public void DepthLimitedCapturePrintsTheSameAsAFullCapture(int depth, bool all)
+    {
+        var options = new SnapshotOptions(MaxDepth: depth, All: all);
+        var full = SnapshotFormatter.Format(Deep().CaptureTree(), new RefRegistry(), options);
+        var root = Deep();
+        var limited = SnapshotFormatter.Format(root.CaptureTree(SnapshotFormatter.CaptureDepthFor(options)), new RefRegistry(), options);
+        Assert.Equal(full, limited);
+    }
+
+    [Fact]
+    public void DepthLimitedCaptureLeavesOutDeeperLevels()
+    {
+        var options = new SnapshotOptions(MaxDepth: 2);
+        var tree = Deep().CaptureTree(SnapshotFormatter.CaptureDepthFor(options));
+        Assert.DoesNotContain(tree.DescendantsAndSelf(), n => n.Name == "Name");
+        Assert.DoesNotContain(tree.DescendantsAndSelf(), n => n.Name == "a.cs");
+        Assert.Contains(tree.DescendantsAndSelf(), n => n.Name == "src"); // known to exist, so "Files" prints "…"
+        Assert.Null(SnapshotFormatter.CaptureDepthFor(new SnapshotOptions()));
+    }
+
+    [Fact]
+    public void CollapsedNodeIsPrintedWithoutItsChildren()
+    {
+        var root = Deep();
+        var settings = root.Descendants().First(e => e.Name == "Settings");
+        var text = SnapshotFormatter.Format(root.CaptureTree(), new RefRegistry(), new SnapshotOptions(), collapse: settings.RuntimeId);
+        Assert.Contains("group \"Settings\"", text);
+        Assert.Contains("(current window, shown above)", text);
+        Assert.DoesNotContain("\"Name\"", text);
+        Assert.Contains("button \"OK\"", text);
+    }
 }
