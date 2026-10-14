@@ -10,11 +10,11 @@ public sealed class ScreenshotterTests
     {
         using var bmp = new Bitmap(300, 200);
         using (var g = Graphics.FromImage(bmp)) g.Clear(Color.White);
-        // The outline is inflated to (97, 97); the badge is centred on that corner
+        // The outline is inflated to (97, 97); the badge sits above-left of that corner
         Screenshotter.Annotate(bmp, Point.Empty, [new Rectangle(100, 100, 40, 20)], number);
 
         var count = 0;
-        for (var y = 80; y < 95; y++)
+        for (var y = 74; y < 95; y++)
         {
             for (var x = 60; x < 160; x++)
             {
@@ -23,6 +23,38 @@ public sealed class ScreenshotterTests
             }
         }
         return count;
+    }
+
+    [Fact]
+    public void BadgeDoesNotCoverTheElement()
+    {
+        using var bmp = new Bitmap(300, 200);
+        using (var g = Graphics.FromImage(bmp)) g.Clear(Color.White);
+        var target = new Rectangle(100, 100, 40, 20);
+        Screenshotter.Annotate(bmp, Point.Empty, [target], 12);
+
+        // The inside of the target (where a text box shows its value) stays untouched
+        for (var y = target.Top + 2; y < target.Bottom - 2; y++)
+        {
+            for (var x = target.Left + 2; x < target.Right - 2; x++)
+                Assert.Equal(Color.White.ToArgb(), bmp.GetPixel(x, y).ToArgb());
+        }
+    }
+
+    [Fact]
+    public void BadgeStaysInsideTheImageForElementsAtTheEdge()
+    {
+        using var bmp = new Bitmap(300, 200);
+        using (var g = Graphics.FromImage(bmp)) g.Clear(Color.White);
+        var target = new Rectangle(0, 0, 40, 20);
+        Screenshotter.Annotate(bmp, Point.Empty, [target], 3);
+
+        // No room above-left: the badge goes below or to the right of the element instead of over it
+        for (var y = target.Top + 4; y < target.Bottom - 2; y++)
+        {
+            for (var x = target.Left + 4; x < target.Right - 2; x++)
+                Assert.Equal(Color.White.ToArgb(), bmp.GetPixel(x, y).ToArgb());
+        }
     }
 
     [Fact]
