@@ -28,6 +28,10 @@ jobs:
       - name: Unit tests
         run: dotnet test tests/FlauiCli.Core.Tests -c Release --no-build
 
+      # NativeImportTests only reads the P/Invoke declarations of the assemblies in flaui-cli.exe: no desktop needed
+      - name: Native import check
+        run: dotnet test tests/FlauiCli.E2E.Tests -c Release --no-build --filter "FullyQualifiedName~NativeImportTests"
+
   release:
     name: Release
     if: startsWith(github.ref, 'refs/tags/v')

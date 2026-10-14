@@ -245,7 +245,7 @@ flaui-cli 的某些行為會被安全軟體特別留意，以下都是刻意的�
 - **模擬輸入與截圖**：動作會送出真實的滑鼠鍵盤輸入（`SendInput`），截圖會擷取螢幕。
 - **全域鍵盤滑鼠 hook**：放在獨立的執行檔 `flaui-cli-record.exe`，**只有**在執行 `record capture` 期間由 daemon 以一般子行程啟動，結束擷取時移除 hook 並結束行程。`flaui-cli.exe` 本身從不安裝 hook，程式碼裡也沒有宣告 hook API，所以即使錄製工具被擋或被刪除，平常的自動化仍可正常使用（只有 `record capture` 會失敗並顯示明確訊息）。這些 API 以一般靜態匯入公開宣告，不做動態載入或混淆。若安全軟體需要設定例外，只需針對 `flaui-cli-record.exe`。
 - **不存取其他程式的記憶體**：flaui-cli 只透過 UI Automation 讀取應用程式，並以列舉視窗的方式找視窗；從不開啟其他行程的記憶體、
-  注入程式碼或建立遠端執行緒。若 `flaui-cli.exe` 匯入這類 API，測試 `NativeImportTests` 會失敗。
+  注入程式碼或建立遠端執行緒。若 `flaui-cli.exe` 匯入這類 API，每次 CI 都會跑的測試 `NativeImportTests` 會失敗。
 - **終止行程**：只會終止 flaui-cli 自己啟動的程式：`close` 時程式 3 秒內沒有結束，以及 `run` 啟動的程式一直沒出現視窗。
   attach 上去的程式不會被終止。
 - **背景 daemon**：就是同一個 `flaui-cli.exe`，以 `flaui-cli.exe daemon --session <名稱>` 執行、不開主控台視窗。只有在呼叫端的 Job 會連帶結束它時才脫離 Job；閒置 30 分鐘自動結束（`close` / `kill-all` 可立即結束）。

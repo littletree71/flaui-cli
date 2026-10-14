@@ -254,7 +254,7 @@ flaui-cli does things that security products watch closely. They are all intenti
 - **Global keyboard/mouse hooks** - live in a separate executable, `flaui-cli-record.exe`, which the daemon starts as an ordinary child process **only** while `record capture` is running; it removes the hooks and exits when the capture stops. `flaui-cli.exe` itself never installs a hook and its code does not declare the hook APIs, so everyday automation works even if the recorder is blocked or deleted (only `record capture` then fails, with a clear message). The APIs are declared openly as normal static imports - nothing is loaded dynamically or obfuscated. If your security product needs an exception, it is only needed for `flaui-cli-record.exe`.
 - **No access to other processes' memory** - flaui-cli reads applications only through UI Automation and finds windows by
   enumerating them. It never opens another process's memory, injects code or creates remote threads; a test
-  (`NativeImportTests`) fails if `flaui-cli.exe` ever imports such APIs.
+  (`NativeImportTests`, run on every CI build) fails if `flaui-cli.exe` ever imports such APIs.
 - **Terminating processes** - only processes flaui-cli launched itself: `close` when the app does not exit within 3 seconds,
   and `run` when a launched app never showed its window. Processes you attached to are never terminated.
 - **Background daemon** - the same `flaui-cli.exe` started as `flaui-cli.exe daemon --session <name>`, without a console window. It only breaks away from the caller's job object when that job would otherwise kill it, and it exits after 30 idle minutes (`close` / `kill-all` stop it immediately).
