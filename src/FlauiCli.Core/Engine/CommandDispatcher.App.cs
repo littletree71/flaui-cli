@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Text;
 using FlauiCli.Core.Abstractions;
 using FlauiCli.Core.Commands;
+using FlauiCli.Core.Native;
 
 namespace FlauiCli.Core.Engine;
 
@@ -96,7 +97,18 @@ public sealed partial class CommandDispatcher
         if (found is not null) return found;
 
         // Owned dialogs of WPF / WinForms apps live under their owner window in the UIA tree, not on the desktop
-        return MatchTitle(ChildWindows(), title, _ => 0);
+        found = MatchTitle(ChildWindows(), title, _ => 0);
+        if (found is not null) return found;
+
+        // Last resort: windows Win32 sees but UIA does not list (for example ShowDialog dialogs of .NET Framework
+        // WinForms MDI apps). Match on the Win32 title first so only candidates are turned into UIA elements.
+        var win32 = NativeMethods.VisibleTopLevelWindows()
+            .Where(w => w.Title.Length > 0)
+            .OrderBy(w => (existing is not null && existing.Contains(w.Handle) ? 2 : 0) + (w.ProcessId == preferPid ? 0 : 1))
+            .ToList();
+        var hit = win32.FirstOrDefault(w => string.Equals(w.Title, title, StringComparison.OrdinalIgnoreCase));
+        if (hit.Handle == 0) hit = win32.FirstOrDefault(w => w.Title.Contains(title, StringComparison.OrdinalIgnoreCase));
+        return hit.Handle != 0 ? _s.Driver.FromHandle(hit.Handle) : null;
     }
 
     private static IUiElement? MatchTitle(IEnumerable<IUiElement> windows, string title, Func<IUiElement, int> rank)
@@ -106,11 +118,40 @@ public sealed partial class CommandDispatcher
                ?? list.Where(w => w.Name.Contains(title, StringComparison.OrdinalIgnoreCase)).OrderBy(rank).FirstOrDefault();
     }
 
-    /// <summary>Windows inside the current window (owned dialogs). Internal window elements of a UWP shared host do not count.</summary>
+    /// <summary>
+    /// Owned dialogs of the application: windows inside the current window, inside the other top-level windows
+    /// of the application (an MDI child's dialog is owned by the MDI parent), and titled windows of the
+    /// application that Win32 sees but UIA does not list. Internal window elements of a UWP shared host do not count.
+    /// </summary>
     private IReadOnlyList<IUiElement> ChildWindows()
     {
         if (_s.IsSharedHostWindow || _s.CurrentWindow is not { IsAlive: true } current) return [];
-        return [.. current.FindAll(new ElementQuery(Kind: ControlKind.Window)).Where(w => w.Name.Length > 0)];
+        var result = new List<IUiElement>();
+        void Add(IUiElement w)
+        {
+            if (w.Name.Length > 0 && !w.Equals(current) && !result.Any(w.Equals)) result.Add(w);
+        }
+
+        var topLevel = _s.GetTopLevelWindows();
+        foreach (var root in topLevel.Prepend(current).Distinct())
+        {
+            try
+            {
+                foreach (var w in root.FindAll(new ElementQuery(Kind: ControlKind.Window))) Add(w);
+            }
+            catch
+            {
+                // The window may have just closed
+            }
+        }
+
+        var known = topLevel.Concat(result).Append(current).Select(w => w.WindowHandle).Where(h => h != 0).ToHashSet();
+        foreach (var w in NativeMethods.VisibleTopLevelWindows(_s.WindowProcessId))
+        {
+            if (w.Title.Length == 0 || known.Contains(w.Handle)) continue;
+            if (_s.Driver.FromHandle(w.Handle) is { } el) Add(el);
+        }
+        return result;
     }
 
     private string Attach(CommandContext ctx)

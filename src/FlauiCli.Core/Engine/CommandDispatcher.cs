@@ -295,8 +295,16 @@ public sealed partial class CommandDispatcher
         recorder.Add(Recordable(ctx));
     }
 
-    /// <summary>In document mode, takes a screenshot before the action and outlines the target element.</summary>
-    private void BeforeAction(CommandContext ctx, IUiElement? el, string description)
+    /// <summary>In document mode, takes a screenshot before the action (shows what to operate) and outlines the target element.</summary>
+    private void BeforeAction(CommandContext ctx, IUiElement? el, string description) => AddDocStep(ctx, el, description);
+
+    /// <summary>
+    /// In document mode, takes a screenshot after the action and outlines the target element. Used by commands
+    /// that change a value (fill, type, select, check...), so the screenshot shows the result.
+    /// </summary>
+    private void AfterAction(CommandContext ctx, IUiElement? el, string description) => AddDocStep(ctx, el, description);
+
+    private void AddDocStep(CommandContext ctx, IUiElement? el, string description)
     {
         var doc = _s.Doc;
         if (doc is null) return;
@@ -304,6 +312,16 @@ public sealed partial class CommandDispatcher
         var text = ctx.Call.Get("note") ?? description;
         var window = _s.RequireWindow();
         TryForeground(window);
+
+        // A tooltip left over from an earlier hover belongs to another step
+        try
+        {
+            if (NativeMethods.HideTooltips(window.ProcessId)) Thread.Sleep(100);
+        }
+        catch
+        {
+            // Best effort
+        }
 
         var region = window.Bounds;
         var target = el?.Bounds ?? Rectangle.Empty;

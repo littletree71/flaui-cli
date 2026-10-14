@@ -27,10 +27,12 @@ public sealed partial class CommandDispatcher
             : button == MouseButtonKind.Right ? $"Right-click {Friendly(el)}"
             : $"Click {Friendly(el)}");
 
+        var note = "";
         if (ctx.Call.GetBool("invoke"))
         {
             EnsureInteractable(ctx, el);
-            if (!el.TryInvoke()) throw new CliException($"{label} does not support InvokePattern; use a normal click instead");
+            if (!InvokeBounded(ctx, el, out var pending)) throw new CliException($"{label} does not support InvokePattern; use a normal click instead");
+            if (pending) note = PendingInvokeNote(ctx);
         }
         else
         {
@@ -41,7 +43,7 @@ public sealed partial class CommandDispatcher
         }
 
         Input.WaitUntilIdle();
-        return $"### Result\n{(dbl ? "Double-clicked" : button == MouseButtonKind.Right ? "Right-clicked" : "Clicked")} {label}";
+        return $"### Result\n{(dbl ? "Double-clicked" : button == MouseButtonKind.Right ? "Right-clicked" : "Clicked")} {label}{note}";
     }
 
     private string DoubleClick(CommandContext ctx)
@@ -74,7 +76,6 @@ public sealed partial class CommandDispatcher
         // Password fields: mask the value before it reaches documents, recordings and the result (same as the input recorder)
         if (secret) ctx.Call.Set("text", CommandCall.Masked);
 
-        BeforeAction(ctx, el, secret ? $"Enter the password in {Friendly(el)}" : $"Type \"{text}\" into {Friendly(el)}");
         EnsureInteractable(ctx, el);
 
         if (ctx.Call.GetBool("keyboard") || !el.TrySetValue(text))
@@ -86,6 +87,7 @@ public sealed partial class CommandDispatcher
         }
 
         Input.WaitUntilIdle();
+        AfterAction(ctx, el, secret ? $"Enter the password in {Friendly(el)}" : $"Type \"{text}\" into {Friendly(el)}");
         return $"### Result\nFilled {label} with \"{(secret ? CommandCall.Masked : text)}\"";
     }
 
@@ -93,10 +95,10 @@ public sealed partial class CommandDispatcher
     {
         var text = ctx.Call.Require("text");
         var focused = _s.Driver.GetFocusedElement();
-        BeforeAction(ctx, focused, $"Type \"{text}\"");
         TryForeground(_s.RequireWindow());
         Input.Type(text);
         Input.WaitUntilIdle();
+        AfterAction(ctx, focused, $"Type \"{text}\"");
         return $"### Result\nTyped \"{text}\"";
     }
 
@@ -133,7 +135,6 @@ public sealed partial class CommandDispatcher
         int? index = item.StartsWith('#') && int.TryParse(item[1..], out var ix) ? ix : null;
         var label = Label(el);
 
-        BeforeAction(ctx, el, $"Select \"{item}\" in {Friendly(el)}");
         EnsureInteractable(ctx, el);
 
         string selected;
@@ -160,6 +161,7 @@ public sealed partial class CommandDispatcher
         }
 
         Input.WaitUntilIdle();
+        AfterAction(ctx, el, $"Select \"{item}\" in {Friendly(el)}");
         return $"### Result\nSelected \"{selected}\" in {label}";
     }
 
@@ -167,7 +169,6 @@ public sealed partial class CommandDispatcher
     {
         var el = ResolveArg(ctx);
         var label = Label(el);
-        BeforeAction(ctx, el, check ? $"Check {Friendly(el)}" : $"Uncheck {Friendly(el)}");
         EnsureInteractable(ctx, el);
 
         var desired = check ? ToggleValue.On : ToggleValue.Off;
@@ -190,6 +191,7 @@ public sealed partial class CommandDispatcher
             throw new CliException($"{label} is not a check box or toggle button");
         }
 
+        AfterAction(ctx, el, check ? $"Check {Friendly(el)}" : $"Uncheck {Friendly(el)}");
         return $"### Result\n{(check ? "Checked" : "Unchecked")} {label}";
     }
 
@@ -211,10 +213,36 @@ public sealed partial class CommandDispatcher
         var label = Label(el);
         BeforeAction(ctx, el, $"Invoke {Friendly(el)}");
         EnsureInteractable(ctx, el);
-        if (!el.TryInvoke()) throw new CliException($"{label} does not support InvokePattern");
+        if (!InvokeBounded(ctx, el, out var pending)) throw new CliException($"{label} does not support InvokePattern");
         Input.WaitUntilIdle();
-        return $"### Result\nInvoked {label}";
+        return $"### Result\nInvoked {label}{(pending ? PendingInvokeNote(ctx) : "")}";
     }
+
+    /// <summary>
+    /// Calls InvokePattern on a separate thread and waits at most the command timeout.
+    /// For WinForms controls, Invoke does not return until a modal dialog opened by the handler
+    /// (Form.ShowDialog) is closed; running it on the UIA worker thread would block the whole daemon.
+    /// When the call is still running after the timeout it is left to finish on its own and
+    /// <paramref name="pending"/> is true.
+    /// </summary>
+    private static bool InvokeBounded(CommandContext ctx, IUiElement el, out bool pending)
+    {
+        var task = Task.Factory.StartNew<bool>(el.TryInvoke, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+        if (Task.WhenAny(task, Task.Delay(ctx.Timeout)).GetAwaiter().GetResult() == task)
+        {
+            pending = false;
+            return task.GetAwaiter().GetResult();
+        }
+
+        // Observe a late failure so it does not surface as an unobserved task exception
+        _ = task.ContinueWith(t => _ = t.Exception, TaskContinuationOptions.OnlyOnFaulted);
+        pending = true;
+        return true;
+    }
+
+    private static string PendingInvokeNote(CommandContext ctx) =>
+        $"\n(InvokePattern did not return within {ctx.Timeout}ms; the element probably opened a modal dialog. " +
+        "Use windows / wait-window to find it.)";
 
     private string Scroll(CommandContext ctx)
     {

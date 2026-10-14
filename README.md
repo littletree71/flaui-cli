@@ -175,6 +175,7 @@ flaui-cli doc stop --out docs/calculator --format md,html    # index.md + images
 ```
 
 Generated step descriptions are in English (for example `Click the "One" button`); `--note` and the script `doc:` field accept any language.
+Most actions are captured before they run; `fill`, `type`, `select`, `check` and `uncheck` are captured after they run so the screenshot shows the new value.
 
 ## Configuration
 
@@ -230,6 +231,7 @@ dotnet test tests/FlauiCli.E2E.Tests                                    # needs 
 ## Known limitations
 
 - Actions move the real mouse and send real key presses; do not use the computer while they run (`click --invoke` avoids moving the mouse).
+- On WinForms apps, InvokePattern does not return while a modal dialog it opened is shown; `click --invoke` / `invoke` stop waiting after `--timeout`. Prefer a plain `click` for buttons that open a dialog.
 - UWP windows are hosted by ApplicationFrameHost, so `open` needs `--window <title>`; `close` only closes the window and never kills the shared process.
 - Input capture relies on low-level hooks and identifies elements by the position of the mouse press, so fast-changing UI (such as animated menus) may be recorded as an unexpected element.
 

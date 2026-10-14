@@ -351,6 +351,58 @@ public sealed class DispatcherTests : IDisposable
     }
 
     [Fact]
+    public void DialogsOwnedByAnotherTopLevelWindowAreFound()
+    {
+        // WinForms MDI: the current window is an MDI child, the dialog it opens is owned by the MDI parent
+        var parent = new FakeElement(ControlKind.Window, "Main") { ProcessId = _app.Window.ProcessId, Bounds = new(0, 0, 800, 600), WindowHandle = 8 };
+        _app.Driver.TopLevel.Add(parent);
+        Ok(_app.Open());
+        var dialog = new FakeElement(ControlKind.Window, "Add") { Bounds = new(50, 50, 200, 100) };
+        parent.Add(dialog);
+
+        Assert.Contains("\"Add\"", _app.Run("windows").Text);
+        Ok(_app.Run("window", ("window", "Add")));
+        Assert.Same(dialog, _app.Session.CurrentWindow);
+    }
+
+    [Fact]
+    public void InvokeThatDoesNotReturnIsBoundedByTheTimeout()
+    {
+        Ok(_app.Open());
+        using var release = new ManualResetEventSlim();
+        // Simulates InvokePattern on a WinForms button whose handler calls ShowDialog()
+        _app.One.OnClick = () => release.Wait(TimeSpan.FromSeconds(30));
+        try
+        {
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            var r = _app.Run("click", ("target", "id=num1Button"), ("invoke", "true"), ("timeout", "300"));
+            sw.Stop();
+            Ok(r);
+            Assert.Contains("did not return", r.Text);
+            Assert.True(sw.ElapsedMilliseconds < 10_000, $"click --invoke took {sw.ElapsedMilliseconds}ms");
+
+            // The dispatcher is free for the next command while the invoke is still pending
+            Ok(_app.Run("status"));
+        }
+        finally
+        {
+            release.Set();
+        }
+    }
+
+    [Fact]
+    public void DocumentModeCapturesValueChangesAfterTheAction()
+    {
+        Ok(_app.Open());
+        Ok(_app.Run("doc", ("action", "start")));
+        string? valueWhenCaptured = null;
+        ((FakeScreen)_app.Driver.Screen).OnCapture = () => valueWhenCaptured = _app.NameBox.Value;
+        Ok(_app.Run("fill", ("target", "id=nameInput"), ("text", "Alice")));
+        Assert.Equal("Alice", valueWhenCaptured);
+        Assert.Single(_app.Session.Doc!.Steps);
+    }
+
+    [Fact]
     public void WindowElementsInsideASharedHostAreNotDialogs()
     {
         _app.Window.ClassName = "ApplicationFrameWindow";
