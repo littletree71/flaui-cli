@@ -206,6 +206,12 @@ WinForms 程式）會比較慢。加快的方法：
 - 用 `>>` 縮小範圍（例如 `id=toolStrip1 >> name=Query`），並關掉用不到的視窗（`close-window`）。
 - 尋找元素超過預設 5 秒時，調高 `--timeout`（或 `timeouts.action`）。
 
+UIA3 的子孫搜尋在某些 provider（例如 WinForms）走訪約 512 個元素後就會停止，而且不會回報錯誤。flaui-cli 會保留 UIA 找到的
+結果並補上其餘部分：視窗透過列舉子視窗與擁有的視窗取得，其他 selector 在命令的 `--timeout` 內逐層往下找，`snapshot` 只重讀被
+截斷的部分（最多 10 秒）。每個動作後自動存的 snapshot 不會補完，以維持動作速度。在這種視窗中找不到任何符合的 selector 時，會一直
+找到逾時為止；用 `>>` 從靠近目標的容器開始找，可以讓搜尋維持在小範圍。大型視窗深處的元素來不及找到時，請調高 `--timeout`。
+以上都只透過 UI Automation 與視窗列舉，flaui-cli 不會讀寫受測程式的記憶體。
+
 ## 架構
 
 ```

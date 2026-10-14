@@ -207,6 +207,14 @@ which is slow for windows with thousands of elements (especially .NET Framework 
 - Scope selectors with `>>` (for example `id=toolStrip1 >> name=Query`), and close windows you no longer need (`close-window`).
 - Raise `--timeout` (or `timeouts.action`) when lookups take longer than the default 5 seconds.
 
+UIA3 descendant searches stop after visiting about 512 elements on some providers (seen with WinForms), without an error.
+flaui-cli keeps what UIA found and fills in the rest: windows by enumerating child and owned windows, other selectors by
+searching level by level within the command's `--timeout`, and `snapshot` by reading only the part that was cut (up to
+10 seconds). The snapshot saved after every action is not filled in, to keep actions fast. A selector that matches nothing
+in such a window keeps searching until the timeout; scoping with `>>` from a container near the element keeps lookups small.
+Raise `--timeout` if an element deep in a large window is not found in time. All of this goes through UI Automation and
+window enumeration only: flaui-cli never reads or writes the memory of the application under test.
+
 ## Architecture
 
 ```

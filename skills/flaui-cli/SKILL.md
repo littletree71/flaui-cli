@@ -144,5 +144,7 @@ Scripts can produce documents directly: `flaui-cli run flow.yaml --doc docs/flow
   click the text inside the row (`id=lvItems >> type=text&&name=BRAVO`).
 - Large windows (hundreds of controls) make every lookup slow. Set `"autoSnapshot": false` in `.flaui-cli/config.json`, use
   `snapshot --depth N` / `--root <t>`, prefer `id=` / `name=` / `type=` selectors (they stop at the first match), scope with `>>`,
-  close unused windows and raise `--timeout`.
+  close unused windows and raise `--timeout`. Past about 512 elements UIA3 truncates searches silently; flaui-cli fills in
+  the rest level by level within `--timeout`, so a selector that matches nothing waits out the timeout and a deep one may
+  need a larger timeout: scope it from a nearby container.
 - A snapshot of a minimized window has no content; run `restore` first.

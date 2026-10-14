@@ -108,7 +108,7 @@ public sealed class FakeElement : IUiElement
     /// <summary>Depth passed to the last CaptureTree call.</summary>
     public CaptureDepth? LastCaptureDepth { get; private set; }
 
-    public ElementNode CaptureTree(CaptureDepth? depth = null)
+    public ElementNode CaptureTree(CaptureDepth? depth = null, bool complete = true)
     {
         CaptureTreeCalls++;
         LastCaptureDepth = depth;

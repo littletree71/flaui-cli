@@ -8,6 +8,7 @@
   <Folder Name="/tests/">
     <Project Path="tests/FlauiCli.Core.Tests/FlauiCli.Core.Tests.csproj" />
     <Project Path="tests/FlauiCli.E2E.Tests/FlauiCli.E2E.Tests.csproj" />
+    <Project Path="tests/TestApps/WinFormsLargeTree/WinFormsLargeTree.csproj" />
     <Project Path="tests/TestApps/WpfSample/WpfSample.csproj" />
   </Folder>
 </Solution>

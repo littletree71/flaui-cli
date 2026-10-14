@@ -91,9 +91,11 @@ public interface IUiElement : IEquatable<IUiElement>
 
     /// <summary>
     /// Fetches a property snapshot of the subtree (Control View); with <paramref name="depth"/>, only as deep as a
-    /// snapshot limited to that depth prints, so large trees are not walked completely.
+    /// snapshot limited to that depth prints, so large trees are not walked completely. With <paramref name="complete"/>
+    /// false, a capture the UI Automation provider cut short is returned as is instead of being filled in (faster on
+    /// large trees; used for the snapshot saved after every action).
     /// </summary>
-    ElementNode CaptureTree(CaptureDepth? depth = null);
+    ElementNode CaptureTree(CaptureDepth? depth = null, bool complete = true);
 
     void Focus();
     void SetForeground();

@@ -21,8 +21,9 @@
     <ProjectReference Include="..\..\src\FlauiCli.Core\FlauiCli.Core.csproj" />
     <ProjectReference Include="..\..\src\FlauiCli.Driver.FlaUI\FlauiCli.Driver.FlaUI.csproj" />
     <ProjectReference Include="..\..\src\FlauiCli\FlauiCli.csproj" />
-    <!-- Only ensure WpfSample is built; its assembly is not referenced -->
+    <!-- Only ensure the test apps are built; their assemblies are not referenced -->
     <ProjectReference Include="..\TestApps\WpfSample\WpfSample.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\TestApps\WinFormsLargeTree\WinFormsLargeTree.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
 
   <ItemGroup>
