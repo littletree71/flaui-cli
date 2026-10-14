@@ -25,7 +25,8 @@ zip 內含 `flaui-cli.exe`、真人操作錄製工具 `flaui-cli-record.exe`（�
 gh attestation verify flaui-cli.exe -R littletree71/flaui-cli
 ```
 
-執行檔目前尚未做程式碼簽章，第一次執行時 Windows SmartScreen 可能會跳出警告。
+執行檔目前尚未做程式碼簽章，第一次執行時 Windows SmartScreen 可能會跳出警告；部分防毒軟體也會封鎖沒看過的未簽章執行檔
+（通常是對陌生檔案的信譽判斷，不是偵測到它的行為）。遇到時請向防毒廠商回報誤判，而不是降低防護。
 
 從原始碼建置需要 .NET 10 SDK：
 
@@ -76,6 +77,8 @@ snapshot 輸出範例：
 
 `open` 也接受 Store App 的 AUMID（含 `!` 的值，例如 `Microsoft.WindowsCalculator_8wekyb3d8bbwe!App`）；
 `attach` 可指定 PID 或程序名稱、`--title <視窗標題>`，或兩者併用。
+`open --window` 對新出現的視窗採寬鬆比對（完全相同、開頭相同、包含），但啟動前就已開著的視窗只接受完全相同的標題，
+所以像開著 `calculator.flow.yaml` 的編輯器這類無關的視窗不會被當成目標程式。
 
 ## 元素定位
 
@@ -116,7 +119,8 @@ selector 會自動等待元素出現，斷言會自動重試直到逾時（預�
 總時間）。元素相關指令可加 `--timeout <毫秒>`，動作指令可加 `--note <文字>` 作為文件的步驟說明。
 `close` 會關閉視窗並結束該 session 的 daemon；`close --keep-app` 只結束 session，保留應用程式繼續執行。
 `close-window [索引|ref|標題]` 只關閉單一視窗或對話框（優先用 WindowPattern，否則送 `WM_CLOSE`，沒有取消按鈕的對話框也能關），
-session 會繼續；關掉的是目前視窗時，會自動切換到應用程式的其他視窗。
+session 會繼續；關掉的是目前視窗時，會切回在它之前的目前視窗（例如開出對話框的 MDI 子視窗）。`windows` 列出可以切換的視窗，
+不會列出 tooltip 與沒有名稱的 popup。
 `wait-window <標題>` 依序比對完全相同、以該文字開頭、包含該文字的標題；`--exact` 只接受完全相同的標題，
 `--regex` 把標題當成正規表示式（適合 MDI 子視窗，因為 MDI 主視窗的標題也會包含子視窗標題）。
 結束碼：`0` 成功、`1` 斷言失敗、`2` 錯誤、`3` session 未啟動。
@@ -228,6 +232,7 @@ tests/
   FlauiCli.Core.Tests/     單元測試（FakeDriver，不需要桌面）
   FlauiCli.E2E.Tests/      DriverContractTests（FlaUI 轉接層契約）+ CLI 端對端測試
   TestApps/WpfSample/      測試用 WPF 程式
+  TestApps/WinFormsLargeTree/  超過 512 個 UIA 元素的 WinForms 視窗（UIA3 搜尋上限）
 ```
 
 - CLI 每次執行只是 client，第一次 `open` / `attach` 時會以同一個 exe 的 daemon 模式啟動背景程序，透過 Named Pipe（僅限目前使用者）通訊；所有 UI Automation 呼叫都在 daemon 的單一執行緒上執行。
@@ -239,6 +244,10 @@ flaui-cli 的某些行為會被安全軟體特別留意，以下都是刻意的�
 
 - **模擬輸入與截圖**：動作會送出真實的滑鼠鍵盤輸入（`SendInput`），截圖會擷取螢幕。
 - **全域鍵盤滑鼠 hook**：放在獨立的執行檔 `flaui-cli-record.exe`，**只有**在執行 `record capture` 期間由 daemon 以一般子行程啟動，結束擷取時移除 hook 並結束行程。`flaui-cli.exe` 本身從不安裝 hook，程式碼裡也沒有宣告 hook API，所以即使錄製工具被擋或被刪除，平常的自動化仍可正常使用（只有 `record capture` 會失敗並顯示明確訊息）。這些 API 以一般靜態匯入公開宣告，不做動態載入或混淆。若安全軟體需要設定例外，只需針對 `flaui-cli-record.exe`。
+- **不存取其他程式的記憶體**：flaui-cli 只透過 UI Automation 讀取應用程式，並以列舉視窗的方式找視窗；從不開啟其他行程的記憶體、
+  注入程式碼或建立遠端執行緒。若 `flaui-cli.exe` 匯入這類 API，測試 `NativeImportTests` 會失敗。
+- **終止行程**：只會終止 flaui-cli 自己啟動的程式：`close` 時程式 3 秒內沒有結束，以及 `run` 啟動的程式一直沒出現視窗。
+  attach 上去的程式不會被終止。
 - **背景 daemon**：就是同一個 `flaui-cli.exe`，以 `flaui-cli.exe daemon --session <名稱>` 執行、不開主控台視窗。只有在呼叫端的 Job 會連帶結束它時才脫離 Job；閒置 30 分鐘自動結束（`close` / `kill-all` 可立即結束）。
 - **密碼不會出現在輸出中**：用 `fill` 輸入密碼欄位的文字，在指令結果、錄製的腳本與產生的文件中都會以 `********` 取代；
   `record capture` 遇到密碼欄位也會寫入同樣的佔位字（執行腳本前請換成真正的值）。daemon 記錄檔完全不保存 `fill` / `type` 的文字。

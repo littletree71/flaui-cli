@@ -23,7 +23,9 @@ Every release lists SHA-256 checksums. Once the repository is public, releases a
 gh attestation verify flaui-cli.exe -R littletree71/flaui-cli
 ```
 
-The executables are not code-signed yet, so Windows SmartScreen may warn on first run.
+The executables are not code-signed yet, so Windows SmartScreen may warn on first run, and some antivirus products block
+an unsigned build they have not seen before (usually a reputation check for unknown files, not a detection of what it does). If that happens, report
+it to the vendor as a false positive rather than weakening your protection.
 
 Building from source needs the .NET 10 SDK:
 
@@ -75,6 +77,9 @@ After every action command a snapshot is saved automatically (`.flaui-cli/snapsh
 
 `open` also accepts a Store app AUMID (any value containing `!`, for example
 `Microsoft.WindowsCalculator_8wekyb3d8bbwe!App`); `attach` takes a PID or process name, `--title <window title>`, or both.
+`open --window` matches the new window's title loosely (exact, starts with, contains), but a window that was already open
+before the launch only by its exact title, so an unrelated window such as an editor showing `calculator.flow.yaml` is
+never taken for the app.
 
 ## Targeting elements
 
@@ -116,7 +121,9 @@ automatic snapshot, the total in the daemon and the total including the round tr
 `--timeout <ms>`, and action commands take `--note <text>` for documents.
 `close` closes the window and stops the session's daemon; `close --keep-app` ends the session but leaves the application running.
 `close-window [index|ref|title]` closes a single window or dialog (WindowPattern, else `WM_CLOSE`, so dialogs without a Cancel
-button close too) and keeps the session; when it was the current window, the session switches to another window of the app.
+button close too) and keeps the session; when it was the current window, the session switches back to the window that was
+current before it (for example the MDI child a dialog was opened from). `windows` lists the windows you can switch to;
+tooltips and unnamed popups are left out.
 `wait-window <title>` prefers an exact title, then one that starts with the text, then one that contains it; `--exact` only
 accepts an exact title and `--regex` treats the title as a regular expression (useful for MDI children, whose title also
 appears in the MDI parent's title).
@@ -233,6 +240,7 @@ tests/
   FlauiCli.Core.Tests/     Unit tests (FakeDriver, no desktop needed)
   FlauiCli.E2E.Tests/      DriverContractTests (FlaUI adapter contract) + CLI end-to-end tests
   TestApps/WpfSample/      WPF application used by the tests
+  TestApps/WinFormsLargeTree/  WinForms window with more than 512 UIA elements (the UIA3 search limit)
 ```
 
 - Every CLI invocation is just a client. The first `open` / `attach` starts the same executable in daemon mode; they talk over a named pipe restricted to the current user, and every UI Automation call runs on a single daemon thread.
@@ -244,6 +252,11 @@ flaui-cli does things that security products watch closely. They are all intenti
 
 - **Synthetic input and screenshots** - actions send real mouse/keyboard input (`SendInput`) and screenshots capture the screen.
 - **Global keyboard/mouse hooks** - live in a separate executable, `flaui-cli-record.exe`, which the daemon starts as an ordinary child process **only** while `record capture` is running; it removes the hooks and exits when the capture stops. `flaui-cli.exe` itself never installs a hook and its code does not declare the hook APIs, so everyday automation works even if the recorder is blocked or deleted (only `record capture` then fails, with a clear message). The APIs are declared openly as normal static imports - nothing is loaded dynamically or obfuscated. If your security product needs an exception, it is only needed for `flaui-cli-record.exe`.
+- **No access to other processes' memory** - flaui-cli reads applications only through UI Automation and finds windows by
+  enumerating them. It never opens another process's memory, injects code or creates remote threads; a test
+  (`NativeImportTests`) fails if `flaui-cli.exe` ever imports such APIs.
+- **Terminating processes** - only processes flaui-cli launched itself: `close` when the app does not exit within 3 seconds,
+  and `run` when a launched app never showed its window. Processes you attached to are never terminated.
 - **Background daemon** - the same `flaui-cli.exe` started as `flaui-cli.exe daemon --session <name>`, without a console window. It only breaks away from the caller's job object when that job would otherwise kill it, and it exits after 30 idle minutes (`close` / `kill-all` stop it immediately).
 - **Passwords stay out of output** - text typed into a password field with `fill` is replaced with `********` in command results,
   recorded scripts and generated documents; `record capture` writes the same placeholder for password fields (replace it with the
