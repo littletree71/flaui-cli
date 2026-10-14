@@ -85,6 +85,28 @@ public sealed class ScreenshotterTests
     }
 
     [Fact]
+    public void BadgesOfAdjacentElementsStayOnTheirOwnOutline()
+    {
+        // A tool strip at the top of the window: the corners above do not fit, and the corners below sit between buttons
+        var image = new Size(400, 200);
+        var outlines = Enumerable.Range(0, 6).Select(i => Rectangle.Inflate(new Rectangle(50 + i * 24, 0, 24, 24), 3, 3)).ToList();
+        var placed = new List<Rectangle>();
+        for (var i = 0; i < outlines.Count; i++)
+        {
+            var others = outlines.Where((_, j) => j != i).ToList();
+            var (x, y) = Screenshotter.BadgePosition(outlines[i], 24, 24, image, placed, others);
+            var badge = new Rectangle(x, y, 24, 24);
+            Assert.DoesNotContain(placed, p => p.IntersectsWith(badge));
+
+            // The badge centre is nearer to its own button than to any other
+            var c = new Point(x + 12, y + 12);
+            double Dist(Rectangle r) => Math.Sqrt(Math.Pow(Math.Clamp(c.X, r.Left, r.Right) - c.X, 2) + Math.Pow(Math.Clamp(c.Y, r.Top, r.Bottom) - c.Y, 2));
+            Assert.All(others, o => Assert.True(Dist(o) > Dist(outlines[i]), $"badge {i + 1} at {badge} looks like it belongs to {o}"));
+            placed.Add(badge);
+        }
+    }
+
+    [Fact]
     public void FirstBadgeKeepsTheTopLeftCorner()
     {
         var outline = new Rectangle(97, 97, 46, 26);

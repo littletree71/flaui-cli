@@ -10,16 +10,32 @@ namespace FlauiCli.Core.Engine;
 // Window and inspection commands
 public sealed partial class CommandDispatcher
 {
+    /// <summary>
+    /// The windows one can switch to: the current window, the application's top-level windows and its dialogs.
+    /// Tooltips and unnamed popups (drop-down panes) are top-level windows too, but not ones to switch to.
+    /// </summary>
     private IReadOnlyList<IUiElement> WindowList()
     {
         var current = _s.RequireWindow();
-        var list = _s.GetTopLevelWindows().ToList();
+        var list = _s.GetTopLevelWindows().Where(IsSwitchable).ToList();
         if (!list.Any(current.Equals)) list.Insert(0, current);
         foreach (var child in ChildWindows())
         {
             if (!list.Any(child.Equals)) list.Add(child);
         }
         return list;
+    }
+
+    private static bool IsSwitchable(IUiElement w)
+    {
+        try
+        {
+            return w.Kind != ControlKind.ToolTip && (w.Kind == ControlKind.Window || w.Name.Length > 0);
+        }
+        catch
+        {
+            return false;   // The popup closed meanwhile
+        }
     }
 
     private string Windows(CommandContext ctx)
@@ -56,8 +72,8 @@ public sealed partial class CommandDispatcher
 
     /// <summary>
     /// Closes one window: WindowPattern first, then WM_CLOSE (what the title bar close button sends), which also
-    /// closes WinForms dialogs that have no Cancel button. When the current window closes, the session switches to
-    /// another window of the application.
+    /// closes WinForms dialogs that have no Cancel button. When the current window closes, the session switches back
+    /// to the window that was current before it, or else to another window of the application.
     /// </summary>
     private string CloseWindow(CommandContext ctx)
     {
@@ -65,8 +81,10 @@ public sealed partial class CommandDispatcher
         var target = ctx.Call.Get("window") is { } key ? FindWindow(ctx, key) : current;
         var label = Label(target);
         var isCurrent = target.Equals(current);
+        // Back to the window the dialog was opened from (an MDI child rather than the MDI parent), else another window
         var fallback = isCurrent
-            ? _s.GetTopLevelWindows().FirstOrDefault(w => !w.Equals(target) && w.Kind == ControlKind.Window && w.Name.Length > 0)
+            ? _s.PreviousWindow(target)
+              ?? _s.GetTopLevelWindows().FirstOrDefault(w => !w.Equals(target) && w.Kind == ControlKind.Window && w.Name.Length > 0)
             : null;
         var hwnd = target.WindowHandle;
         var timeout = ctx.Timeout;

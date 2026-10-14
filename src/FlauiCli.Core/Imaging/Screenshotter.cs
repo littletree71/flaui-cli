@@ -36,13 +36,19 @@ internal static class Screenshotter
             LineAlignment = StringAlignment.Center,
         };
 
-        var placed = new List<Rectangle>();
-        for (var i = 0; i < targets.Count; i++)
+        var outlines = targets.Select(r =>
         {
-            var r = targets[i];
-            if (r.IsEmpty) continue;
+            if (r.IsEmpty) return Rectangle.Empty;
             var local = new Rectangle(r.X - origin.X, r.Y - origin.Y, r.Width, r.Height);
             local.Inflate(3, 3);
+            return local;
+        }).ToList();
+        using var leader = new Pen(HighlightColor, 2f);
+        var placed = new List<Rectangle>();
+        for (var i = 0; i < outlines.Count; i++)
+        {
+            var local = outlines[i];
+            if (local.IsEmpty) continue;
             g.DrawRectangle(pen, local);
 
             if (firstNumber is null) continue;
@@ -50,20 +56,46 @@ internal static class Screenshotter
             var label = (firstNumber.Value + i).ToString();
             // One digit fits in a circle; longer numbers get a pill wide enough for the text
             var w = Math.Max(d, (int)Math.Ceiling(g.MeasureString(label, font, PointF.Empty, fmt).Width) + 10);
-            var (bx, by) = BadgePosition(local, w, d, bmp.Size, placed);
-            placed.Add(new Rectangle(bx, by, w, d));
+            var others = outlines.Where((o, j) => j != i && !o.IsEmpty).ToList();
+            var (bx, by) = BadgePosition(local, w, d, bmp.Size, placed, others);
+            var badge = new Rectangle(bx, by, w, d);
+            placed.Add(badge);
+            // A badge that had to move away from its outline points back to it
+            if (!Touches(badge, local))
+                g.DrawLine(leader, Center(badge), Nearest(local, Center(badge)));
             FillBadge(g, brush, bx, by, w, d);
             g.DrawString(label, font, Brushes.White, new RectangleF(bx, by, w, d), fmt);
         }
     }
 
+    private static Point Center(Rectangle r) => new(r.X + r.Width / 2, r.Y + r.Height / 2);
+
+    /// <summary>The point of <paramref name="r"/> nearest to <paramref name="p"/>.</summary>
+    private static Point Nearest(Rectangle r, Point p) =>
+        new(Math.Clamp(p.X, r.Left, r.Right), Math.Clamp(p.Y, r.Top, r.Bottom));
+
+    private static double Distance(Rectangle r, Point p)
+    {
+        var n = Nearest(r, p);
+        return Math.Sqrt(Math.Pow(n.X - p.X, 2) + Math.Pow(n.Y - p.Y, 2));
+    }
+
+    private static bool Touches(Rectangle badge, Rectangle outline) =>
+        Rectangle.Inflate(outline, 1, 1).IntersectsWith(badge);
+
     /// <summary>
     /// Places the number badge outside the outline so it never covers the element itself (for example the text of a
-    /// narrow input): diagonally off the top-left corner, else off another corner that fits in the image, else clamped.
-    /// Corners taken by the badges of earlier elements (<paramref name="placed"/>) are skipped; when every corner is
-    /// taken (adjacent toolbar buttons), the badge moves sideways until it no longer covers another badge.
+    /// narrow input): diagonally off the top-left corner, else off another corner that fits in the image.
+    /// <para>
+    /// Corners taken by the badges of earlier elements (<paramref name="placed"/>) are skipped, and so are positions
+    /// closer to the outline of another element (<paramref name="others"/>) than to this one, where the badge would
+    /// seem to belong to the neighbour (adjacent toolbar buttons). The badge then sits on the outline's own edge
+    /// (straddling the top or bottom edge, or the sides), and only when none of those is free does it move sideways
+    /// (the caller then draws a leader line back to the outline).
+    /// </para>
     /// </summary>
-    internal static (int X, int Y) BadgePosition(Rectangle outline, int width, int height, Size image, IReadOnlyList<Rectangle>? placed = null)
+    internal static (int X, int Y) BadgePosition(Rectangle outline, int width, int height, Size image,
+        IReadOnlyList<Rectangle>? placed = null, IReadOnlyList<Rectangle>? others = null)
     {
         const int touch = 4; // overlap with the outline so the badge visibly belongs to it
         (int X, int Y)[] candidates =
@@ -73,8 +105,32 @@ internal static class Screenshotter
             (outline.Left - width + touch, outline.Bottom - touch),
             (outline.Right - touch, outline.Bottom - touch),
         ];
+        int midX = outline.Left + (outline.Width - width) / 2, midY = outline.Top + (outline.Height - height) / 2;
+        (int X, int Y)[] onEdge =
+        [
+            (midX, outline.Top - height / 2),
+            (midX, outline.Bottom - height / 2),
+            (outline.Left, outline.Top - height / 2),
+            (outline.Right - width, outline.Top - height / 2),
+            (outline.Left, outline.Bottom - height / 2),
+            (outline.Right - width, outline.Bottom - height / 2),
+            (outline.Left - width / 2, midY),
+            (outline.Right - width / 2, midY),
+        ];
         bool Fits(int x, int y) => x >= 0 && y >= 0 && x + width <= image.Width && y + height <= image.Height;
         bool Free(int x, int y) => placed is null || !placed.Any(p => p.IntersectsWith(new Rectangle(x, y, width, height)));
+        bool Owned(int x, int y)
+        {
+            if (others is null) return true;
+            var center = new Point(x + width / 2, y + height / 2);
+            var own = Distance(outline, center);
+            return others.All(o => Distance(o, center) > own);
+        }
+
+        foreach (var (x, y) in candidates.Concat(onEdge))
+        {
+            if (Fits(x, y) && Free(x, y) && Owned(x, y)) return (x, y);
+        }
 
         var fitting = candidates.Where(c => Fits(c.X, c.Y)).ToList();
         foreach (var (x, y) in fitting)

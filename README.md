@@ -137,9 +137,12 @@ steps:
   - assert: { target: id=CalculatorResults, text: Display is 3 }
 ```
 
-- Top-level fields: `name`, `app`, `timeout` (default ms for every step), `steps`.
+- Top-level fields: `name`, `app`, `timeout` (default ms for every step; launching the app waits at least
+  `timeouts.launch`), `steps`.
 - `app`: `launch` (exe or AUMID), `args`, `window`, `attach` (PID or process name) and `close` (close the app afterwards;
-  defaults to `true` for `launch` and `false` for `attach`). A plain string means `launch`.
+  defaults to `true` for `launch` and `false` for `attach`). A plain string means `launch`. A launched app is closed even
+  when the script fails, and terminated when its window never appeared. With `close: false` the app keeps running and
+  keeps the standard handles it inherited, so a caller reading `run`'s output through a pipe waits until it exits.
 - A step is one command: a scalar is its first argument (`- click: id=ok`), a mapping gives named arguments and options
   (`- fill: { target: id=name, text: Alice }`), and `doc:` describes the step in generated documents.
   `run`, `list`, `install-skill` and the other local commands cannot be used in scripts.

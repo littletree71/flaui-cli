@@ -22,6 +22,9 @@ public sealed class FakeDriver : IUiDriver
 
     public List<string> Launched { get; } = [];
 
+    /// <summary>Processes returned by Launch, in order.</summary>
+    public List<FakeProcess> Processes { get; } = [];
+
     public FakeInput Input { get; }
 
     IInputDevice IUiDriver.Input => Input;
@@ -42,7 +45,9 @@ public sealed class FakeDriver : IUiDriver
         Launched.Add($"{executable} {arguments}".Trim());
         var window = OnLaunch?.Invoke(executable) ?? throw new InvalidOperationException("The test did not set OnLaunch");
         if (!TopLevel.Contains(window)) TopLevel.Add(window);
-        return new FakeProcess(window.ProcessId, window);
+        var process = new FakeProcess(window.ProcessId, window);
+        Processes.Add(process);
+        return process;
     }
 
     public IAppProcess LaunchStoreApp(string appUserModelId, string? arguments) => Launch(appUserModelId, arguments, null);

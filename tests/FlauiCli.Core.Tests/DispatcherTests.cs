@@ -505,6 +505,37 @@ public sealed class DispatcherTests : IDisposable
     }
 
     [Fact]
+    public void ClosingADialogReturnsToTheWindowItWasOpenedFrom()
+    {
+        var (parent, child) = Mdi();
+        Ok(_app.Open());
+        Ok(_app.Run("window", ("window", child.Name)));
+        // The dialog of an MDI child is owned by the MDI parent
+        var dialog = new FakeElement(ControlKind.Window, "Add") { Bounds = new(50, 50, 200, 100) };
+        parent.Add(dialog);
+        Ok(_app.Run("window", ("window", "Add")));
+
+        Ok(_app.Run("close-window"));
+        Assert.False(dialog.IsAlive);
+        Assert.Same(child, _app.Session.CurrentWindow);
+    }
+
+    [Fact]
+    public void WindowsDoesNotListTooltipsOrUnnamedPopups()
+    {
+        Ok(_app.Open());
+        var pid = _app.Window.ProcessId;
+        _app.Driver.TopLevel.Add(new FakeElement(ControlKind.ToolTip, "Adds two numbers") { ProcessId = pid, WindowHandle = 101 });
+        _app.Driver.TopLevel.Add(new FakeElement(ControlKind.Pane, "") { ProcessId = pid, WindowHandle = 102 });
+        _app.Driver.TopLevel.Add(new FakeElement(ControlKind.Window, "Settings") { ProcessId = pid, WindowHandle = 103 });
+
+        var text = _app.Run("windows").Text;
+        Assert.DoesNotContain("Adds two numbers", text);
+        Assert.Contains("Settings", text);
+        Assert.Equal(2, text.Split('\n').Count(l => l.StartsWith("- [")));
+    }
+
+    [Fact]
     public void InvokeThatDoesNotReturnFailsAfterTheTimeoutAndLaterCommandsFailFast()
     {
         Ok(_app.Open());

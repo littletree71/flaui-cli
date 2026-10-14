@@ -122,6 +122,44 @@ public class ScriptTests
     }
 
     [Fact]
+    public void RunnerTerminatesTheApplicationWhenLaunchingTimesOut()
+    {
+        using var app = new TestApp();
+        Directory.CreateDirectory(Path.Combine(app.Cwd, CliConfig.DefaultDirName));
+        File.WriteAllText(Path.Combine(app.Cwd, CliConfig.DefaultDirName, "config.json"), """{ "timeouts": { "launch": 400 } }""");
+        var doc = ScriptYaml.Parse("""
+            app: { launch: calc.exe, window: No such window }
+            timeout: 100
+            steps:
+              - click: id=num1Button
+            """);
+        var result = new ScriptRunner(() => app.Driver).Run(doc, new RunOptions { Cwd = app.Cwd });
+
+        Assert.False(result.Passed);
+        Assert.Contains("Launching the application", result.Error);
+        // The launch waits for the launch timeout, not the (much shorter) step timeout
+        Assert.True(result.Steps[0].Duration >= TimeSpan.FromMilliseconds(350), $"waited {result.Steps[0].Duration}");
+        // No window was found, so the process the script started is terminated
+        Assert.True(Assert.Single(app.Driver.Processes).HasExited);
+    }
+
+    [Fact]
+    public void RunnerLeavesTheApplicationRunningWithCloseFalse()
+    {
+        using var app = new TestApp();
+        var doc = ScriptYaml.Parse("""
+            app: { launch: calc.exe, window: Calculator, close: false }
+            steps:
+              - click: id=num1Button
+            """);
+        var result = new ScriptRunner(() => app.Driver).Run(doc, new RunOptions { Cwd = app.Cwd });
+
+        Assert.True(result.Passed, result.Error);
+        Assert.DoesNotContain("close", app.Window.Actions);
+        Assert.False(Assert.Single(app.Driver.Processes).HasExited);
+    }
+
+    [Fact]
     public void JUnitReport()
     {
         var pass = new ScriptResult { Name = "a", File = "a.yaml", Passed = true, Duration = TimeSpan.FromSeconds(1) };

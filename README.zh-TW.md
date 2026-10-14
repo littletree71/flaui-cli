@@ -137,9 +137,11 @@ steps:
   - assert: { target: id=CalculatorResults, text: Display is 3 }
 ```
 
-- 最上層欄位：`name`、`app`、`timeout`（每個步驟的預設逾時毫秒數）、`steps`。
+- 最上層欄位：`name`、`app`、`timeout`（每個步驟的預設逾時毫秒數；啟動程式至少等待 `timeouts.launch`）、`steps`。
 - `app`：`launch`（exe 或 AUMID）、`args`、`window`、`attach`（PID 或程序名稱）、`close`（結束後是否關閉程式；
   `launch` 預設為 `true`、`attach` 預設為 `false`）。直接寫字串等同 `launch`。
+  啟動的程式在 script 失敗時也會關閉，一直沒出現視窗時會被終止。設定 `close: false` 時程式會繼續執行，並保有它繼承的標準輸出入，
+  所以用 pipe 讀取 `run` 輸出的呼叫端會等到程式結束。
 - 每個步驟是一個指令：純量值是第一個參數（`- click: id=ok`），mapping 則是具名參數與選項
   （`- fill: { target: id=name, text: Alice }`），`doc:` 是操作文件中的步驟說明。
   `run`、`list`、`install-skill` 等本機指令不能用在腳本中。
