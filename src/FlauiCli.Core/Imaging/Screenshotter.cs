@@ -30,7 +30,11 @@ internal static class Screenshotter
         using var pen = new Pen(HighlightColor, 3f);
         using var brush = new SolidBrush(HighlightColor);
         using var font = new Font("Segoe UI", 10f, FontStyle.Bold, GraphicsUnit.Point);
-        using var fmt = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
+        using var fmt = new StringFormat(StringFormatFlags.NoWrap | StringFormatFlags.NoClip)
+        {
+            Alignment = StringAlignment.Center,
+            LineAlignment = StringAlignment.Center,
+        };
 
         for (var i = 0; i < targets.Count; i++)
         {
@@ -42,12 +46,49 @@ internal static class Screenshotter
 
             if (firstNumber is null) continue;
             const int d = 24;
-            // The number badge sits just outside the top-left corner of the outline, moved inwards when it would leave the image
-            var bx = Math.Clamp(local.X - d / 2, 0, Math.Max(0, bmp.Width - d));
-            var by = Math.Clamp(local.Y - d / 2, 0, Math.Max(0, bmp.Height - d));
-            g.FillEllipse(brush, bx, by, d, d);
-            g.DrawString((firstNumber.Value + i).ToString(), font, Brushes.White, new RectangleF(bx, by, d, d), fmt);
+            var label = (firstNumber.Value + i).ToString();
+            // One digit fits in a circle; longer numbers get a pill wide enough for the text
+            var w = Math.Max(d, (int)Math.Ceiling(g.MeasureString(label, font, PointF.Empty, fmt).Width) + 10);
+            var (bx, by) = BadgePosition(local, w, d, bmp.Size);
+            FillBadge(g, brush, bx, by, w, d);
+            g.DrawString(label, font, Brushes.White, new RectangleF(bx, by, w, d), fmt);
         }
+    }
+
+    /// <summary>
+    /// Places the number badge outside the outline so it never covers the element itself (for example the text of a
+    /// narrow input): diagonally off the top-left corner, else off another corner that fits in the image, else clamped.
+    /// </summary>
+    private static (int X, int Y) BadgePosition(Rectangle outline, int width, int height, Size image)
+    {
+        const int touch = 4; // overlap with the outline so the badge visibly belongs to it
+        (int X, int Y)[] candidates =
+        [
+            (outline.Left - width + touch, outline.Top - height + touch),
+            (outline.Right - touch, outline.Top - height + touch),
+            (outline.Left - width + touch, outline.Bottom - touch),
+            (outline.Right - touch, outline.Bottom - touch),
+        ];
+        foreach (var (x, y) in candidates)
+        {
+            if (x >= 0 && y >= 0 && x + width <= image.Width && y + height <= image.Height) return (x, y);
+        }
+        var (fx, fy) = candidates[0];
+        return (Math.Clamp(fx, 0, Math.Max(0, image.Width - width)), Math.Clamp(fy, 0, Math.Max(0, image.Height - height)));
+    }
+
+    private static void FillBadge(Graphics g, Brush brush, int x, int y, int width, int height)
+    {
+        if (width <= height)
+        {
+            g.FillEllipse(brush, x, y, height, height);
+            return;
+        }
+        using var path = new GraphicsPath();
+        path.AddArc(x, y, height, height, 90, 180);
+        path.AddArc(x + width - height, y, height, height, 270, 180);
+        path.CloseFigure();
+        g.FillPath(brush, path);
     }
 
     public static string SavePng(Bitmap bmp, string path)

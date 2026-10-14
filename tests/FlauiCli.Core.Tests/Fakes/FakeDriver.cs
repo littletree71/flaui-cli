@@ -129,5 +129,12 @@ public sealed class FakeScreen : IScreenCapture
 {
     public Rectangle VirtualScreen { get; } = new(0, 0, 1920, 1080);
 
-    public Bitmap Capture(Rectangle region) => new(Math.Max(1, region.Width), Math.Max(1, region.Height));
+    /// <summary>Called on every capture, to observe the application state at the moment of the screenshot.</summary>
+    public Action? OnCapture { get; set; }
+
+    public Bitmap Capture(Rectangle region)
+    {
+        OnCapture?.Invoke();
+        return new(Math.Max(1, region.Width), Math.Max(1, region.Height));
+    }
 }

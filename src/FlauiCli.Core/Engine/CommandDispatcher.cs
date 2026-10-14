@@ -104,10 +104,11 @@ public sealed partial class CommandDispatcher
             if (!_handlers.TryGetValue(call.Command, out var handler))
                 throw new CliException($"Unknown command: {call.Command} (run flaui-cli --help for the list of commands)");
 
+            ThrowIfInvokePending(call);
             var text = handler(ctx);
             RecordIfNeeded(ctx);
 
-            if (AutoSnapshot && ctx.Config.AutoSnapshot && _s.CurrentWindow is not null
+            if (AutoSnapshot && ctx.Config.AutoSnapshot && _s.CurrentWindow is not null && !IsInvokePending
                 && CommandCatalog.ActionCommands.Contains(call.Command))
             {
                 text += AutoSnapshotSection(ctx);
@@ -127,6 +128,37 @@ public sealed partial class CommandDispatcher
         {
             return CommandResult.Failure($"{ex.GetType().Name}: {ex.Message}");
         }
+    }
+
+    // ───────────────────────── Pending invoke ─────────────────────────
+
+    /// <summary>An InvokePattern call that did not return within its timeout (it opened a modal dialog).</summary>
+    private sealed record PendingInvoke(Task Task, string Label);
+
+    private PendingInvoke? _pendingInvoke;
+
+    /// <summary>Whether an earlier invoke is still blocked; clears the state once it has returned.</summary>
+    private bool IsInvokePending
+    {
+        get
+        {
+            if (_pendingInvoke is { Task.IsCompleted: true }) _pendingInvoke = null;
+            return _pendingInvoke is not null;
+        }
+    }
+
+    /// <summary>
+    /// While an invoke is pending, UI Automation calls to the application wait until the modal dialog closes.
+    /// Fail fast instead, except for commands that work without UI Automation.
+    /// </summary>
+    private void ThrowIfInvokePending(CommandCall call)
+    {
+        if (!IsInvokePending) return;
+        var withoutUia = call.Command is "status" or "sleep" || (call.Command == "press" && call.Get("target") is null);
+        if (withoutUia) return;
+        throw new CliException(
+            $"InvokePattern on {_pendingInvoke!.Label} has not returned yet (a modal dialog it opened is probably still open), " +
+            "so UI Automation calls to this application would wait. Close the dialog first, for example with press Escape or press Enter");
     }
 
     // ───────────────────────── Shared helpers ─────────────────────────
@@ -195,6 +227,24 @@ public sealed partial class CommandDispatcher
         {
             // Keep going even if the window cannot be brought to the foreground
         }
+    }
+
+    /// <summary>
+    /// Screen area of a window for screenshots: the visible frame reported by DWM when it is available, so the
+    /// invisible resize borders of Windows 10/11 (included in UIA's bounds) do not show the background.
+    /// </summary>
+    private static Rectangle WindowBounds(IUiElement window)
+    {
+        var bounds = window.Bounds;
+        try
+        {
+            if (NativeMethods.TryGetVisibleFrame(window.WindowHandle, out var frame) && bounds.Contains(frame)) return frame;
+        }
+        catch
+        {
+            // Fall back to the UIA bounds
+        }
+        return bounds;
     }
 
     private void ActivateWindow(IUiElement window)
@@ -295,8 +345,16 @@ public sealed partial class CommandDispatcher
         recorder.Add(Recordable(ctx));
     }
 
-    /// <summary>In document mode, takes a screenshot before the action and outlines the target element.</summary>
-    private void BeforeAction(CommandContext ctx, IUiElement? el, string description)
+    /// <summary>In document mode, takes a screenshot before the action (shows what to operate) and outlines the target element.</summary>
+    private void BeforeAction(CommandContext ctx, IUiElement? el, string description) => AddDocStep(ctx, el, description);
+
+    /// <summary>
+    /// In document mode, takes a screenshot after the action and outlines the target element. Used by commands
+    /// that change a value (fill, type, select, check...), so the screenshot shows the result.
+    /// </summary>
+    private void AfterAction(CommandContext ctx, IUiElement? el, string description) => AddDocStep(ctx, el, description);
+
+    private void AddDocStep(CommandContext ctx, IUiElement? el, string description)
     {
         var doc = _s.Doc;
         if (doc is null) return;
@@ -305,7 +363,17 @@ public sealed partial class CommandDispatcher
         var window = _s.RequireWindow();
         TryForeground(window);
 
-        var region = window.Bounds;
+        // A tooltip left over from an earlier hover belongs to another step
+        try
+        {
+            if (NativeMethods.HideTooltips(window.ProcessId)) Thread.Sleep(100);
+        }
+        catch
+        {
+            // Best effort
+        }
+
+        var region = WindowBounds(window);
         var target = el?.Bounds ?? Rectangle.Empty;
         if (!target.IsEmpty) region = Rectangle.Union(region, target);
 

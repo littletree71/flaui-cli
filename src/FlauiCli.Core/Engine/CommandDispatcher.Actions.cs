@@ -30,7 +30,7 @@ public sealed partial class CommandDispatcher
         if (ctx.Call.GetBool("invoke"))
         {
             EnsureInteractable(ctx, el);
-            if (!el.TryInvoke()) throw new CliException($"{label} does not support InvokePattern; use a normal click instead");
+            InvokeBounded(ctx, el, label, $"{label} does not support InvokePattern; use a normal click instead");
         }
         else
         {
@@ -74,7 +74,6 @@ public sealed partial class CommandDispatcher
         // Password fields: mask the value before it reaches documents, recordings and the result (same as the input recorder)
         if (secret) ctx.Call.Set("text", CommandCall.Masked);
 
-        BeforeAction(ctx, el, secret ? $"Enter the password in {Friendly(el)}" : $"Type \"{text}\" into {Friendly(el)}");
         EnsureInteractable(ctx, el);
 
         if (ctx.Call.GetBool("keyboard") || !el.TrySetValue(text))
@@ -86,6 +85,7 @@ public sealed partial class CommandDispatcher
         }
 
         Input.WaitUntilIdle();
+        AfterAction(ctx, el, secret ? $"Enter the password in {Friendly(el)}" : $"Type \"{text}\" into {Friendly(el)}");
         return $"### Result\nFilled {label} with \"{(secret ? CommandCall.Masked : text)}\"";
     }
 
@@ -93,10 +93,10 @@ public sealed partial class CommandDispatcher
     {
         var text = ctx.Call.Require("text");
         var focused = _s.Driver.GetFocusedElement();
-        BeforeAction(ctx, focused, $"Type \"{text}\"");
         TryForeground(_s.RequireWindow());
         Input.Type(text);
         Input.WaitUntilIdle();
+        AfterAction(ctx, focused, $"Type \"{text}\"");
         return $"### Result\nTyped \"{text}\"";
     }
 
@@ -105,6 +105,13 @@ public sealed partial class CommandDispatcher
         var keys = ctx.Call.Require("keys");
         var vks = KeyParser.Parse(keys);
         var hasTarget = ctx.Call.Get("target") is not null;
+        if (IsInvokePending && !hasTarget)
+        {
+            // UI Automation is blocked by the pending invoke; send the keys to the foreground window (the dialog)
+            Input.PressChord(vks);
+            Input.WaitUntilIdle();
+            return $"### Result\nPressed {keys} (sent to the foreground window; UI Automation is waiting for {_pendingInvoke!.Label})";
+        }
         var target = hasTarget ? ResolveArg(ctx) : _s.Driver.GetFocusedElement();
 
         BeforeAction(ctx, target, $"Press {keys}");
@@ -133,7 +140,6 @@ public sealed partial class CommandDispatcher
         int? index = item.StartsWith('#') && int.TryParse(item[1..], out var ix) ? ix : null;
         var label = Label(el);
 
-        BeforeAction(ctx, el, $"Select \"{item}\" in {Friendly(el)}");
         EnsureInteractable(ctx, el);
 
         string selected;
@@ -160,6 +166,7 @@ public sealed partial class CommandDispatcher
         }
 
         Input.WaitUntilIdle();
+        AfterAction(ctx, el, $"Select \"{item}\" in {Friendly(el)}");
         return $"### Result\nSelected \"{selected}\" in {label}";
     }
 
@@ -167,7 +174,6 @@ public sealed partial class CommandDispatcher
     {
         var el = ResolveArg(ctx);
         var label = Label(el);
-        BeforeAction(ctx, el, check ? $"Check {Friendly(el)}" : $"Uncheck {Friendly(el)}");
         EnsureInteractable(ctx, el);
 
         var desired = check ? ToggleValue.On : ToggleValue.Off;
@@ -190,6 +196,7 @@ public sealed partial class CommandDispatcher
             throw new CliException($"{label} is not a check box or toggle button");
         }
 
+        AfterAction(ctx, el, check ? $"Check {Friendly(el)}" : $"Uncheck {Friendly(el)}");
         return $"### Result\n{(check ? "Checked" : "Unchecked")} {label}";
     }
 
@@ -211,9 +218,35 @@ public sealed partial class CommandDispatcher
         var label = Label(el);
         BeforeAction(ctx, el, $"Invoke {Friendly(el)}");
         EnsureInteractable(ctx, el);
-        if (!el.TryInvoke()) throw new CliException($"{label} does not support InvokePattern");
+        InvokeBounded(ctx, el, label, $"{label} does not support InvokePattern");
         Input.WaitUntilIdle();
         return $"### Result\nInvoked {label}";
+    }
+
+    /// <summary>
+    /// Calls InvokePattern on a separate thread and waits at most the command timeout.
+    /// For WinForms controls, Invoke does not return until a modal dialog opened by the handler
+    /// (Form.ShowDialog) is closed. While it is pending, UI Automation calls to the application queue
+    /// behind it, so the command fails and later commands fail fast (see <see cref="ThrowIfInvokePending"/>)
+    /// instead of hanging until the dialog is closed.
+    /// </summary>
+    private void InvokeBounded(CommandContext ctx, IUiElement el, string label, string notSupported)
+    {
+        var task = Task.Factory.StartNew<bool>(el.TryInvoke, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+        if (Task.WhenAny(task, Task.Delay(ctx.Timeout)).GetAwaiter().GetResult() == task)
+        {
+            if (!task.GetAwaiter().GetResult()) throw new CliException(notSupported);
+            return;
+        }
+
+        // Observe a late failure so it does not surface as an unobserved task exception
+        _ = task.ContinueWith(t => _ = t.Exception, TaskContinuationOptions.OnlyOnFaulted);
+        _pendingInvoke = new PendingInvoke(task, label);
+        throw new CliException(
+            $"InvokePattern on {label} did not return within {ctx.Timeout}ms: it probably opened a modal dialog " +
+            "and only returns when the dialog closes. Until then UI Automation calls to this application wait, so other " +
+            "commands fail; press Escape / press Enter (without --target) still work. Use a plain click (without --invoke) " +
+            "for controls that open a dialog.");
     }
 
     private string Scroll(CommandContext ctx)

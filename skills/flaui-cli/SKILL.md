@@ -116,6 +116,8 @@ flaui-cli doc stop --out docs/calculator         # writes index.md + images/ and
 ```
 
 `doc status` shows the document being recorded. Generated step descriptions are in English; `--note` accepts any language.
+Most actions are captured before they run (showing what to operate); `fill`, `type`, `select`, `check` and `uncheck` are
+captured after they run, so the screenshot shows the entered value. Tooltips left over from an earlier `hover` are hidden first.
 
 Scripts can produce documents directly: `flaui-cli run flow.yaml --doc docs/flow`.
 
@@ -123,6 +125,10 @@ Scripts can produce documents directly: `flaui-cli run flow.yaml --doc docs/flow
 
 - The window of a UWP app (Calculator etc.) belongs to ApplicationFrameHost, so `open` always needs `--window`.
 - Actions move the real mouse; do not use the computer while they run. Use `click --invoke` to avoid moving the mouse.
+- On WinForms apps, InvokePattern does not return while a modal dialog opened by the control is shown. `click --invoke` /
+  `invoke` then fail after `--timeout` (exit code 2), and until the dialog closes every command except `status`, `sleep` and
+  `press <keys>` (without `--target`) fails immediately, because UI Automation calls to the app would wait. Close the dialog
+  with `press Escape` / `press Enter`. Use a plain `click` (without `--invoke`) for buttons that open a dialog.
 - `fill` on a password field is masked: the value is replaced with `********` in the command result, recorded scripts, generated
   documents and the daemon log, so never expect a real password to appear in the output. Scripts produced by `record capture`
   contain the same placeholder for password fields; replace it with the real value before running them.
