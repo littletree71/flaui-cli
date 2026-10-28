@@ -328,6 +328,9 @@ public sealed partial class CommandDispatcher
         if (_s.InputCapture?.LastError is { } err) sb.AppendLine($"- Recording error: {err}");
         sb.AppendLine($"- Document: {(_s.Doc is { } d ? $"in progress ({d.Steps.Count} steps)" : "no")}");
         sb.AppendLine($"- Refs: {_s.Refs.Count}");
+        var unavailable = DesktopUnavailable();
+        sb.AppendLine($"- Input: {(unavailable is null ? "available" : $"unavailable ({unavailable})")}");
+        ctx.Data["inputAvailable"] = unavailable is null ? "true" : "false";
 
         ctx.Data["recording"] = recording ? "true" : "false";
         ctx.Data["capturing"] = capturing ? "true" : "false";

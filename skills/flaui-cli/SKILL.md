@@ -57,7 +57,7 @@ Selectors wait for the element to appear (5 s by default, change with `--timeout
 
 | Area | Commands |
 |---|---|
-| Application | `open <exe\|AUMID> [args] [--window title]`, `attach [pid\|name] [--title title]`, `close [--keep-app]`, `status`, `list`, `close-all`, `kill-all` |
+| Application | `open <exe\|AUMID> [args] [--window title]`, `attach [pid\|name] [--title title]`, `close [--keep-app]`, `status`, `list`, `close-all`, `kill-all`, `lock-status` |
 | Windows | `windows`, `window <index\|ref\|title>`, `focus [t]`, `wait-window <title> [--exact\|--regex] [--no-switch]`, `close-window [index\|ref\|title]`, `maximize`, `minimize`, `restore`, `resize W H`, `move X Y` |
 | Inspection | `snapshot`, `find <text> [--regex]`, `inspect <target>` (all properties, patterns and a suggested selector) |
 | Actions | `click <t> [--button right] [--double] [--invoke]`, `dblclick`, `hover`, `fill <t> <text> [--keyboard]`, `type <text>`, `press <keys> [--target t]` (`Enter`, `Ctrl+S`), `select <t> <item or #index> [--keyboard]`, `check`, `uncheck`, `expand`, `collapse`, `invoke`, `scroll <t> [--dir down] [--amount 3]`, `drag <src> <dst>` |
@@ -69,7 +69,10 @@ Element commands take `--timeout <ms>`; action commands take `--note <text>` (th
 `close` closes the window and stops the session's daemon; `close --keep-app` ends the session and leaves the app running.
 `open` treats a value containing `!` as a Store app AUMID (for example `Microsoft.WindowsCalculator_8wekyb3d8bbwe!App`).
 
-Exit codes: 0 success, 1 assertion failed, 2 error, 3 session not running. Add `--json` for structured output and
+Exit codes: 0 success, 1 assertion failed, 2 error, 3 session not running, 4 workstation locked (mouse/keyboard input and
+screenshots impossible; reading the UI and `click --invoke` still work). When actions fail or seem to do nothing, run
+`flaui-cli lock-status` (no session needed; exit 0 = unlocked, 4 = locked) before looking for other causes; while locked, ask the
+user to unlock and retry. Add `--json` for structured output and
 `--verbose` for a timing breakdown (`find` / `action` / `snapshot` / `total`) at the end of the result.
 Use `-s <name>` (or the `FLAUI_CLI_SESSION` environment variable) to run several sessions.
 
@@ -132,7 +135,7 @@ Scripts can produce documents directly: `flaui-cli run flow.yaml --doc docs/flow
 
 ```json
 {
-  "timeouts": { "action": 5000, "launch": 20000 },
+  "timeouts": { "action": 5000, "launch": 20000, "unlock": 0 },
   "outputDir": ".flaui-cli",
   "autoSnapshot": true,
   "snapshot": { "depth": 0, "includeOffscreen": false },
@@ -142,6 +145,7 @@ Scripts can produce documents directly: `flaui-cli run flow.yaml --doc docs/flow
 ```
 
 - `timeouts.action`: element wait in ms (`--timeout` per command). `timeouts.launch`: how long `open` waits for the window.
+  `timeouts.unlock`: how long input / screenshot commands wait for a locked workstation to be unlocked (0 = fail with exit 4).
 - `outputDir`: where automatic snapshots and unnamed screenshots go. `autoSnapshot: false` speeds up large windows.
 - `snapshot.depth` / `snapshot.includeOffscreen`: defaults for `snapshot` and the automatic snapshot.
 - `highlight.padding`: px between element and outline (negative = inside, keeps touching elements' outlines apart);

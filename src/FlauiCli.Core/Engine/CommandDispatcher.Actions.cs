@@ -6,7 +6,9 @@ namespace FlauiCli.Core.Engine;
 // Action commands that operate on elements
 public sealed partial class CommandDispatcher
 {
-    private IInputDevice Input => _s.Driver.Input;
+    private IInputDevice Input => _input ??= new CheckedInput(_s.Driver, () => _unlockWaitMs);
+
+    private CheckedInput? _input;
 
     private static MouseButtonKind ParseButton(string? value) => (value ?? "left").ToLowerInvariant() switch
     {

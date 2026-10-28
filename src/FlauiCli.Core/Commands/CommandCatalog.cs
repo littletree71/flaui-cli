@@ -62,6 +62,9 @@ public static class CommandCatalog
         new("status", "Application", "Show the current session status", [], []),
         new("list", "Application", "List all sessions", [], [], CommandLocation.Local),
         new("close-all", "Application", "Close all sessions", [], [], CommandLocation.Local),
+        new("lock-status", "Application",
+            "Check whether the workstation is locked (input and screenshots impossible): exit code 0 when unlocked, 4 when locked; run it when actions fail or seem to do nothing",
+            [], [], CommandLocation.Local),
         new("kill-all", "Application", "Forcefully stop all daemon processes", [], [], CommandLocation.Local),
 
         // ── Windows ──
@@ -162,7 +165,7 @@ public static class CommandCatalog
 
     /// <summary>Commands that do not change the UI and are skipped by the recorder.</summary>
     public static readonly HashSet<string> ReadOnlyCommands =
-        new(["status", "windows", "snapshot", "find", "inspect", "get", "record", "doc", "list"], StringComparer.OrdinalIgnoreCase);
+        new(["status", "windows", "snapshot", "find", "inspect", "get", "record", "doc", "list", "lock-status"], StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Commands that operate on elements; they save an automatic snapshot and are captured in documents.</summary>
     public static readonly HashSet<string> ActionCommands =
