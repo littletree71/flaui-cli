@@ -142,7 +142,9 @@ steps:
   - assert: { target: id=CalculatorResults, text: Display is 3 }
 ```
 
-- 最上層欄位：`name`、`app`、`timeout`（每個步驟的預設逾時毫秒數；啟動程式至少等待 `timeouts.launch`）、`steps`。
+- 最上層欄位：`name`、`app`、`timeout`（每個步驟的預設逾時毫秒數；啟動程式至少等待 `timeouts.launch`）、
+  `highlight`（`padding` / `outline` / `badge`，套用到這份腳本的所有截圖，覆蓋設定檔的 `highlight`；步驟自己的
+  `highlight-padding` / `no-outline` / `badge-position` 優先）、`steps`。
 - `app`：`launch`（exe 或 AUMID）、`args`、`window`、`attach`（PID 或程序名稱）、`close`（結束後是否關閉程式；
   `launch` 預設為 `true`、`attach` 預設為 `false`）。直接寫字串等同 `launch`。
   啟動的程式在 script 失敗時也會關閉，一直沒出現視窗時會被終止。設定 `close: false` 時程式會繼續執行，並保有它繼承的標準輸出入，
@@ -190,7 +192,7 @@ flaui-cli doc stop --out docs/calculator --format md,html    # index.md + images
 
 ## 設定檔
 
-`.flaui-cli/config.json`（相對於目前工作目錄，全部選填）：
+`.flaui-cli/config.json`，放在目前工作目錄。所有欄位都可以省略，下面的值就是預設值。
 
 ```json
 {
@@ -198,9 +200,33 @@ flaui-cli doc stop --out docs/calculator --format md,html    # index.md + images
   "outputDir": ".flaui-cli",
   "autoSnapshot": true,
   "snapshot": { "depth": 0, "includeOffscreen": false },
+  "highlight": { "padding": 3, "outline": true, "badge": "auto" },
   "daemonIdleMinutes": 30
 }
 ```
+
+| 欄位 | 預設 | 說明 |
+|---|---|---|
+| `timeouts.action` | `5000` | 等待元素的毫秒數（selector、`wait`、`assert`）。單一指令用 `--timeout`、腳本用 `timeout:` 覆寫 |
+| `timeouts.launch` | `20000` | `open` 等待應用程式視窗出現的毫秒數 |
+| `outputDir` | `.flaui-cli` | 自動 snapshot、未指定路徑的截圖與文件放置的資料夾；相對於工作目錄，也可以是絕對路徑 |
+| `autoSnapshot` | `true` | 每個動作指令後自動存一份 snapshot。大型視窗建議關閉 |
+| `snapshot.depth` | `0` | `snapshot` 與自動 snapshot 的預設深度，`0` 為不限。`snapshot --depth` 可覆寫 |
+| `snapshot.includeOffscreen` | `false` | snapshot 是否包含畫面外的元素（同 `snapshot --all`） |
+| `highlight.padding` | `3` | 元素與紅框之間的像素：正數在元素外、`0` 貼齊邊緣、負數在元素內 |
+| `highlight.outline` | `true` | 設為 `false` 時不畫紅框，只畫編號 |
+| `highlight.badge` | `auto` | 編號的位置：`auto`（逐一自動決定）、`top`、`bottom`、`left`、`right`、`top-left`、`top-right`、`bottom-left`、`bottom-right` 或 `inside`（紅框內左上角） |
+| `daemonIdleMinutes` | `30` | 工作階段的 daemon 閒置多少分鐘後結束 |
+
+- 每個指令都會重新讀取設定檔，修改後立即生效；只有 `daemonIdleMinutes` 是在工作階段的 daemon 啟動時讀一次。
+- 可以寫 `//` 註解、結尾多一個逗號，欄位名稱不分大小寫。檔案格式錯誤時指令會失敗並顯示檔案路徑，不會默默改用預設值。
+- `highlight` 套用在 `screenshot --highlight`、`doc step --highlight` 以及 `doc` 為動作拍的截圖。標示的元素彼此相鄰（例如一排排
+  按鈕）時，設成負數（如 `-3`）可以讓紅框分開。不畫紅框時，編號位置與有紅框時相同，並優先放在元素正上方或正下方的中間。
+- `auto` 會讓編號貼著自己的元素，並避開其他編號。指定固定位置時，每個編號都放在紅框的同一側，即使因此落在相鄰元素旁邊
+  （例如按鈕兩排排列時，第二排用 `top`）。
+- 標註可能不易辨識時，`screenshot` 與 `doc step` 會在結果加上 `### Warnings`（`--json` 的 data 也有 `warnings`）：紅框互相交疊、
+  編號蓋到其他標示的元素或其他編號、編號為了留在圖片內被移動。截圖照樣儲存，退出碼仍為 0。只檢查有標示的元素。
+- 標示設定的優先順序：指令的 `--highlight-padding` / `--no-outline` / `--badge-position` > 腳本最上層的 `highlight` > 設定檔 > 預設值。
 
 ## 大型應用程式
 

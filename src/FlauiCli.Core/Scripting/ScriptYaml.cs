@@ -1,5 +1,6 @@
 using System.Globalization;
 using FlauiCli.Core.Commands;
+using FlauiCli.Core.Imaging;
 using FlauiCli.Core.Protocol;
 using YamlDotNet.Core;
 using YamlDotNet.RepresentationModel;
@@ -55,13 +56,16 @@ public static class ScriptYaml
                 case "app":
                     doc.App = ParseApp(value, where);
                     break;
+                case "highlight":
+                    doc.Highlight = ParseHighlight(value, where);
+                    break;
                 case "steps":
                     if (value is not YamlSequenceNode seq) throw new CliException($"{where}: steps must be a list");
                     var i = 0;
                     foreach (var step in seq.Children) doc.Steps.Add(ParseStep(step, ++i, where));
                     break;
                 default:
-                    throw new CliException($"{where}: unknown field {key} (use name, app, timeout, steps)");
+                    throw new CliException($"{where}: unknown field {key} (use name, app, timeout, highlight, steps)");
             }
         }
 
@@ -90,6 +94,34 @@ public static class ScriptYaml
         if (app.Launch is null && app.Attach is null && app.Window is null)
             throw new CliException($"{where}: app needs one of launch, attach or window");
         return app;
+    }
+
+    private static HighlightSpec ParseHighlight(YamlNode node, string where)
+    {
+        if (node is not YamlMappingNode m) throw new CliException($"{where}: highlight must be a mapping (padding, outline, badge)");
+        var spec = new HighlightSpec();
+        foreach (var (k, v) in m.Children)
+        {
+            var key = Scalar(k) ?? "";
+            var value = NodeToString(v, where);
+            switch (key.ToLowerInvariant())
+            {
+                case "padding":
+                    spec.Padding = int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var p)
+                        ? p
+                        : throw new CliException($"{where}: highlight padding must be an integer");
+                    break;
+                case "outline": spec.Outline = ParseBool(value, where); break;
+                case "badge":
+                    // Checked here so a typo fails when the script is loaded, not at its first screenshot
+                    try { HighlightStyle.ParseBadge(value); }
+                    catch (CliException) { throw new CliException($"{where}: unknown badge position {value} (use {HighlightStyle.BadgeNames})"); }
+                    spec.Badge = value;
+                    break;
+                default: throw new CliException($"{where}: unknown highlight field {key} (use padding, outline, badge)");
+            }
+        }
+        return spec;
     }
 
     private static CommandCall ParseStep(YamlNode node, int index, string where)
@@ -174,6 +206,14 @@ public static class ScriptYaml
             root["app"] = a;
         }
         if (doc.Timeout is not null) root["timeout"] = doc.Timeout.Value;
+        if (doc.Highlight is { } h)
+        {
+            var hl = new Dictionary<string, object>();
+            if (h.Padding is not null) hl["padding"] = h.Padding.Value;
+            if (h.Outline is not null) hl["outline"] = h.Outline.Value;
+            if (h.Badge is not null) hl["badge"] = h.Badge;
+            if (hl.Count > 0) root["highlight"] = hl;
+        }
 
         var steps = new List<object>();
         foreach (var call in doc.Steps)

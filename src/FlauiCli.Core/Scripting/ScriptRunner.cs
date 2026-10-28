@@ -45,7 +45,7 @@ public sealed class ScriptRunner(Func<IUiDriver> driverFactory)
         var config = CliConfig.Load(options.Cwd);
 
         using var session = new AutomationSession("run", driverFactory);
-        var dispatcher = new CommandDispatcher(session) { AutoSnapshot = false };
+        var dispatcher = new CommandDispatcher(session) { AutoSnapshot = false, ConfigOverride = doc.Highlight is { } h ? h.ApplyTo : null };
         if (options.DocDir is not null)
             session.Doc = new DocBuilder(doc.DisplayName, Path.Combine(config.ResolveOutputDir(options.Cwd), $"doc-work-{DateTime.Now:yyyyMMdd-HHmmss-fff}"));
 

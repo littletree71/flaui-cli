@@ -63,7 +63,7 @@ Selectors wait for the element to appear (5 s by default, change with `--timeout
 | Actions | `click <t> [--button right] [--double] [--invoke]`, `dblclick`, `hover`, `fill <t> <text> [--keyboard]`, `type <text>`, `press <keys> [--target t]` (`Enter`, `Ctrl+S`), `select <t> <item or #index>`, `check`, `uncheck`, `expand`, `collapse`, `invoke`, `scroll <t> [--dir down] [--amount 3]`, `drag <src> <dst>` |
 | Reading | `get text\|value\|name\|state\|rect <t>`, `get prop <t> HelpText` |
 | Waiting / asserting | `wait <t> --state visible\|hidden\|exists\|gone\|enabled\|disabled`, `assert exists\|not-exists\|visible\|hidden\|enabled\|disabled\|checked\|unchecked <t>`, `assert text\|contains\|matches\|value <t> <expected>`, `sleep <ms>` |
-| Screenshots | `screenshot [t] [--filename f.png] [--highlight t ...] [--screen]` |
+| Screenshots | `screenshot [t] [--filename f.png] [--highlight t ...] [--highlight-padding px] [--no-outline] [--badge-position p] [--screen]` |
 
 Element commands take `--timeout <ms>`; action commands take `--note <text>` (the step description in documents).
 `close` closes the window and stops the session's daemon; `close --keep-app` ends the session and leaves the app running.
@@ -101,7 +101,10 @@ steps:
   - assert: { target: id=CalculatorResults, text: Display is 1 }
 ```
 
-- Top-level fields: `name`, `app`, `timeout` (default ms per step; launching waits at least `timeouts.launch`, 20 s by default), `steps`.
+- Top-level fields: `name`, `app`, `timeout` (default ms per step; launching waits at least `timeouts.launch`, 20 s by default),
+  `highlight` (`{ padding: -3, outline: false, badge: top }`: outline distance in px, whether to draw outlines and where badges go,
+  for every screenshot of the script including `run --doc`; overrides the config file, a step's `highlight-padding` /
+  `no-outline` / `badge-position` overrides it), `steps`.
 - `app`: `launch` (exe or AUMID), `args`, `window`, `attach` (PID or process name), `close` (default `true` for launch, `false` for attach).
   A launched app is closed even when the script fails, and terminated when its window never appeared.
 - A scalar step value is the command's first argument; a mapping gives named arguments and options. Local commands (`run`, `list`...) are not allowed.
@@ -122,6 +125,32 @@ Most actions are captured before they run (showing what to operate); `fill`, `ty
 captured after they run, so the screenshot shows the entered value. Tooltips left over from an earlier `hover` are hidden first.
 
 Scripts can produce documents directly: `flaui-cli run flow.yaml --doc docs/flow`.
+
+## Configuration
+
+`.flaui-cli/config.json` in the working directory (every field optional, re-read for every command):
+
+```json
+{
+  "timeouts": { "action": 5000, "launch": 20000 },
+  "outputDir": ".flaui-cli",
+  "autoSnapshot": true,
+  "snapshot": { "depth": 0, "includeOffscreen": false },
+  "highlight": { "padding": 3, "outline": true, "badge": "auto" },
+  "daemonIdleMinutes": 30
+}
+```
+
+- `timeouts.action`: element wait in ms (`--timeout` per command). `timeouts.launch`: how long `open` waits for the window.
+- `outputDir`: where automatic snapshots and unnamed screenshots go. `autoSnapshot: false` speeds up large windows.
+- `snapshot.depth` / `snapshot.includeOffscreen`: defaults for `snapshot` and the automatic snapshot.
+- `highlight.padding`: px between element and outline (negative = inside, keeps touching elements' outlines apart);
+  `highlight.outline: false` draws only number badges. `highlight.badge`: `auto` (per element, avoids neighbours) or a fixed
+  side for every badge: `top|bottom|left|right|top-left|top-right|bottom-left|bottom-right|inside`. Overridden by a script's
+  `highlight` and a command's `--highlight-padding` / `--no-outline` / `--badge-position`.
+  `screenshot` / `doc step` report hard-to-read annotations under `### Warnings` (overlapping outlines, badges covering other
+  highlights); the screenshot is still saved, so follow the suggested option and take it again if needed.
+- `daemonIdleMinutes`: idle minutes before a session's daemon exits (read when the daemon starts).
 
 ## Notes
 

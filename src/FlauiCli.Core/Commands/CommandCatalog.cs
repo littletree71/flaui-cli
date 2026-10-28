@@ -38,6 +38,12 @@ public static class CommandCatalog
 
     private static readonly OptSpec Timeout = new("timeout", "Timeout in milliseconds (defaults to timeouts.action in the config file)");
     private static readonly OptSpec Note = new("note", "Description of this step when recording a document");
+    private static readonly OptSpec HighlightPadding = new("highlight-padding",
+        "Pixels between each element and its outline: positive outside, 0 on the edge, negative inside (defaults to highlight.padding in the config file, 3)");
+    private static readonly OptSpec NoOutline = new("no-outline",
+        "Only draw the number badges, without the red outlines (defaults to highlight.outline in the config file)", Flag: true);
+    private static readonly OptSpec BadgePosition = new("badge-position",
+        "Where number badges go: auto|top|bottom|left|right|top-left|top-right|bottom-left|bottom-right|inside (defaults to highlight.badge in the config file, auto)");
     private static readonly ArgSpec Target = new("target", "Element: snapshot ref (e12) or selector (id=..., name=..., type=...&&name=..., xpath=...)");
 
     private static CommandSpec Element(string name, string description, params OptSpec[] extra) =>
@@ -122,7 +128,7 @@ public static class CommandCatalog
         new("screenshot", "Screenshots", "Capture the current window or an element",
             [new("target", "Only capture this element", Required: false)],
             [new("filename", "Output file name (defaults to the output directory)"), new("highlight", "Element to outline in red; can be repeated", Multiple: true),
-             new("screen", "Capture the whole screen", Flag: true), Timeout]),
+             HighlightPadding, NoOutline, BadgePosition, new("screen", "Capture the whole screen", Flag: true), Timeout]),
 
         // ── Recording ──
         new("record", "Recording", "Record actions and export them as a YAML script",
@@ -133,7 +139,7 @@ public static class CommandCatalog
         new("doc", "Documentation", "Produce step-by-step documentation with annotated screenshots",
             [new("action", "start | step | stop | status"), new("text", "Description for step", Required: false)],
             [new("title", "Document title (start)"), new("out", "Output folder (stop)"), new("format", "md,html (default both)"),
-             new("highlight", "Element to outline for step; can be repeated", Multiple: true)]),
+             new("highlight", "Element to outline for step; can be repeated", Multiple: true), HighlightPadding, NoOutline, BadgePosition]),
 
         // ── Scripts ──
         new("run", "Scripts", "Run YAML test scripts",

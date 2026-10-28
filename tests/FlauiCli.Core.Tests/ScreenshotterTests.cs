@@ -89,7 +89,144 @@ public sealed class ScreenshotterTests
     {
         // A tool strip at the top of the window: the corners above do not fit, and the corners below sit between buttons
         var image = new Size(400, 200);
-        var outlines = Enumerable.Range(0, 6).Select(i => Rectangle.Inflate(new Rectangle(50 + i * 24, 0, 24, 24), 3, 3)).ToList();
+        AssertBadgesOwned(image, Enumerable.Range(0, 6).Select(i => Rectangle.Inflate(new Rectangle(50 + i * 24, 0, 24, 24), 3, 3)).ToList());
+    }
+
+    /// <summary>The button grid of issue #18: two tight rows of small buttons near the left edge of a small window.</summary>
+    private static readonly Rectangle[] ButtonGrid =
+    [
+        new(11, 56, 58, 26), new(71, 56, 58, 26), new(131, 56, 58, 26), new(11, 82, 58, 26), new(71, 82, 58, 26),
+    ];
+
+    [Fact]
+    public void BadgesInAButtonGridStayOnTheirOwnOutline()
+    {
+        // With the default padding the outlines overlap; with a negative padding they sit inside the buttons
+        AssertBadgesOwned(new Size(202, 137), [.. ButtonGrid.Select(r => Rectangle.Inflate(r, 3, 3))]);
+        AssertBadgesOwned(new Size(202, 137), [.. ButtonGrid.Select(r => Rectangle.Inflate(r, -3, -3))]);
+    }
+
+    [Fact]
+    public void NegativePaddingKeepsOutlinesOfTouchingElementsApart()
+    {
+        using var bmp = new Bitmap(202, 137);
+        using (var g = Graphics.FromImage(bmp)) g.Clear(Color.White);
+        Screenshotter.Annotate(bmp, Point.Empty, ButtonGrid, 1, new HighlightStyle(Padding: -3));
+
+        // One ends at x=69 and Two starts at x=71: neither outline reaches into the space where the buttons meet
+        static bool Red(Color p) => p.R > 180 && p.G < 120 && p.B < 120;
+        for (var x = 68; x <= 71; x++)
+            Assert.False(Red(bmp.GetPixel(x, 69)), $"an outline crosses the gap between One and Two at x={x}");
+    }
+
+    [Fact]
+    public void WithoutOutlinesOnlyTheBadgesAreDrawn()
+    {
+        using var bmp = new Bitmap(202, 137);
+        using (var g = Graphics.FromImage(bmp)) g.Clear(Color.White);
+        Screenshotter.Annotate(bmp, Point.Empty, ButtonGrid, 1, new HighlightStyle(Outline: false));
+
+        static bool Red(Color p) => p.R > 180 && p.G < 120 && p.B < 120;
+        var red = 0;
+        for (var y = 0; y < bmp.Height; y++)
+        {
+            for (var x = 0; x < bmp.Width; x++)
+            {
+                if (Red(bmp.GetPixel(x, y))) red++;
+            }
+        }
+        Assert.True(red > 0, "no badges were drawn");
+        // The left edge of One's outline (x = 8, halfway down the button) stays white
+        Assert.False(Red(bmp.GetPixel(8, 69)), "an outline was drawn");
+    }
+
+    [Fact]
+    public void WithoutAnOutlineTheBadgeSitsAboveTheMiddle()
+    {
+        var outline = new Rectangle(97, 97, 46, 26);
+        Assert.Equal((97 + (46 - 24) / 2, 97 - 24 + 4), Screenshotter.BadgePosition(outline, 24, 24, new Size(300, 200), [], centered: true));
+    }
+
+    [Theory]
+    [InlineData("Top", 97 + 11, 97 - 20)]
+    [InlineData("Bottom", 97 + 11, 123 - 4)]
+    [InlineData("Left", 97 - 20, 97 + 1)]
+    [InlineData("Right", 143 - 4, 97 + 1)]
+    [InlineData("TopRight", 143 - 4, 97 - 20)]
+    [InlineData("BottomLeft", 97 - 20, 123 - 4)]
+    [InlineData("Inside", 100, 100)]
+    public void ChosenBadgePositionsTouchTheOutline(string placement, int x, int y)
+    {
+        var outline = new Rectangle(97, 97, 46, 26);
+        Assert.Equal((x, y), Screenshotter.FixedBadgePosition(outline, 24, 24, new Size(300, 200), Enum.Parse<BadgePlacement>(placement)));
+    }
+
+    [Fact]
+    public void ChosenBadgePositionsStayInsideTheImage()
+    {
+        // An element in the top-left corner: a badge above-left of it is pushed into the image
+        Assert.Equal((0, 0), Screenshotter.FixedBadgePosition(new Rectangle(-3, -3, 46, 26), 24, 24, new Size(300, 200), BadgePlacement.TopLeft));
+    }
+
+    [Theory]
+    [InlineData("auto", "Auto")]
+    [InlineData("top-right", "TopRight")]
+    [InlineData("BottomLeft", "BottomLeft")]
+    [InlineData(null, "Auto")]
+    public void BadgePositionsAreParsed(string? value, string expected) =>
+        Assert.Equal(expected, HighlightStyle.ParseBadge(value).ToString());
+
+    [Theory]
+    [InlineData("middle")]
+    [InlineData("3")]
+    public void UnknownBadgePositionsAreRejected(string value) =>
+        Assert.Contains("Unknown badge position", Assert.Throws<CliException>(() => HighlightStyle.ParseBadge(value)).Message);
+
+    private static List<string> AnnotateGrid(HighlightStyle style)
+    {
+        using var bmp = new Bitmap(202, 137);
+        return Screenshotter.Annotate(bmp, Point.Empty, ButtonGrid, 1, style, ["id=button1", "id=button2", "id=button3", "id=button4", "id=button5"]);
+    }
+
+    [Fact]
+    public void TouchingOutlinesAreReported()
+    {
+        // Side by side and on top of each other; the diagonal neighbours (1 and 5, 2 and 4) only touch at a corner
+        var warnings = AnnotateGrid(HighlightStyle.Default);
+        Assert.Equal(["Outlines overlap (highlights 1-2, 1-4, 2-3, 2-5, 4-5); try --highlight-padding -3"], warnings);
+    }
+
+    [Fact]
+    public void ApartOutlinesWithAutomaticBadgesAreNotReported()
+    {
+        Assert.Empty(AnnotateGrid(new HighlightStyle(Padding: -3)));
+    }
+
+    [Fact]
+    public void BadgesOnNeighboursAreReported()
+    {
+        var warnings = AnnotateGrid(new HighlightStyle(Padding: -3, Badge: BadgePlacement.TopRight));
+        Assert.Contains(warnings, w => w.StartsWith("Badge 1 covers highlight 2 (id=button2); try --badge-position auto"));
+    }
+
+    [Fact]
+    public void BadgesMovedIntoTheImageAreReported()
+    {
+        using var bmp = new Bitmap(300, 200);
+        var warnings = Screenshotter.Annotate(bmp, Point.Empty, [new Rectangle(0, 0, 40, 20)], 1, new HighlightStyle(Badge: BadgePlacement.TopLeft));
+        Assert.Equal(["Badge 1 does not fit top-left of highlight 1 and was moved into the image"], warnings);
+    }
+
+    [Fact]
+    public void NestedHighlightsAreNotReported()
+    {
+        // A button inside a highlighted panel
+        using var bmp = new Bitmap(300, 200);
+        Assert.Empty(Screenshotter.Annotate(bmp, Point.Empty, [new Rectangle(50, 50, 200, 120), new Rectangle(100, 100, 60, 24)], 1));
+    }
+
+    private static void AssertBadgesOwned(Size image, IReadOnlyList<Rectangle> outlines)
+    {
         var placed = new List<Rectangle>();
         for (var i = 0; i < outlines.Count; i++)
         {
@@ -97,11 +234,13 @@ public sealed class ScreenshotterTests
             var (x, y) = Screenshotter.BadgePosition(outlines[i], 24, 24, image, placed, others);
             var badge = new Rectangle(x, y, 24, 24);
             Assert.DoesNotContain(placed, p => p.IntersectsWith(badge));
+            Assert.True(new Rectangle(Point.Empty, image).Contains(badge), $"badge {i + 1} at {badge} is outside the image");
 
-            // The badge centre is nearer to its own button than to any other
+            // The badge centre is nearer to its own button than to any other, and it does not cover another button
             var c = new Point(x + 12, y + 12);
             double Dist(Rectangle r) => Math.Sqrt(Math.Pow(Math.Clamp(c.X, r.Left, r.Right) - c.X, 2) + Math.Pow(Math.Clamp(c.Y, r.Top, r.Bottom) - c.Y, 2));
-            Assert.All(others, o => Assert.True(Dist(o) > Dist(outlines[i]), $"badge {i + 1} at {badge} looks like it belongs to {o}"));
+            Assert.All(others, o => Assert.True(Dist(o) > Dist(outlines[i]) && !Rectangle.Inflate(o, -6, -6).IntersectsWith(badge),
+                $"badge {i + 1} at {badge} looks like it belongs to {o}"));
             placed.Add(badge);
         }
     }

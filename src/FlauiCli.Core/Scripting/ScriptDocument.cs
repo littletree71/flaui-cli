@@ -12,6 +12,9 @@ public sealed class ScriptDocument
     /// <summary>Default timeout (ms) for every step of this script.</summary>
     public int? Timeout { get; set; }
 
+    /// <summary>Highlight settings for every screenshot of this script; they override the config file.</summary>
+    public HighlightSpec? Highlight { get; set; }
+
     public List<CommandCall> Steps { get; set; } = [];
 
     /// <summary>Path of the file the script was loaded from.</summary>
@@ -19,6 +22,23 @@ public sealed class ScriptDocument
 
     public string DisplayName =>
         Name ?? (SourcePath is null ? "Untitled script" : Path.GetFileNameWithoutExtension(SourcePath));
+}
+
+/// <summary>Script-level highlight settings (see <see cref="CliConfig.HighlightConfig"/>); null fields keep the config file's value.</summary>
+public sealed class HighlightSpec
+{
+    public int? Padding { get; set; }
+
+    public bool? Outline { get; set; }
+
+    public string? Badge { get; set; }
+
+    public void ApplyTo(CliConfig config)
+    {
+        if (Badge is not null) config.Highlight.Badge = Badge;
+        if (Padding is int padding) config.Highlight.Padding = padding;
+        if (Outline is bool outline) config.Highlight.Outline = outline;
+    }
 }
 
 /// <summary>Application to launch / attach to before the script runs.</summary>

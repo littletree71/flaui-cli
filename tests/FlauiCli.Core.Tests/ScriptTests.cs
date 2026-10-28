@@ -14,6 +14,7 @@ public class ScriptTests
           launch: calc.exe
           window: Calculator
         timeout: 3000
+        highlight: { padding: -3, outline: false, badge: bottom }
         steps:
           - click: id=num1Button
             doc: Press 1
@@ -33,6 +34,9 @@ public class ScriptTests
         Assert.Equal("Sample", doc.Name);
         Assert.Equal("calc.exe", doc.App!.Launch);
         Assert.Equal(3000, doc.Timeout);
+        Assert.Equal(-3, doc.Highlight!.Padding);
+        Assert.False(doc.Highlight.Outline);
+        Assert.Equal("bottom", doc.Highlight.Badge);
         Assert.Equal(6, doc.Steps.Count);
 
         Assert.Equal("click", doc.Steps[0].Command);
@@ -53,6 +57,9 @@ public class ScriptTests
     [InlineData("- a\n- b", "the top level must be a mapping")]
     [InlineData("steps: [", "invalid YAML")]
     [InlineData("timeout: abc", "timeout must be an integer")]
+    [InlineData("highlight: { padding: x }", "highlight padding must be an integer")]
+    [InlineData("highlight: { color: red }", "unknown highlight field")]
+    [InlineData("highlight: { badge: middle }", "unknown badge position")]
     public void ErrorMessagesAreClear(string yaml, string message)
     {
         var ex = Assert.Throws<CliException>(() => ScriptYaml.Parse(yaml));
@@ -68,6 +75,9 @@ public class ScriptTests
 
         Assert.Equal(doc.Name, again.Name);
         Assert.Equal(doc.App!.Window, again.App!.Window);
+        Assert.Equal(doc.Highlight!.Padding, again.Highlight!.Padding);
+        Assert.Equal(doc.Highlight.Outline, again.Highlight.Outline);
+        Assert.Equal(doc.Highlight.Badge, again.Highlight.Badge);
         Assert.Equal(doc.Steps.Count, again.Steps.Count);
         for (var i = 0; i < doc.Steps.Count; i++)
         {
@@ -98,6 +108,34 @@ public class ScriptTests
         Assert.Equal(6, steps.Count);
         Assert.True(steps[0].IsSetup);
         Assert.Contains("close", app.Window.Actions);
+    }
+
+    [Fact]
+    public void ScriptHighlightSettingsApplyToScreenshotsAndStepsCanOverrideThem()
+    {
+        using var app = new TestApp();
+        var doc = ScriptYaml.Parse("""
+            app: { launch: calc.exe, window: Calculator }
+            highlight: { padding: -3 }
+            steps:
+              - screenshot: { filename: script.png, highlight: id=num1Button }
+              - screenshot: { filename: step.png, highlight: id=num1Button, highlight-padding: 3 }
+            """);
+        var result = new ScriptRunner(() => app.Driver).Run(doc, new RunOptions { Cwd = app.Cwd });
+        Assert.True(result.Passed, result.Error);
+
+        // The "One" button spans x 10..100: padding -3 puts the left edge of the outline at x=13, padding 3 at x=7
+        static bool Red(System.Drawing.Color p) => p.R > 180 && p.G < 120 && p.B < 120;
+        using (var script = new System.Drawing.Bitmap(Path.Combine(app.Cwd, "script.png")))
+        {
+            Assert.True(Red(script.GetPixel(13, 120)));
+            Assert.False(Red(script.GetPixel(7, 120)));
+        }
+        using (var step = new System.Drawing.Bitmap(Path.Combine(app.Cwd, "step.png")))
+        {
+            Assert.True(Red(step.GetPixel(7, 120)));
+            Assert.False(Red(step.GetPixel(13, 120)));
+        }
     }
 
     [Fact]

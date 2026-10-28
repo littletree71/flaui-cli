@@ -6,6 +6,44 @@ using FlauiCli.Core.Abstractions;
 
 namespace FlauiCli.Core.Imaging;
 
+/// <summary>Where number badges go relative to their outline.</summary>
+internal enum BadgePlacement
+{
+    /// <summary>Chosen per element, away from other elements and badges.</summary>
+    Auto,
+    Top,
+    Bottom,
+    Left,
+    Right,
+    TopLeft,
+    TopRight,
+    BottomLeft,
+    BottomRight,
+
+    /// <summary>Inside the outline's top-left corner.</summary>
+    Inside,
+}
+
+/// <summary>How highlighted elements are drawn (see <see cref="CliConfig.HighlightConfig"/>).</summary>
+internal sealed record HighlightStyle(int Padding = 3, bool Outline = true, BadgePlacement Badge = BadgePlacement.Auto)
+{
+    public static readonly HighlightStyle Default = new();
+
+    public const string BadgeNames = "auto, top, bottom, left, right, top-left, top-right, bottom-left, bottom-right, inside";
+
+    public static HighlightStyle From(CliConfig.HighlightConfig config) => new(config.Padding, config.Outline, ParseBadge(config.Badge));
+
+    /// <summary>The name of a badge position as it is written in options, for example <c>top-right</c>.</summary>
+    public static string BadgeName(BadgePlacement placement) =>
+        string.Concat(placement.ToString().Select((c, i) => char.IsUpper(c) ? (i > 0 ? "-" : "") + char.ToLowerInvariant(c) : c.ToString()));
+
+    /// <summary>Parses a badge position such as <c>top-right</c>.</summary>
+    public static BadgePlacement ParseBadge(string? value) =>
+        Enum.TryParse<BadgePlacement>((value ?? "auto").Replace("-", ""), ignoreCase: true, out var p) && Enum.IsDefined(p) && !int.TryParse(value, out _)
+            ? p
+            : throw new CliException($"Unknown badge position: {value} (use {BadgeNames})");
+}
+
 /// <summary>Screenshots and annotations (red outline + number). Coordinates are always physical screen pixels.</summary>
 internal static class Screenshotter
 {
@@ -20,10 +58,22 @@ internal static class Screenshotter
         return screen.Capture(captured);
     }
 
-    /// <summary>Outlines elements on the image. <paramref name="origin"/> is the screen position of the image's top-left corner.</summary>
-    public static void Annotate(Bitmap bmp, Point origin, IReadOnlyList<Rectangle> targets, int? firstNumber)
+    /// <summary>
+    /// Outlines elements on the image. <paramref name="origin"/> is the screen position of the image's top-left corner.
+    /// <see cref="HighlightStyle.Padding"/> is the distance from each element to its outline (negative: inside). Without
+    /// <see cref="HighlightStyle.Outline"/> only the number badges are drawn, placed as if the outline were there.
+    /// <para>
+    /// Returns warnings about annotations that may be hard to read: badges overlapping each other or covering another
+    /// highlighted element, outlines running into each other, and badges that could not go where they were asked to.
+    /// <paramref name="names"/> (one per target, for example the selectors) identify the elements in the warnings.
+    /// </para>
+    /// </summary>
+    public static List<string> Annotate(Bitmap bmp, Point origin, IReadOnlyList<Rectangle> targets, int? firstNumber,
+        HighlightStyle? style = null, IReadOnlyList<string>? names = null)
     {
-        if (targets.Count == 0) return;
+        style ??= HighlightStyle.Default;
+        var warnings = new List<string>();
+        if (targets.Count == 0) return warnings;
         using var g = Graphics.FromImage(bmp);
         g.SmoothingMode = SmoothingMode.AntiAlias;
         g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
@@ -40,16 +90,44 @@ internal static class Screenshotter
         {
             if (r.IsEmpty) return Rectangle.Empty;
             var local = new Rectangle(r.X - origin.X, r.Y - origin.Y, r.Width, r.Height);
-            local.Inflate(3, 3);
+            // An outline cannot shrink past the middle of the element
+            var pad = Math.Max(style.Padding, -(Math.Min(local.Width, local.Height) - 2) / 2);
+            local.Inflate(pad, pad);
             return local;
         }).ToList();
+        var elements = targets.Select(r => r.IsEmpty ? Rectangle.Empty : new Rectangle(r.X - origin.X, r.Y - origin.Y, r.Width, r.Height)).ToList();
+        string Name(int i) => names is not null && i < names.Count ? $"highlight {i + 1} ({names[i]})" : $"highlight {i + 1}";
+        // An element inside another highlighted element (a button in a highlighted panel) overlaps it on purpose
+        bool Nested(int i, int j) => elements[i].Contains(elements[j]) || elements[j].Contains(elements[i]);
+
+        if (style.Outline)
+        {
+            var pairs = new List<string>();
+            for (var i = 0; i < outlines.Count; i++)
+            {
+                for (var j = i + 1; j < outlines.Count; j++)
+                {
+                    if (outlines[i].IsEmpty || outlines[j].IsEmpty || Nested(i, j)) continue;
+                    // Outlines that run along each other merge into one thick line; corners that just touch
+                    // (diagonal neighbours) are easy to tell apart
+                    var both = Rectangle.Intersect(outlines[i], outlines[j]);
+                    if (!both.IsEmpty && Math.Max(both.Width, both.Height) > 12) pairs.Add($"{i + 1}-{j + 1}");
+                }
+            }
+            if (pairs.Count > 0)
+                warnings.Add($"Outlines overlap (highlights {string.Join(", ", pairs)}); try --highlight-padding -3");
+        }
+
         using var leader = new Pen(HighlightColor, 2f);
         var placed = new List<Rectangle>();
+        var placedNumbers = new List<int>();
+        var fixedSide = style.Badge != BadgePlacement.Auto;
+        var tryInstead = fixedSide ? "try --badge-position auto" : "the elements are too close together";
         for (var i = 0; i < outlines.Count; i++)
         {
             var local = outlines[i];
             if (local.IsEmpty) continue;
-            g.DrawRectangle(pen, local);
+            if (style.Outline) g.DrawRectangle(pen, local);
 
             if (firstNumber is null) continue;
             const int d = 24;
@@ -57,16 +135,42 @@ internal static class Screenshotter
             // One digit fits in a circle; longer numbers get a pill wide enough for the text
             var w = Math.Max(d, (int)Math.Ceiling(g.MeasureString(label, font, PointF.Empty, fmt).Width) + 10);
             var others = outlines.Where((o, j) => j != i && !o.IsEmpty).ToList();
-            var (bx, by) = BadgePosition(local, w, d, bmp.Size, placed, others);
+            var moved = false;
+            var (bx, by) = fixedSide
+                ? FixedBadgePosition(local, w, d, bmp.Size, style.Badge, out moved)
+                : BadgePosition(local, w, d, bmp.Size, placed, others, centered: !style.Outline);
             var badge = new Rectangle(bx, by, w, d);
+            var number = firstNumber.Value + i;
+
+            for (var k = 0; k < placed.Count; k++)
+            {
+                if (placed[k].IntersectsWith(badge)) warnings.Add($"Badge {number} overlaps badge {placedNumbers[k]}; {tryInstead}");
+            }
+            // The band along an element's edge does not count: badges sit on outlines, which run there
+            var covered = Enumerable.Range(0, elements.Count)
+                .Where(j => j != i && !elements[j].IsEmpty && !Nested(i, j) && Rectangle.Inflate(elements[j], -3, -3).IntersectsWith(badge))
+                .Select(Name).ToList();
+            if (covered.Count > 0) warnings.Add($"Badge {number} covers {Join(covered)}; {tryInstead}");
+            if (fixedSide && moved)
+                warnings.Add($"Badge {number} does not fit {HighlightStyle.BadgeName(style.Badge)} of {Name(i)} and was moved into the image");
+
             placed.Add(badge);
+            placedNumbers.Add(number);
             // A badge that had to move away from its outline points back to it
             if (!Touches(badge, local))
+            {
                 g.DrawLine(leader, Center(badge), Nearest(local, Center(badge)));
+                if (!fixedSide) warnings.Add($"Badge {number} could not be placed next to {Name(i)}; a line points from it to the element");
+            }
             FillBadge(g, brush, bx, by, w, d);
             g.DrawString(label, font, Brushes.White, new RectangleF(bx, by, w, d), fmt);
         }
+        return warnings;
     }
+
+    /// <summary>"a", "a and b", "a, b and c".</summary>
+    private static string Join(IReadOnlyList<string> items) =>
+        items.Count <= 1 ? string.Concat(items) : string.Join(", ", items.Take(items.Count - 1)) + " and " + items[^1];
 
     private static Point Center(Rectangle r) => new(r.X + r.Width / 2, r.Y + r.Height / 2);
 
@@ -85,17 +189,22 @@ internal static class Screenshotter
 
     /// <summary>
     /// Places the number badge outside the outline so it never covers the element itself (for example the text of a
-    /// narrow input): diagonally off the top-left corner, else off another corner that fits in the image.
+    /// narrow input): diagonally off the top-left corner, else right above or below the middle of the outline, else
+    /// off another corner that fits in the image.
     /// <para>
-    /// Corners taken by the badges of earlier elements (<paramref name="placed"/>) are skipped, and so are positions
-    /// closer to the outline of another element (<paramref name="others"/>) than to this one, where the badge would
-    /// seem to belong to the neighbour (adjacent toolbar buttons). The badge then sits on the outline's own edge
+    /// Positions taken by the badges of earlier elements (<paramref name="placed"/>) are skipped, and so are positions
+    /// closer to the outline of another element (<paramref name="others"/>) than to this one, or covering it, where the
+    /// badge would seem to belong to the neighbour (adjacent buttons). The badge then sits on the outline's own edge
     /// (straddling the top or bottom edge, or the sides), and only when none of those is free does it move sideways
     /// (the caller then draws a leader line back to the outline).
     /// </para>
+    /// <para>
+    /// With <paramref name="centered"/> (no outline is drawn) the positions above and below the middle come first: a
+    /// badge off a corner, without the outline, looks like it belongs to the element next to that corner.
+    /// </para>
     /// </summary>
     internal static (int X, int Y) BadgePosition(Rectangle outline, int width, int height, Size image,
-        IReadOnlyList<Rectangle>? placed = null, IReadOnlyList<Rectangle>? others = null)
+        IReadOnlyList<Rectangle>? placed = null, IReadOnlyList<Rectangle>? others = null, bool centered = false)
     {
         const int touch = 4; // overlap with the outline so the badge visibly belongs to it
         (int X, int Y)[] candidates =
@@ -106,6 +215,13 @@ internal static class Screenshotter
             (outline.Right - touch, outline.Bottom - touch),
         ];
         int midX = outline.Left + (outline.Width - width) / 2, midY = outline.Top + (outline.Height - height) / 2;
+        // Right above / below the middle of the outline: in a grid of buttons, the top row gets its badges above and
+        // the bottom row below, where no neighbour sits between the badge and its button
+        (int X, int Y)[] beside =
+        [
+            (midX, outline.Top - height + touch),
+            (midX, outline.Bottom - touch),
+        ];
         (int X, int Y)[] onEdge =
         [
             (midX, outline.Top - height / 2),
@@ -122,12 +238,18 @@ internal static class Screenshotter
         bool Owned(int x, int y)
         {
             if (others is null) return true;
+            var badge = new Rectangle(x, y, width, height);
             var center = new Point(x + width / 2, y + height / 2);
             var own = Distance(outline, center);
-            return others.All(o => Distance(o, center) > own);
+            // Covering another element makes the badge look like it belongs there, whatever the distances say. The band
+            // just inside an outline (padding and pen) does not count: outlines of touching elements overlap there.
+            return others.All(o => Distance(o, center) > own && !Rectangle.Inflate(o, -6, -6).IntersectsWith(badge));
         }
 
-        foreach (var (x, y) in candidates.Concat(onEdge))
+        var order = centered
+            ? beside.Concat(candidates)
+            : candidates.Take(1).Concat(beside).Concat(candidates.Skip(1));
+        foreach (var (x, y) in order.Concat(onEdge))
         {
             if (Fits(x, y) && Free(x, y) && Owned(x, y)) return (x, y);
         }
@@ -156,6 +278,39 @@ internal static class Screenshotter
             }
         }
         return (fx, fy);
+    }
+
+    /// <summary>
+    /// The badge at a position the user chose, touching the outline from outside (or inside its top-left corner for
+    /// <see cref="BadgePlacement.Inside"/>). Only moved to stay inside the image.
+    /// </summary>
+    internal static (int X, int Y) FixedBadgePosition(Rectangle outline, int width, int height, Size image, BadgePlacement placement) =>
+        FixedBadgePosition(outline, width, height, image, placement, out _);
+
+    /// <inheritdoc cref="FixedBadgePosition(Rectangle, int, int, Size, BadgePlacement)"/>
+    /// <param name="moved">Whether the badge had to move to stay inside the image.</param>
+    internal static (int X, int Y) FixedBadgePosition(Rectangle outline, int width, int height, Size image, BadgePlacement placement, out bool moved)
+    {
+        const int touch = 4;
+        int left = outline.Left - width + touch, right = outline.Right - touch;
+        int top = outline.Top - height + touch, bottom = outline.Bottom - touch;
+        int midX = outline.Left + (outline.Width - width) / 2, midY = outline.Top + (outline.Height - height) / 2;
+        var (x, y) = placement switch
+        {
+            BadgePlacement.Top => (midX, top),
+            BadgePlacement.Bottom => (midX, bottom),
+            BadgePlacement.Left => (left, midY),
+            BadgePlacement.Right => (right, midY),
+            BadgePlacement.TopLeft => (left, top),
+            BadgePlacement.TopRight => (right, top),
+            BadgePlacement.BottomLeft => (left, bottom),
+            BadgePlacement.BottomRight => (right, bottom),
+            BadgePlacement.Inside => (outline.Left + 3, outline.Top + 3),
+            _ => throw new ArgumentOutOfRangeException(nameof(placement)),
+        };
+        var (cx, cy) = (Math.Clamp(x, 0, Math.Max(0, image.Width - width)), Math.Clamp(y, 0, Math.Max(0, image.Height - height)));
+        moved = (cx, cy) != (x, y);
+        return (cx, cy);
     }
 
     private static void FillBadge(Graphics g, Brush brush, int x, int y, int width, int height)
