@@ -88,6 +88,7 @@ snapshot 輸出範例：
 | `id=num1Button` | AutomationId |
 | `name="One"`、`One` | Name 完全相符 |
 | `text=Disp` | Name 包含（不分大小寫） |
+| `regex="^\s*Row 0$"` | Name 符合正規表示式（不分大小寫） |
 | `type=Button` | ControlType（button、edit、checkbox、combobox、listitem…） |
 | `class=TextBox` | ClassName |
 | `type=Button&&name=OK` | 條件組合 |
@@ -96,6 +97,8 @@ snapshot 輸出範例：
 | `xpath=//Button[@AutomationId='ok']` | FlaUI XPath |
 
 selector 會自動等待元素出現，斷言會自動重試直到逾時（預設 5 秒，可用 `--timeout` 或設定檔調整）。
+值沒加引號時會去掉前後空白：名稱前後有空白的元素（例如沒有標題文字的 DataGridView 勾選欄，儲存格名稱是 `" Row 0"`）要寫成
+`name=" Row 0"`，或改用 `text=` / `regex=`。snapshot 會把這類名稱連同空白一起放在引號裡。
 
 ## 指令一覽
 

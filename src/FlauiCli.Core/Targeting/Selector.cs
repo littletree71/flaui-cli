@@ -29,7 +29,8 @@ public sealed class SelectorPart
 /// Element locator string. Supports:
 /// <list type="bullet">
 /// <item>ref: <c>e12</c> (from a snapshot)</item>
-/// <item><c>id=</c> AutomationId, <c>name=</c> exact name, <c>text=</c> name contains, <c>type=</c> ControlType, <c>class=</c> ClassName, <c>nth=</c> index</item>
+/// <item><c>id=</c> AutomationId, <c>name=</c> exact name, <c>text=</c> name contains, <c>regex=</c> name matches a regular
+/// expression, <c>type=</c> ControlType, <c>class=</c> ClassName, <c>nth=</c> index</item>
 /// <item><c>xpath=</c> FlaUI XPath</item>
 /// <item><c>&amp;&amp;</c> to combine conditions, <c>&gt;&gt;</c> for nesting</item>
 /// <item>a string without a known prefix is treated as a name</item>
@@ -37,7 +38,7 @@ public sealed class SelectorPart
 /// </summary>
 public sealed partial class Selector
 {
-    public static readonly string[] KnownKeys = ["id", "name", "text", "type", "class", "nth", "xpath"];
+    public static readonly string[] KnownKeys = ["id", "name", "text", "regex", "type", "class", "nth", "xpath"];
 
     private Selector(string raw) => Raw = raw;
 
@@ -92,6 +93,12 @@ public sealed partial class Selector
                             break;
                         case "xpath":
                             part.XPath = value;
+                            break;
+                        case "regex":
+                            // Checked here so a bad pattern fails with a clear message instead of matching nothing
+                            try { _ = new Regex(value, RegexOptions.IgnoreCase); }
+                            catch (ArgumentException ex) { throw new CliException($"Invalid regular expression in {raw}: {ex.Message}"); }
+                            part.Conditions.Add(new SelectorCondition(key, value));
                             break;
                         default:
                             part.Conditions.Add(new SelectorCondition(key, value));

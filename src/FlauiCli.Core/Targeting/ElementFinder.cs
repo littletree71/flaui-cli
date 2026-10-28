@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using FlauiCli.Core.Abstractions;
 
 namespace FlauiCli.Core.Targeting;
@@ -94,7 +95,7 @@ internal static class ElementFinder
         return next;
     }
 
-    /// <summary>The UIA query of a part, or null when the part needs client-side filtering (xpath, text=, nth).</summary>
+    /// <summary>The UIA query of a part, or null when the part needs client-side filtering (xpath, text=, regex=, nth).</summary>
     private static ElementQuery? ToQuery(SelectorPart part)
     {
         if (part.XPath is not null || part.Nth is not null) return null;
@@ -119,6 +120,7 @@ internal static class ElementFinder
         if (part.XPath is not null) return root.FindByXPath(part.XPath);
 
         string? id = null, name = null, cls = null, contains = null;
+        Regex? pattern = null;
         ControlKind? kind = null;
         foreach (var c in part.Conditions)
         {
@@ -129,12 +131,13 @@ internal static class ElementFinder
                 case "class": cls = c.Value; break;
                 case "type": kind = ParseKind(c.Value); break;
                 case "text": contains = c.Value; break;
+                case "regex": pattern = new Regex(c.Value, RegexOptions.IgnoreCase); break;
             }
         }
 
-        var found = root.FindAll(new ElementQuery(id, name, cls, kind));
-        return contains is null
-            ? found
-            : found.Where(e => e.Name.Contains(contains, StringComparison.OrdinalIgnoreCase));
+        IEnumerable<IUiElement> found = root.FindAll(new ElementQuery(id, name, cls, kind));
+        if (contains is not null) found = found.Where(e => e.Name.Contains(contains, StringComparison.OrdinalIgnoreCase));
+        if (pattern is not null) found = found.Where(e => pattern.IsMatch(e.Name));
+        return found;
     }
 }
