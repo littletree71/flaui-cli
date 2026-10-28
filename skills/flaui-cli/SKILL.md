@@ -139,8 +139,8 @@ Scripts can produce documents directly: `flaui-cli run flow.yaml --doc docs/flow
 
 ### Tip: saving tokens with screenshots
 
-Reading a screenshot adds the image to the conversation for the rest of the task, and with some providers' prompt caching, such
-as Claude's, adding an image also invalidates the cached conversation. If token usage is a concern, text commands (`snapshot`,
+Every screenshot you read stays in the conversation until the task ends. With some providers, such as Claude, adding an image
+also means the whole conversation is processed again instead of coming from the cache. If token usage is a concern, text commands (`snapshot`,
 `get`, `assert`) can often confirm the state without an image, and in long tasks a subagent may read the images and report back
 in text.
 
