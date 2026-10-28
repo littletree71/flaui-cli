@@ -87,9 +87,39 @@ public sealed class ScreenshotterTests
     [Fact]
     public void BadgesOfAdjacentElementsStayOnTheirOwnOutline()
     {
-        // A tool strip at the top of the window: the corners above do not fit, and the corners below sit between buttons
+        // A tool strip at the top of the window: the corners above do not fit, and the corners below sit between buttons.
+        // Touching buttons are outlined inside the element, like Annotate does.
         var image = new Size(400, 200);
-        var outlines = Enumerable.Range(0, 6).Select(i => Rectangle.Inflate(new Rectangle(50 + i * 24, 0, 24, 24), 3, 3)).ToList();
+        AssertBadgesOwned(image, Enumerable.Range(0, 6).Select(i => Rectangle.Inflate(new Rectangle(50 + i * 24, 0, 24, 24), -3, -3)).ToList());
+    }
+
+    /// <summary>The button grid of issue #18: two tight rows of small buttons near the left edge of a small window.</summary>
+    private static readonly Rectangle[] ButtonGrid =
+    [
+        new(11, 56, 58, 26), new(71, 56, 58, 26), new(131, 56, 58, 26), new(11, 82, 58, 26), new(71, 82, 58, 26),
+    ];
+
+    [Fact]
+    public void BadgesInAButtonGridStayOnTheirOwnOutline()
+    {
+        AssertBadgesOwned(new Size(202, 137), [.. ButtonGrid.Select(r => Rectangle.Inflate(r, -3, -3))]);
+    }
+
+    [Fact]
+    public void OutlinesOfTouchingElementsStayApart()
+    {
+        using var bmp = new Bitmap(202, 137);
+        using (var g = Graphics.FromImage(bmp)) g.Clear(Color.White);
+        Screenshotter.Annotate(bmp, Point.Empty, ButtonGrid, 1);
+
+        // One ends at x=69 and Two starts at x=71: neither outline reaches into the space where the buttons meet
+        static bool Red(Color p) => p.R > 180 && p.G < 120 && p.B < 120;
+        for (var x = 68; x <= 71; x++)
+            Assert.False(Red(bmp.GetPixel(x, 69)), $"an outline crosses the gap between One and Two at x={x}");
+    }
+
+    private static void AssertBadgesOwned(Size image, IReadOnlyList<Rectangle> outlines)
+    {
         var placed = new List<Rectangle>();
         for (var i = 0; i < outlines.Count; i++)
         {
@@ -97,11 +127,13 @@ public sealed class ScreenshotterTests
             var (x, y) = Screenshotter.BadgePosition(outlines[i], 24, 24, image, placed, others);
             var badge = new Rectangle(x, y, 24, 24);
             Assert.DoesNotContain(placed, p => p.IntersectsWith(badge));
+            Assert.True(new Rectangle(Point.Empty, image).Contains(badge), $"badge {i + 1} at {badge} is outside the image");
 
-            // The badge centre is nearer to its own button than to any other
+            // The badge centre is nearer to its own button than to any other, and it does not cover another button
             var c = new Point(x + 12, y + 12);
             double Dist(Rectangle r) => Math.Sqrt(Math.Pow(Math.Clamp(c.X, r.Left, r.Right) - c.X, 2) + Math.Pow(Math.Clamp(c.Y, r.Top, r.Bottom) - c.Y, 2));
-            Assert.All(others, o => Assert.True(Dist(o) > Dist(outlines[i]), $"badge {i + 1} at {badge} looks like it belongs to {o}"));
+            Assert.All(others, o => Assert.True(Dist(o) > Dist(outlines[i]) && !Rectangle.Inflate(o, -1, -1).IntersectsWith(badge),
+                $"badge {i + 1} at {badge} looks like it belongs to {o}"));
             placed.Add(badge);
         }
     }

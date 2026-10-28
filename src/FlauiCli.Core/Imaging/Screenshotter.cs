@@ -11,6 +11,9 @@ internal static class Screenshotter
 {
     private static readonly Color HighlightColor = Color.FromArgb(229, 57, 53);
 
+    /// <summary>Targets closer than this to another target get their outline drawn inside the element.</summary>
+    private const int CrowdedGap = 8;
+
     /// <summary>Captures a rectangle of the screen (clipped to the virtual screen).</summary>
     public static Bitmap CaptureRegion(IScreenCapture screen, Rectangle region, out Rectangle captured)
     {
@@ -36,12 +39,14 @@ internal static class Screenshotter
             LineAlignment = StringAlignment.Center,
         };
 
-        var outlines = targets.Select(r =>
+        var locals = targets.Select(r => r.IsEmpty ? Rectangle.Empty : new Rectangle(r.X - origin.X, r.Y - origin.Y, r.Width, r.Height)).ToList();
+        var outlines = locals.Select((local, i) =>
         {
-            if (r.IsEmpty) return Rectangle.Empty;
-            var local = new Rectangle(r.X - origin.X, r.Y - origin.Y, r.Width, r.Height);
-            local.Inflate(3, 3);
-            return local;
+            if (local.IsEmpty) return Rectangle.Empty;
+            // Outlines of elements that (almost) touch another target go inside the element, so neighbouring
+            // outlines stay apart instead of merging into one red block
+            var crowded = locals.Where((o, j) => j != i && !o.IsEmpty).Any(o => Rectangle.Inflate(local, CrowdedGap, CrowdedGap).IntersectsWith(o));
+            return crowded && local.Width > 12 && local.Height > 12 ? Rectangle.Inflate(local, -3, -3) : Rectangle.Inflate(local, 3, 3);
         }).ToList();
         using var leader = new Pen(HighlightColor, 2f);
         var placed = new List<Rectangle>();
@@ -85,11 +90,12 @@ internal static class Screenshotter
 
     /// <summary>
     /// Places the number badge outside the outline so it never covers the element itself (for example the text of a
-    /// narrow input): diagonally off the top-left corner, else off another corner that fits in the image.
+    /// narrow input): diagonally off the top-left corner, else right above or below the middle of the outline, else
+    /// off another corner that fits in the image.
     /// <para>
-    /// Corners taken by the badges of earlier elements (<paramref name="placed"/>) are skipped, and so are positions
-    /// closer to the outline of another element (<paramref name="others"/>) than to this one, where the badge would
-    /// seem to belong to the neighbour (adjacent toolbar buttons). The badge then sits on the outline's own edge
+    /// Positions taken by the badges of earlier elements (<paramref name="placed"/>) are skipped, and so are positions
+    /// closer to the outline of another element (<paramref name="others"/>) than to this one, or covering it, where the
+    /// badge would seem to belong to the neighbour (adjacent buttons). The badge then sits on the outline's own edge
     /// (straddling the top or bottom edge, or the sides), and only when none of those is free does it move sideways
     /// (the caller then draws a leader line back to the outline).
     /// </para>
@@ -106,6 +112,13 @@ internal static class Screenshotter
             (outline.Right - touch, outline.Bottom - touch),
         ];
         int midX = outline.Left + (outline.Width - width) / 2, midY = outline.Top + (outline.Height - height) / 2;
+        // Right above / below the middle of the outline: in a grid of buttons, the top row gets its badges above and
+        // the bottom row below, where no neighbour sits between the badge and its button
+        (int X, int Y)[] beside =
+        [
+            (midX, outline.Top - height + touch),
+            (midX, outline.Bottom - touch),
+        ];
         (int X, int Y)[] onEdge =
         [
             (midX, outline.Top - height / 2),
@@ -122,12 +135,14 @@ internal static class Screenshotter
         bool Owned(int x, int y)
         {
             if (others is null) return true;
+            var badge = new Rectangle(x, y, width, height);
             var center = new Point(x + width / 2, y + height / 2);
             var own = Distance(outline, center);
-            return others.All(o => Distance(o, center) > own);
+            // Covering another outline makes the badge look like it belongs there, whatever the distances say
+            return others.All(o => Distance(o, center) > own && !Rectangle.Inflate(o, -1, -1).IntersectsWith(badge));
         }
 
-        foreach (var (x, y) in candidates.Concat(onEdge))
+        foreach (var (x, y) in candidates.Take(1).Concat(beside).Concat(candidates.Skip(1)).Concat(onEdge))
         {
             if (Fits(x, y) && Free(x, y) && Owned(x, y)) return (x, y);
         }
