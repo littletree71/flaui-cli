@@ -296,6 +296,23 @@ public sealed class FlaUIElement : IUiElement
         }
     }
 
+    public IReadOnlyList<string>? TryGetComboBoxItems()
+    {
+        if (Kind != ControlKind.ComboBox) return null;
+        try
+        {
+            var cb = Inner.AsComboBox();
+            // FlaUI opens the list when the items are only exposed then
+            var items = cb.Items.Select(i => string.IsNullOrEmpty(i.Text) ? i.Name : i.Text).ToList();
+            try { if (cb.IsEditable == false && cb.ExpandCollapseState == ExpandCollapseState.Expanded) cb.Collapse(); } catch { /* some ComboBoxes cannot be collapsed */ }
+            return items;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     public string? TryGetDocumentText()
     {
         try { return Inner.Patterns.Text.PatternOrDefault?.DocumentRange.GetText(-1); }

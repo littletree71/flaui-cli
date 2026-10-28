@@ -103,7 +103,7 @@ selector 會自動等待元素出現，斷言會自動重試直到逾時（預�
 
 | 類別 | 指令 |
 |---|---|
-| 應用程式 | `open` `attach` `close` `status` `list` `close-all` `kill-all` |
+| 應用程式 | `open` `attach` `close` `status` `list` `close-all` `kill-all` `lock-status` |
 | 視窗 | `windows` `window` `focus` `maximize` `minimize` `restore` `resize` `move` `wait-window` `close-window` |
 | 檢視 | `snapshot` `find` `inspect` |
 | 動作 | `click` `dblclick` `hover` `fill` `type` `press` `select` `check` `uncheck` `expand` `collapse` `invoke` `scroll` `drag` |
@@ -123,7 +123,7 @@ session 會繼續；關掉的是目前視窗時，會切回在它之前的目前
 不會列出 tooltip 與沒有名稱的 popup。
 `wait-window <標題>` 依序比對完全相同、以該文字開頭、包含該文字的標題；`--exact` 只接受完全相同的標題，
 `--regex` 把標題當成正規表示式（適合 MDI 子視窗，因為 MDI 主視窗的標題也會包含子視窗標題）。
-結束碼：`0` 成功、`1` 斷言失敗、`2` 錯誤、`3` session 未啟動。
+結束碼：`0` 成功、`1` 斷言失敗、`2` 錯誤、`3` session 未啟動、`4` 工作站已鎖定（無法模擬輸入與截圖，解鎖後重試）。
 
 ## YAML 測試腳本
 
@@ -190,13 +190,26 @@ flaui-cli doc stop --out docs/calculator --format md,html    # index.md + images
 自動產生的步驟說明是英文（例如 `Click the "One" button`）；用 `--note` 或腳本的 `doc:` 可以寫任何語言。
 大部分動作在執行前截圖；`fill`、`type`、`select`、`check`、`uncheck` 則在執行後截圖，讓畫面顯示輸入的值。
 
+### 遮蔽不能公開的資料
+
+公開文件的截圖常會出現人名等不能公開的資料。`--mask <目標>` 以實心方塊蓋住元素，`--mask-column <欄位標題>` 蓋住表格該欄所有
+可見的儲存格；兩者都可以重複：
+
+```bash
+flaui-cli screenshot --mask id=customerName --mask-column "id=dataGridView1 >> name=Partner" --highlight id=okButton
+flaui-cli doc start --title "訂單" --mask-column "id=dataGridView1 >> name=Partner"   # 套用到文件的每一張截圖
+```
+
+遮蔽會先畫，紅框與編號後畫，所以不會被蓋住。`screenshot` 與 `doc step` 找不到遮蔽的目標時會失敗，不會存出未遮蔽的圖；
+`doc start` 給的遮蔽會套用到文件的每一張截圖，畫面上有出現的地方才遮。
+
 ## 設定檔
 
 `.flaui-cli/config.json`，放在目前工作目錄。所有欄位都可以省略，下面的值就是預設值。
 
 ```json
 {
-  "timeouts": { "action": 5000, "launch": 20000 },
+  "timeouts": { "action": 5000, "launch": 20000, "unlock": 0 },
   "outputDir": ".flaui-cli",
   "autoSnapshot": true,
   "snapshot": { "depth": 0, "includeOffscreen": false },
@@ -209,6 +222,7 @@ flaui-cli doc stop --out docs/calculator --format md,html    # index.md + images
 |---|---|---|
 | `timeouts.action` | `5000` | 等待元素的毫秒數（selector、`wait`、`assert`）。單一指令用 `--timeout`、腳本用 `timeout:` 覆寫 |
 | `timeouts.launch` | `20000` | `open` 等待應用程式視窗出現的毫秒數 |
+| `timeouts.unlock` | `0` | 需要滑鼠／鍵盤輸入或截圖的指令遇到工作站鎖定時，等待解鎖的毫秒數；`0` 立即以結束碼 `4` 失敗。長時間無人看守的執行可以設定它，使用者解鎖後就會繼續 |
 | `outputDir` | `.flaui-cli` | 自動 snapshot、未指定路徑的截圖與文件放置的資料夾；相對於工作目錄，也可以是絕對路徑 |
 | `autoSnapshot` | `true` | 每個動作指令後自動存一份 snapshot。大型視窗建議關閉 |
 | `snapshot.depth` | `0` | `snapshot` 與自動 snapshot 的預設深度，`0` 為不限。`snapshot --depth` 可覆寫 |
@@ -389,6 +403,14 @@ dotnet test tests/FlauiCli.E2E.Tests                                    # 需要
 ## 已知限制
 
 - 動作會移動真實滑鼠、送出真實按鍵，執行期間請勿操作電腦（`click --invoke` 可避免移動滑鼠）。
+- `select` 透過 UI Automation 變更選取，不會觸發應用程式自己的選取事件：WinForms 下拉選單畫面上顯示新項目，但
+  `SelectedIndexChanged` 不會執行。`select --keyboard` 改用方向鍵選取，應用程式的反應與真人操作相同（途中經過的項目也會觸發事件）。
+  選取已經選取的項目，兩種方式都不會觸發事件。
+- 應用程式可能在處理按鍵時移動焦點（例如 WinForms 表單在下拉選單變更時跳到下一個欄位），下一次 `press` 就會送到別處；`press`
+  會回報焦點移到哪裡。`press Down --target <目標> --repeat 3` 會在每次按鍵前重新聚焦目標。
+- 工作站鎖定（或顯示 UAC 提示）時，移動滑鼠、按鍵與截圖的指令會以結束碼 `4` 失敗，不會點到鎖定畫面；讀取 UI、`click --invoke`
+  與透過 ValuePattern 的 `fill` 仍可運作。`lock-status`（不需要 session）可以操作時結束碼為 `0`、鎖定時為 `4`，`status` 也會顯示
+`Input: available` / `unavailable`，腳本可以據此等待解鎖後重試。
 - WinForms 程式中，若控制項開啟了強制回應（modal）對話框，InvokePattern 會等到對話框關閉才返回：`click --invoke` / `invoke` 會在 `--timeout` 後失敗，對話框關閉前只有 `status`、`sleep`、`press <按鍵>` 可用。會開對話框的按鈕請用一般 `click`。
 - UWP 程式的視窗由 ApplicationFrameHost 承載，`open` 需要 `--window` 指定標題；`close` 只會關閉視窗，不會結束共用程序。
 - WinForms `ListView`（Details 檢視、未開 `FullRowSelect`）的 `listitem` 元素範圍是整列，`click` 會點到文字右邊的空白處而選不到項目。

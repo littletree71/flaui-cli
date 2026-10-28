@@ -57,19 +57,22 @@ Selectors wait for the element to appear (5 s by default, change with `--timeout
 
 | Area | Commands |
 |---|---|
-| Application | `open <exe\|AUMID> [args] [--window title]`, `attach [pid\|name] [--title title]`, `close [--keep-app]`, `status`, `list`, `close-all`, `kill-all` |
+| Application | `open <exe\|AUMID> [args] [--window title]`, `attach [pid\|name] [--title title]`, `close [--keep-app]`, `status`, `list`, `close-all`, `kill-all`, `lock-status` |
 | Windows | `windows`, `window <index\|ref\|title>`, `focus [t]`, `wait-window <title> [--exact\|--regex] [--no-switch]`, `close-window [index\|ref\|title]`, `maximize`, `minimize`, `restore`, `resize W H`, `move X Y` |
 | Inspection | `snapshot`, `find <text> [--regex]`, `inspect <target>` (all properties, patterns and a suggested selector) |
-| Actions | `click <t> [--button right] [--double] [--invoke]`, `dblclick`, `hover`, `fill <t> <text> [--keyboard]`, `type <text>`, `press <keys> [--target t]` (`Enter`, `Ctrl+S`), `select <t> <item or #index>`, `check`, `uncheck`, `expand`, `collapse`, `invoke`, `scroll <t> [--dir down] [--amount 3]`, `drag <src> <dst>` |
+| Actions | `click <t> [--button right] [--double] [--invoke]`, `dblclick`, `hover`, `fill <t> <text> [--keyboard]`, `type <text>`, `press <keys> [--target t] [--repeat n]` (`Enter`, `Ctrl+S`), `select <t> <item or #index> [--keyboard]`, `check`, `uncheck`, `expand`, `collapse`, `invoke`, `scroll <t> [--dir down] [--amount 3]`, `drag <src> <dst>` |
 | Reading | `get text\|value\|name\|state\|rect <t>`, `get prop <t> HelpText` |
 | Waiting / asserting | `wait <t> --state visible\|hidden\|exists\|gone\|enabled\|disabled`, `assert exists\|not-exists\|visible\|hidden\|enabled\|disabled\|checked\|unchecked <t>`, `assert text\|contains\|matches\|value <t> <expected>`, `sleep <ms>` |
-| Screenshots | `screenshot [t] [--filename f.png] [--highlight t ...] [--highlight-padding px] [--no-outline] [--badge-position p] [--screen]` |
+| Screenshots | `screenshot [t] [--filename f.png] [--highlight t ...] [--highlight-padding px] [--no-outline] [--badge-position p] [--mask t ...] [--mask-column header ...] [--screen]` |
 
 Element commands take `--timeout <ms>`; action commands take `--note <text>` (the step description in documents).
 `close` closes the window and stops the session's daemon; `close --keep-app` ends the session and leaves the app running.
 `open` treats a value containing `!` as a Store app AUMID (for example `Microsoft.WindowsCalculator_8wekyb3d8bbwe!App`).
 
-Exit codes: 0 success, 1 assertion failed, 2 error, 3 session not running. Add `--json` for structured output and
+Exit codes: 0 success, 1 assertion failed, 2 error, 3 session not running, 4 workstation locked (mouse/keyboard input and
+screenshots impossible; reading the UI and `click --invoke` still work). When actions fail or seem to do nothing, run
+`flaui-cli lock-status` (no session needed; exit 0 = unlocked, 4 = locked) before looking for other causes; while locked, ask the
+user to unlock and retry. Add `--json` for structured output and
 `--verbose` for a timing breakdown (`find` / `action` / `snapshot` / `total`) at the end of the result.
 Use `-s <name>` (or the `FLAUI_CLI_SESSION` environment variable) to run several sessions.
 
@@ -124,6 +127,11 @@ flaui-cli doc stop --out docs/calculator         # writes index.md + images/ and
 Most actions are captured before they run (showing what to operate); `fill`, `type`, `select`, `check` and `uncheck` are
 captured after they run, so the screenshot shows the entered value. Tooltips left over from an earlier `hover` are hidden first.
 
+To hide names or other private data, add `--mask <t>` (an element) or `--mask-column <column header>` (every visible cell of a
+table column, for example `--mask-column "id=dataGridView1 >> name=Partner"`) to `screenshot` / `doc step`, or to `doc start` to
+cover them in every screenshot of the document. A solid box is drawn before outlines and badges. `screenshot` / `doc step` fail
+without saving when a mask is not found; do not post-process images to hide data.
+
 Scripts can produce documents directly: `flaui-cli run flow.yaml --doc docs/flow`.
 
 ## Configuration
@@ -132,7 +140,7 @@ Scripts can produce documents directly: `flaui-cli run flow.yaml --doc docs/flow
 
 ```json
 {
-  "timeouts": { "action": 5000, "launch": 20000 },
+  "timeouts": { "action": 5000, "launch": 20000, "unlock": 0 },
   "outputDir": ".flaui-cli",
   "autoSnapshot": true,
   "snapshot": { "depth": 0, "includeOffscreen": false },
@@ -142,6 +150,7 @@ Scripts can produce documents directly: `flaui-cli run flow.yaml --doc docs/flow
 ```
 
 - `timeouts.action`: element wait in ms (`--timeout` per command). `timeouts.launch`: how long `open` waits for the window.
+  `timeouts.unlock`: how long input / screenshot commands wait for a locked workstation to be unlocked (0 = fail with exit 4).
 - `outputDir`: where automatic snapshots and unnamed screenshots go. `autoSnapshot: false` speeds up large windows.
 - `snapshot.depth` / `snapshot.includeOffscreen`: defaults for `snapshot` and the automatic snapshot.
 - `highlight.padding`: px between element and outline (negative = inside, keeps touching elements' outlines apart);
@@ -164,6 +173,13 @@ Scripts can produce documents directly: `flaui-cli run flow.yaml --doc docs/flow
   documents and the daemon log, so never expect a real password to appear in the output. Scripts produced by `record capture`
   contain the same placeholder for password fields; replace it with the real value before running them.
 - `fill` uses ValuePattern when possible; add `--keyboard` when the app only reacts to real key presses.
+- `select` goes through UI Automation, which changes the value without the app's selection events: a WinForms combo box shows
+  the new item but `SelectedIndexChanged` never runs, so later steps fail ("please select an item"). Use `select <t> <item>
+  --keyboard` there: it presses Up/Down from the current item (every item passed on the way raises the event too, as for a
+  person). Selecting the item that is already selected raises no event in either mode.
+- Applications often move the focus while handling a key (a WinForms drop-down jumping to the next field from
+  `SelectedIndexChanged`), so a second `press` without `--target` lands elsewhere; `press` then says where the focus went.
+  Use `press Down --target <t> --repeat 3`: the target is focused again before every press.
 - Use `inspect <target>` to get a suggested stable selector for an element found in a snapshot.
 - When an element cannot be found, check with `snapshot` or `find <text>`; popups such as drop-downs and menus also appear in snapshots.
 - `wait-window` prefers an exact title, then one starting with the text, then one containing it. In MDI apps the parent's title

@@ -174,6 +174,209 @@ public sealed class DispatcherTests : IDisposable
         Assert.False(_app.Run("press", ("keys", "Ctrl+Nope")).Ok);
     }
 
+    /// <summary>A table with a Name column (x 50..150) and an Amount column (x 150..250), two rows.</summary>
+    private FakeElement AddGrid()
+    {
+        var grid = new FakeElement(ControlKind.DataGrid, "Grid", "grid") { Bounds = new System.Drawing.Rectangle(40, 480, 220, 100) };
+        var header = new FakeElement(ControlKind.Group, "Top Row").Add(
+            new FakeElement(ControlKind.Header, "Name") { Bounds = new System.Drawing.Rectangle(50, 480, 100, 20) },
+            new FakeElement(ControlKind.Header, "Amount") { Bounds = new System.Drawing.Rectangle(150, 480, 100, 20) });
+        grid.Add(header);
+        for (var row = 0; row < 2; row++)
+        {
+            var y = 500 + row * 20;
+            grid.Add(new FakeElement(ControlKind.Group, $"Row {row}").Add(
+                new FakeElement(ControlKind.DataItem, $"Name Row {row}") { Bounds = new System.Drawing.Rectangle(50, y, 100, 20) },
+                new FakeElement(ControlKind.DataItem, $"Amount Row {row}") { Bounds = new System.Drawing.Rectangle(150, y, 100, 20) }));
+        }
+        _app.Window.Add(grid);
+        return grid;
+    }
+
+    private static bool Masked(System.Drawing.Bitmap bmp, int x, int y) => bmp.GetPixel(x, y).ToArgb() == System.Drawing.Color.FromArgb(96, 96, 96).ToArgb();
+
+    [Fact]
+    public void ScreenshotMasksElementsAndColumns()
+    {
+        Ok(_app.Open());
+        AddGrid();
+        var path = Path.Combine(_app.Cwd, "masked.png");
+        Ok(_app.Run("screenshot", ("filename", path), ("mask", "id=nameInput"), ("mask-column", "id=grid >> name=Name")));
+
+        using var bmp = new System.Drawing.Bitmap(path);
+        Assert.True(Masked(bmp, 100, 215), "the name input is not masked");
+        Assert.True(Masked(bmp, 100, 505) && Masked(bmp, 100, 525), "the Name cells are not masked");
+        Assert.False(Masked(bmp, 100, 485), "the Name header was masked");
+        Assert.False(Masked(bmp, 200, 505), "the Amount cells were masked");
+    }
+
+    [Fact]
+    public void ScreenshotFailsWithoutSavingWhenAMaskIsMissing()
+    {
+        Ok(_app.Open());
+        var path = Path.Combine(_app.Cwd, "leak.png");
+        var r = _app.Run("screenshot", ("filename", path), ("mask", "id=nope"), ("timeout", "200"));
+        Assert.False(r.Ok);
+        Assert.False(File.Exists(path), "a screenshot was saved without its mask");
+        Assert.Contains("not inside a table", _app.Run("screenshot", ("mask-column", "id=num1Button")).Error);
+    }
+
+    [Fact]
+    public void DocumentMasksApplyToEveryStepWhereTheyAreShown()
+    {
+        Ok(_app.Open());
+        AddGrid();
+        Ok(_app.Run("doc", ("action", "start"), ("mask-column", "id=grid >> name=Name"), ("mask", "id=gone")));
+        Ok(_app.Run("click", ("target", "id=num1Button")));
+        Ok(_app.Run("doc", ("action", "step"), ("text", "Done")));
+        var outDir = Path.Combine(_app.Cwd, "doc");
+        Ok(_app.Run("doc", ("action", "stop"), ("out", outDir), ("format", "md")));
+
+        foreach (var image in Directory.GetFiles(Path.Combine(outDir, "images"), "*.png"))
+        {
+            using var bmp = new System.Drawing.Bitmap(image);
+            Assert.True(Masked(bmp, 100, 505), $"{Path.GetFileName(image)} is not masked");
+        }
+    }
+
+    [Fact]
+    public void SelectWithTheKeyboardPressesArrowsFromTheCurrentItem()
+    {
+        Ok(_app.Open());
+        var colors = _app.Colors;
+        colors.Add(new FakeElement(ControlKind.ListItem, "Blue"));
+        colors.Value = "Blue";
+        string[] names = ["Red", "Green", "Blue"];
+        // The combo box moves one item per arrow key, like a real one
+        _app.Driver.Input.OnPress = () =>
+        {
+            var i = Array.IndexOf(names, colors.Value);
+            colors.Value = names[Math.Clamp(i + (_app.Driver.Input.Log[^1] == "press 0x28" ? 1 : -1), 0, names.Length - 1)];
+        };
+
+        var r = _app.Run("select", ("target", "id=colorCombo"), ("item", "Red"), ("keyboard", "true"));
+        Ok(r);
+        Assert.Equal("Red", colors.Value);
+        Assert.Contains("with the keyboard (Up × 2)", r.Text);
+        Assert.Equal(2, _app.Driver.Input.Log.Count(l => l == "press 0x26"));
+        Assert.DoesNotContain(colors.Actions, a => a.StartsWith("combo:"));
+
+        Ok(_app.Run("select", ("target", "id=colorCombo"), ("item", "#1"), ("keyboard", "true")));
+        Assert.Equal("Green", colors.Value);
+
+        Assert.Contains("already selected", _app.Run("select", ("target", "id=colorCombo"), ("item", "Green"), ("keyboard", "true")).Text);
+        Assert.Contains("Available items: Red, Green, Blue",
+            _app.Run("select", ("target", "id=colorCombo"), ("item", "Purple"), ("keyboard", "true")).Error);
+        Assert.Contains("works on combo boxes and lists",
+            _app.Run("select", ("target", "id=num1Button"), ("item", "x"), ("keyboard", "true")).Error);
+    }
+
+    [Fact]
+    public void SelectWithTheKeyboardFailsWhenTheSelectionDoesNotFollow()
+    {
+        Ok(_app.Open());
+        _app.Colors.Value = "Red";
+        var r = _app.Run("select", ("target", "id=colorCombo"), ("item", "Green"), ("keyboard", "true"));
+        Assert.False(r.Ok);
+        Assert.Contains("but \"Red\" is selected instead of \"Green\"", r.Error);
+    }
+
+    [Fact]
+    public void PressRepeatsAndFocusesTheTargetBeforeEveryPress()
+    {
+        Ok(_app.Open());
+        // The application moves the focus to the next field after every key, like a WinForms SelectedIndexChanged handler
+        _app.Driver.Input.OnPress = () => _app.Driver.Focused = _app.NameBox;
+        var r = _app.Run("press", ("keys", "Down"), ("target", "id=colorCombo"), ("repeat", "3"));
+        Ok(r);
+        Assert.Equal(3, _app.Driver.Input.Log.Count(l => l == "press 0x28"));
+        Assert.Equal(3, _app.Colors.Actions.Count(a => a == "focus"));
+        Assert.Contains("Pressed Down 3 times", r.Text);
+        Assert.DoesNotContain("focus moved", r.Text);
+
+        Assert.Contains("between 1 and 100", _app.Run("press", ("keys", "Down"), ("repeat", "0")).Error);
+    }
+
+    [Fact]
+    public void PressSaysWhenTheApplicationMovedTheFocus()
+    {
+        Ok(_app.Open());
+        _app.Driver.Focused = _app.Colors;
+        _app.Driver.Input.OnPress = () => _app.Driver.Focused = _app.NameBox;
+        var r = _app.Run("press", ("keys", "Down"));
+        Ok(r);
+        Assert.Contains("The focus moved from combobox \"Color\"", r.Text);
+        Assert.Contains("--target", r.Text);
+
+        // Without a focus change there is no note
+        _app.Driver.Input.OnPress = null;
+        Assert.DoesNotContain("focus moved", _app.Run("press", ("keys", "Down")).Text);
+    }
+
+    [Fact]
+    public void SimulatedInputFailsClearlyWhileTheWorkstationIsLocked()
+    {
+        Ok(_app.Open());
+        _app.Driver.Locked = "the workstation is locked";
+
+        var click = _app.Run("click", ("target", "id=num1Button"));
+        Assert.False(click.Ok);
+        Assert.Equal(ExitCodes.DesktopUnavailable, click.ExitCode);
+        Assert.Contains("input cannot be simulated: the workstation is locked", click.Error);
+        Assert.DoesNotContain(_app.Driver.Input.Log, l => l.StartsWith("click"));
+
+        Assert.Equal(ExitCodes.DesktopUnavailable, _app.Run("press", ("keys", "Enter")).ExitCode);
+        Assert.Equal(ExitCodes.DesktopUnavailable, _app.Run("screenshot").ExitCode);
+
+        // UI Automation keeps working: reading, invoking and the status (which tells why input is unavailable)
+        Ok(_app.Run("get", ("kind", "text"), ("target", "id=CalculatorResults")));
+        Ok(_app.Run("click", ("target", "id=num1Button"), ("invoke", "true")));
+        var status = _app.Run("status");
+        Assert.Contains("- Input: unavailable (the workstation is locked)", status.Text);
+
+        _app.Driver.Locked = null;
+        Ok(_app.Run("click", ("target", "id=num1Button")));
+        Assert.Contains("- Input: available", _app.Run("status").Text);
+    }
+
+    [Fact]
+    public async Task CommandsWaitForTheUnlockWithAnUnlockTimeout()
+    {
+        Ok(_app.Open());
+        Directory.CreateDirectory(Path.Combine(_app.Cwd, ".flaui-cli"));
+        File.WriteAllText(Path.Combine(_app.Cwd, ".flaui-cli", "config.json"), """{ "timeouts": { "unlock": 5000 } }""");
+        _app.Driver.Locked = "the workstation is locked";
+        // The user unlocks while the click waits
+        var unlock = Task.Run(async () => { await Task.Delay(300); _app.Driver.Locked = null; });
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        Ok(_app.Run("click", ("target", "id=num1Button")));
+        Assert.True(sw.ElapsedMilliseconds >= 250, $"the click did not wait ({sw.ElapsedMilliseconds}ms)");
+        Assert.Contains(_app.Driver.Input.Log, l => l.StartsWith("click"));
+        await unlock;
+
+        // Still locked when the wait ends: exit code 4
+        File.WriteAllText(Path.Combine(_app.Cwd, ".flaui-cli", "config.json"), """{ "timeouts": { "unlock": 300 } }""");
+        _app.Driver.Locked = "the workstation is locked";
+        Assert.Equal(ExitCodes.DesktopUnavailable, _app.Run("click", ("target", "id=num1Button")).ExitCode);
+    }
+
+    [Fact]
+    public void UnexpectedFailuresWhileLockedAreExplained()
+    {
+        Ok(_app.Open());
+        // SendInput fails before the desktop check would have caught it (the lock happened in between)
+        _app.Driver.Input.OnPress = () =>
+        {
+            _app.Driver.Locked = "the workstation is locked";
+            throw new System.ComponentModel.Win32Exception(5);
+        };
+        var r = _app.Run("press", ("keys", "Enter"));
+        Assert.Equal(ExitCodes.DesktopUnavailable, r.ExitCode);
+        Assert.Contains("the workstation is locked", r.Error);
+        Assert.Contains("Win32Exception", r.Error);
+    }
+
     [Fact]
     public void YamlStyleAssertions()
     {

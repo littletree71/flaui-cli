@@ -31,6 +31,12 @@ public interface IUiDriver : IDisposable
     IInputDevice Input { get; }
 
     IScreenCapture Screen { get; }
+
+    /// <summary>
+    /// Why simulated mouse / keyboard input and screenshots cannot reach the user's desktop right now (the workstation is
+    /// locked, or the secure desktop of a UAC prompt or Ctrl+Alt+Del is shown), or null when they can.
+    /// </summary>
+    string? DesktopUnavailableReason();
 }
 
 /// <summary>An automated application process.</summary>
