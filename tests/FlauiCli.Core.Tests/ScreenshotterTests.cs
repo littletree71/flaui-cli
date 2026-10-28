@@ -87,10 +87,9 @@ public sealed class ScreenshotterTests
     [Fact]
     public void BadgesOfAdjacentElementsStayOnTheirOwnOutline()
     {
-        // A tool strip at the top of the window: the corners above do not fit, and the corners below sit between buttons.
-        // Touching buttons are outlined inside the element, like Annotate does.
+        // A tool strip at the top of the window: the corners above do not fit, and the corners below sit between buttons
         var image = new Size(400, 200);
-        AssertBadgesOwned(image, Enumerable.Range(0, 6).Select(i => Rectangle.Inflate(new Rectangle(50 + i * 24, 0, 24, 24), -3, -3)).ToList());
+        AssertBadgesOwned(image, Enumerable.Range(0, 6).Select(i => Rectangle.Inflate(new Rectangle(50 + i * 24, 0, 24, 24), 3, 3)).ToList());
     }
 
     /// <summary>The button grid of issue #18: two tight rows of small buttons near the left edge of a small window.</summary>
@@ -102,15 +101,17 @@ public sealed class ScreenshotterTests
     [Fact]
     public void BadgesInAButtonGridStayOnTheirOwnOutline()
     {
+        // With the default padding the outlines overlap; with a negative padding they sit inside the buttons
+        AssertBadgesOwned(new Size(202, 137), [.. ButtonGrid.Select(r => Rectangle.Inflate(r, 3, 3))]);
         AssertBadgesOwned(new Size(202, 137), [.. ButtonGrid.Select(r => Rectangle.Inflate(r, -3, -3))]);
     }
 
     [Fact]
-    public void OutlinesOfTouchingElementsStayApart()
+    public void NegativePaddingKeepsOutlinesOfTouchingElementsApart()
     {
         using var bmp = new Bitmap(202, 137);
         using (var g = Graphics.FromImage(bmp)) g.Clear(Color.White);
-        Screenshotter.Annotate(bmp, Point.Empty, ButtonGrid, 1);
+        Screenshotter.Annotate(bmp, Point.Empty, ButtonGrid, 1, padding: -3);
 
         // One ends at x=69 and Two starts at x=71: neither outline reaches into the space where the buttons meet
         static bool Red(Color p) => p.R > 180 && p.G < 120 && p.B < 120;
@@ -132,7 +133,7 @@ public sealed class ScreenshotterTests
             // The badge centre is nearer to its own button than to any other, and it does not cover another button
             var c = new Point(x + 12, y + 12);
             double Dist(Rectangle r) => Math.Sqrt(Math.Pow(Math.Clamp(c.X, r.Left, r.Right) - c.X, 2) + Math.Pow(Math.Clamp(c.Y, r.Top, r.Bottom) - c.Y, 2));
-            Assert.All(others, o => Assert.True(Dist(o) > Dist(outlines[i]) && !Rectangle.Inflate(o, -1, -1).IntersectsWith(badge),
+            Assert.All(others, o => Assert.True(Dist(o) > Dist(outlines[i]) && !Rectangle.Inflate(o, -6, -6).IntersectsWith(badge),
                 $"badge {i + 1} at {badge} looks like it belongs to {o}"));
             placed.Add(badge);
         }

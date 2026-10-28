@@ -33,7 +33,8 @@ public sealed partial class CommandDispatcher
         }
 
         using var bmp = Screenshotter.CaptureRegion(_s.Driver.Screen, region, out var captured);
-        Screenshotter.Annotate(bmp, captured.Location, [.. highlights.Select(h => h.Bounds)], highlights.Count > 1 ? 1 : null);
+        Screenshotter.Annotate(bmp, captured.Location, [.. highlights.Select(h => h.Bounds)], highlights.Count > 1 ? 1 : null,
+            HighlightPadding(ctx));
 
         var path = ctx.Call.Get("filename") is { } f
             ? ctx.Call.ResolvePath(f)
@@ -42,6 +43,10 @@ public sealed partial class CommandDispatcher
         ctx.Data["path"] = path;
         return $"### Result\nScreenshot saved: {ctx.Relative(path)}";
     }
+
+    /// <summary>The <c>--highlight-padding</c> option, else <c>highlight.padding</c> from the config file.</summary>
+    private static int HighlightPadding(CommandContext ctx) =>
+        ctx.Call.GetInt("highlight-padding") ?? ctx.Config.Highlight.Padding;
 
     private string Record(CommandContext ctx)
     {
@@ -136,7 +141,7 @@ public sealed partial class CommandDispatcher
                 foreach (var h in highlights) region = Rectangle.Union(region, h.Bounds);
                 using var bmp = Screenshotter.CaptureRegion(_s.Driver.Screen, region, out var captured);
                 Screenshotter.Annotate(bmp, captured.Location, [.. highlights.Select(h => h.Bounds)],
-                    highlights.Count == 1 ? doc.NextNumber : highlights.Count > 1 ? 1 : null);
+                    highlights.Count == 1 ? doc.NextNumber : highlights.Count > 1 ? 1 : null, HighlightPadding(ctx));
                 var step = doc.AddStep(text, bmp, null);
                 return $"### Result\nAdded step {step.Number}: {text}";
             }

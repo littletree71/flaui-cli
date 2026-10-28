@@ -11,9 +11,6 @@ internal static class Screenshotter
 {
     private static readonly Color HighlightColor = Color.FromArgb(229, 57, 53);
 
-    /// <summary>Targets closer than this to another target get their outline drawn inside the element.</summary>
-    private const int CrowdedGap = 8;
-
     /// <summary>Captures a rectangle of the screen (clipped to the virtual screen).</summary>
     public static Bitmap CaptureRegion(IScreenCapture screen, Rectangle region, out Rectangle captured)
     {
@@ -23,8 +20,11 @@ internal static class Screenshotter
         return screen.Capture(captured);
     }
 
-    /// <summary>Outlines elements on the image. <paramref name="origin"/> is the screen position of the image's top-left corner.</summary>
-    public static void Annotate(Bitmap bmp, Point origin, IReadOnlyList<Rectangle> targets, int? firstNumber)
+    /// <summary>
+    /// Outlines elements on the image. <paramref name="origin"/> is the screen position of the image's top-left corner.
+    /// <paramref name="padding"/> is the distance from each element to its outline (negative: inside).
+    /// </summary>
+    public static void Annotate(Bitmap bmp, Point origin, IReadOnlyList<Rectangle> targets, int? firstNumber, int padding = 3)
     {
         if (targets.Count == 0) return;
         using var g = Graphics.FromImage(bmp);
@@ -39,14 +39,14 @@ internal static class Screenshotter
             LineAlignment = StringAlignment.Center,
         };
 
-        var locals = targets.Select(r => r.IsEmpty ? Rectangle.Empty : new Rectangle(r.X - origin.X, r.Y - origin.Y, r.Width, r.Height)).ToList();
-        var outlines = locals.Select((local, i) =>
+        var outlines = targets.Select(r =>
         {
-            if (local.IsEmpty) return Rectangle.Empty;
-            // Outlines of elements that (almost) touch another target go inside the element, so neighbouring
-            // outlines stay apart instead of merging into one red block
-            var crowded = locals.Where((o, j) => j != i && !o.IsEmpty).Any(o => Rectangle.Inflate(local, CrowdedGap, CrowdedGap).IntersectsWith(o));
-            return crowded && local.Width > 12 && local.Height > 12 ? Rectangle.Inflate(local, -3, -3) : Rectangle.Inflate(local, 3, 3);
+            if (r.IsEmpty) return Rectangle.Empty;
+            var local = new Rectangle(r.X - origin.X, r.Y - origin.Y, r.Width, r.Height);
+            // An outline cannot shrink past the middle of the element
+            var pad = Math.Max(padding, -(Math.Min(local.Width, local.Height) - 2) / 2);
+            local.Inflate(pad, pad);
+            return local;
         }).ToList();
         using var leader = new Pen(HighlightColor, 2f);
         var placed = new List<Rectangle>();
@@ -138,8 +138,9 @@ internal static class Screenshotter
             var badge = new Rectangle(x, y, width, height);
             var center = new Point(x + width / 2, y + height / 2);
             var own = Distance(outline, center);
-            // Covering another outline makes the badge look like it belongs there, whatever the distances say
-            return others.All(o => Distance(o, center) > own && !Rectangle.Inflate(o, -1, -1).IntersectsWith(badge));
+            // Covering another element makes the badge look like it belongs there, whatever the distances say. The band
+            // just inside an outline (padding and pen) does not count: outlines of touching elements overlap there.
+            return others.All(o => Distance(o, center) > own && !Rectangle.Inflate(o, -6, -6).IntersectsWith(badge));
         }
 
         foreach (var (x, y) in candidates.Take(1).Concat(beside).Concat(candidates.Skip(1)).Concat(onEdge))

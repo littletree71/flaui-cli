@@ -204,9 +204,15 @@ Most actions are captured before they run; `fill`, `type`, `select`, `check` and
   "outputDir": ".flaui-cli",
   "autoSnapshot": true,
   "snapshot": { "depth": 0, "includeOffscreen": false },
+  "highlight": { "padding": 3 },
   "daemonIdleMinutes": 30
 }
 ```
+
+`highlight.padding` is the distance in pixels between an element and its red outline (positive outside, 0 on the edge, negative
+inside), for `screenshot --highlight`, `doc step --highlight` and the screenshots `doc` takes for actions. When highlighted
+elements touch each other (a grid of buttons), a negative value such as `-3` keeps their outlines apart.
+`--highlight-padding <px>` overrides it for one command.
 
 ## Large applications
 

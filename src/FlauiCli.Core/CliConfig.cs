@@ -20,6 +20,8 @@ public sealed class CliConfig
 
     public SnapshotConfig Snapshot { get; set; } = new();
 
+    public HighlightConfig Highlight { get; set; } = new();
+
     /// <summary>Minutes of inactivity after which the daemon exits.</summary>
     public int DaemonIdleMinutes { get; set; } = 30;
 
@@ -39,6 +41,15 @@ public sealed class CliConfig
 
         /// <summary>Whether off-screen (IsOffscreen) elements are included.</summary>
         public bool IncludeOffscreen { get; set; }
+    }
+
+    public sealed class HighlightConfig
+    {
+        /// <summary>
+        /// Pixels between an element and its highlight outline: positive draws the outline outside the element, 0 on
+        /// its edge, negative inside it (keeps the outlines of touching elements apart).
+        /// </summary>
+        public int Padding { get; set; } = 3;
     }
 
     private static readonly JsonSerializerOptions JsonOptions = new()
