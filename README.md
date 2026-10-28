@@ -260,6 +260,106 @@ window enumeration only: flaui-cli never reads or writes the memory of the appli
 
 ## Architecture
 
+The diagrams go from the big picture down to the code.
+
+**1. What it does.** Commands and scripts go in, UI Automation drives the application, and text results, snapshots,
+screenshots and documents come back.
+
+```mermaid
+flowchart LR
+    U["You or an AI agent"] -->|"commands, YAML scripts"| CLI["flaui-cli"]
+    CLI -->|"UI Automation"| App["Windows application<br/>WPF / WinForms / Win32 / UWP"]
+    CLI -->|"results, snapshots,<br/>screenshots, documents"| U
+```
+
+**2. Processes.** Each command is a short-lived client. A session's daemon keeps the UI Automation connection and the
+element refs between commands. `run` executes scripts in its own process, and only `record capture` starts the recorder.
+
+```mermaid
+flowchart LR
+    subgraph session["One session (-s name)"]
+        C["flaui-cli click ...<br/>short-lived client"] -->|"named pipe<br/>current user only"| D["flaui-cli daemon<br/>started by open / attach<br/>exits when idle"]
+    end
+    D -->|"UI Automation (FlaUI, UIA3)"| App["Target application"]
+    D -->|"stdin / stdout<br/>record capture only"| R["flaui-cli-record.exe<br/>keyboard and mouse hooks"]
+    R -.->|"observes real input"| App
+    Run["flaui-cli run flow.yaml"] -->|"in-process, no daemon"| App
+```
+
+**3. One command.** What happens for `flaui-cli click id=okButton`:
+
+```mermaid
+sequenceDiagram
+    participant CLI as flaui-cli (client)
+    participant Host as DaemonHost
+    participant UIA as UIA thread
+    participant Disp as CommandDispatcher
+    participant Find as TargetResolver
+    participant Drv as FlaUIDriver
+    participant App as Application
+    CLI->>CLI: parse the arguments (CommandCatalog)
+    CLI->>Host: CommandCall as JSON over the pipe (starts the daemon if needed)
+    Host->>UIA: queue the call (one thread for every UIA call)
+    UIA->>Disp: Execute
+    Disp->>Find: resolve id=okButton (ref or selector, waits until --timeout)
+    Find->>Drv: FindFirst / FindAll
+    Drv->>App: UI Automation queries
+    Disp->>Drv: click (mouse) or InvokePattern (--invoke)
+    Drv->>App: input / pattern call
+    Disp->>Disp: snapshot file, recording and document steps
+    Host-->>CLI: CommandResult (Markdown text, data, exit code)
+```
+
+**4. Code.** Projects and the main parts of the engine. Only the driver project references FlaUI; everything else depends
+on the `IUiDriver` / `IUiElement` abstractions, which the unit tests implement with a fake driver.
+
+```mermaid
+flowchart TB
+    subgraph cli["FlauiCli: flaui-cli.exe"]
+        Parse["CliApp<br/>System.CommandLine"]
+        Client["DaemonClient"]
+        Local["LocalCommands<br/>list, run, install-skill, daemon"]
+    end
+    subgraph core["FlauiCli.Core"]
+        Protocol["Protocol<br/>CommandCall, CommandResult"]
+        Daemon["Daemon<br/>DaemonHost"]
+        Engine["Engine<br/>CommandDispatcher, AutomationSession,<br/>SingleThreadWorker"]
+        Targeting["Targeting<br/>Selector, ElementFinder, TargetResolver"]
+        Snapshot["Snapshot<br/>formatter, refs"]
+        Imaging["Imaging<br/>screenshots, annotations"]
+        Output["Docs, Scripting, Recording"]
+        Abs["Abstractions<br/>IUiDriver, IUiElement"]
+    end
+    subgraph drv["FlauiCli.Driver.FlaUI"]
+        FlaUIDriver["FlaUIDriver, FlaUIElement"]
+    end
+    subgraph rec["FlauiCli.Recorder: flaui-cli-record.exe"]
+        Hooks["InputRecorder<br/>low-level hooks"]
+    end
+    FlaUI[("FlaUI 5 / UIA3")]
+    Fake["FakeDriver<br/>FlauiCli.Core.Tests"]
+
+    Parse --> Client
+    Parse --> Local
+    Client --> Protocol
+    Local --> Daemon
+    Local --> Output
+    Daemon --> Engine
+    Engine --> Targeting
+    Engine --> Snapshot
+    Engine --> Imaging
+    Engine --> Output
+    Targeting --> Abs
+    Engine --> Abs
+    FlaUIDriver -. implements .-> Abs
+    Fake -. implements .-> Abs
+    FlaUIDriver --> FlaUI
+    Output -->|"record capture:<br/>child process"| Hooks
+    Hooks --> FlaUIDriver
+```
+
+Source layout:
+
 ```
 src/
   FlauiCli/                CLI front-end (System.CommandLine), daemon client, local commands
