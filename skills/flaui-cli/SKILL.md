@@ -60,7 +60,7 @@ Selectors wait for the element to appear (5 s by default, change with `--timeout
 | Application | `open <exe\|AUMID> [args] [--window title]`, `attach [pid\|name] [--title title]`, `close [--keep-app]`, `status`, `list`, `close-all`, `kill-all`, `lock-status` |
 | Windows | `windows`, `window <index\|ref\|title>`, `focus [t]`, `wait-window <title> [--exact\|--regex] [--no-switch]`, `close-window [index\|ref\|title]`, `maximize`, `minimize`, `restore`, `resize W H`, `move X Y` |
 | Inspection | `snapshot`, `find <text> [--regex]`, `inspect <target>` (all properties, patterns and a suggested selector) |
-| Actions | `click <t> [--button right] [--double] [--invoke]`, `dblclick`, `hover`, `fill <t> <text> [--keyboard]`, `type <text>`, `press <keys> [--target t]` (`Enter`, `Ctrl+S`), `select <t> <item or #index>`, `check`, `uncheck`, `expand`, `collapse`, `invoke`, `scroll <t> [--dir down] [--amount 3]`, `drag <src> <dst>` |
+| Actions | `click <t> [--button right] [--double] [--invoke]`, `dblclick`, `hover`, `fill <t> <text> [--keyboard]`, `type <text>`, `press <keys> [--target t] [--repeat n]` (`Enter`, `Ctrl+S`), `select <t> <item or #index>`, `check`, `uncheck`, `expand`, `collapse`, `invoke`, `scroll <t> [--dir down] [--amount 3]`, `drag <src> <dst>` |
 | Reading | `get text\|value\|name\|state\|rect <t>`, `get prop <t> HelpText` |
 | Waiting / asserting | `wait <t> --state visible\|hidden\|exists\|gone\|enabled\|disabled`, `assert exists\|not-exists\|visible\|hidden\|enabled\|disabled\|checked\|unchecked <t>`, `assert text\|contains\|matches\|value <t> <expected>`, `sleep <ms>` |
 | Screenshots | `screenshot [t] [--filename f.png] [--highlight t ...] [--highlight-padding px] [--no-outline] [--badge-position p] [--screen]` |
@@ -168,6 +168,9 @@ Scripts can produce documents directly: `flaui-cli run flow.yaml --doc docs/flow
   documents and the daemon log, so never expect a real password to appear in the output. Scripts produced by `record capture`
   contain the same placeholder for password fields; replace it with the real value before running them.
 - `fill` uses ValuePattern when possible; add `--keyboard` when the app only reacts to real key presses.
+- Applications often move the focus while handling a key (a WinForms drop-down jumping to the next field from
+  `SelectedIndexChanged`), so a second `press` without `--target` lands elsewhere; `press` then says where the focus went.
+  Use `press Down --target <t> --repeat 3`: the target is focused again before every press.
 - Use `inspect <target>` to get a suggested stable selector for an element found in a snapshot.
 - When an element cannot be found, check with `snapshot` or `find <text>`; popups such as drop-downs and menus also appear in snapshots.
 - `wait-window` prefers an exact title, then one starting with the text, then one containing it. In MDI apps the parent's title

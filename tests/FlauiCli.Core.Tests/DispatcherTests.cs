@@ -175,6 +175,38 @@ public sealed class DispatcherTests : IDisposable
     }
 
     [Fact]
+    public void PressRepeatsAndFocusesTheTargetBeforeEveryPress()
+    {
+        Ok(_app.Open());
+        // The application moves the focus to the next field after every key, like a WinForms SelectedIndexChanged handler
+        _app.Driver.Input.OnPress = () => _app.Driver.Focused = _app.NameBox;
+        var r = _app.Run("press", ("keys", "Down"), ("target", "id=colorCombo"), ("repeat", "3"));
+        Ok(r);
+        Assert.Equal(3, _app.Driver.Input.Log.Count(l => l == "press 0x28"));
+        Assert.Equal(3, _app.Colors.Actions.Count(a => a == "focus"));
+        Assert.Contains("Pressed Down 3 times", r.Text);
+        Assert.DoesNotContain("focus moved", r.Text);
+
+        Assert.Contains("between 1 and 100", _app.Run("press", ("keys", "Down"), ("repeat", "0")).Error);
+    }
+
+    [Fact]
+    public void PressSaysWhenTheApplicationMovedTheFocus()
+    {
+        Ok(_app.Open());
+        _app.Driver.Focused = _app.Colors;
+        _app.Driver.Input.OnPress = () => _app.Driver.Focused = _app.NameBox;
+        var r = _app.Run("press", ("keys", "Down"));
+        Ok(r);
+        Assert.Contains("The focus moved from combobox \"Color\"", r.Text);
+        Assert.Contains("--target", r.Text);
+
+        // Without a focus change there is no note
+        _app.Driver.Input.OnPress = null;
+        Assert.DoesNotContain("focus moved", _app.Run("press", ("keys", "Down")).Text);
+    }
+
+    [Fact]
     public void SimulatedInputFailsClearlyWhileTheWorkstationIsLocked()
     {
         Ok(_app.Open());

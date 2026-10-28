@@ -306,6 +306,9 @@ dotnet test tests/FlauiCli.E2E.Tests                                    # needs 
 ## Known limitations
 
 - Actions move the real mouse and send real key presses; do not use the computer while they run (`click --invoke` avoids moving the mouse).
+- An application may move the focus while it handles a key (for example a WinForms form jumping to the next field when a
+  drop-down changes), so the next `press` goes elsewhere; `press` reports where the focus went. `press Down --target <t> --repeat 3`
+  focuses the target again before every press.
 - While the workstation is locked (or a UAC prompt is shown), commands that move the mouse, press keys or take screenshots fail
   with exit code `4` instead of clicking the lock screen; reading the UI, `click --invoke` and `fill` through ValuePattern keep
   working. `lock-status` (no session needed) exits with `0` when input is possible and `4` while locked, and `status` shows
