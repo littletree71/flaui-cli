@@ -31,6 +31,11 @@ public sealed class FakeDriver : IUiDriver
 
     public IScreenCapture Screen { get; } = new FakeScreen();
 
+    /// <summary>Set to simulate a locked workstation.</summary>
+    public string? Locked { get; set; }
+
+    public string? DesktopUnavailableReason() => Locked;
+
     public IReadOnlyList<IUiElement> GetTopLevelWindows(int? processId = null) =>
         [.. TopLevel.Where(w => w.Alive && (processId is null || w.ProcessId == processId))];
 
