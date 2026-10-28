@@ -137,6 +137,17 @@ without saving when a mask is not found; do not post-process images to hide data
 
 Scripts can produce documents directly: `flaui-cli run flow.yaml --doc docs/flow`.
 
+### Looking at screenshots costs tokens
+
+Taking a screenshot only writes a file; reading the PNG to look at it adds the image to the conversation, typically one to a
+few thousand tokens, and it stays there for every later turn of the task. Check state through text first (`snapshot`, `get`,
+`assert`), and open an image only when the picture itself is the point (outlines, badges, masks, layout).
+
+When usage matters and the task is long or already needs a lot of context, such as producing a whole manual, act as a
+coordinator: hand the screenshot checks to a subagent that reads the images and reports back in text (for example "badge 3 sits
+on the Cancel button; the Partner column is masked"). The images then stay in the subagent's context, and the main conversation
+only carries the short report.
+
 ## Configuration
 
 `.flaui-cli/config.json` in the working directory (every field optional, re-read for every command):
