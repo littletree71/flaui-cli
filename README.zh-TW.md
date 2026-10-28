@@ -198,14 +198,14 @@ flaui-cli doc stop --out docs/calculator --format md,html    # index.md + images
   "outputDir": ".flaui-cli",
   "autoSnapshot": true,
   "snapshot": { "depth": 0, "includeOffscreen": false },
-  "highlight": { "padding": 3 },
+  "highlight": { "padding": 3, "outline": true },
   "daemonIdleMinutes": 30
 }
 ```
 
 `highlight.padding` 是元素與紅框之間的距離（像素；正數在元素外、0 貼齊邊緣、負數在元素內），套用在 `screenshot --highlight`、
 `doc step --highlight` 以及 `doc` 為動作拍的截圖。標示的元素彼此相鄰（例如一排排按鈕）時，設成負數（如 `-3`）可以讓紅框分開。
-單一指令可用 `--highlight-padding <px>` 覆寫。
+單一指令可用 `--highlight-padding <px>` 覆寫。`"outline": false`（或 `--no-outline`）不畫紅框，只畫編號，編號位置與有紅框時相同。
 
 ## 大型應用程式
 

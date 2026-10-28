@@ -33,8 +33,10 @@ public sealed partial class CommandDispatcher
         }
 
         using var bmp = Screenshotter.CaptureRegion(_s.Driver.Screen, region, out var captured);
-        Screenshotter.Annotate(bmp, captured.Location, [.. highlights.Select(h => h.Bounds)], highlights.Count > 1 ? 1 : null,
-            HighlightPadding(ctx));
+        // Without outlines a single highlight still needs its badge
+        var outline = HighlightOutline(ctx);
+        Screenshotter.Annotate(bmp, captured.Location, [.. highlights.Select(h => h.Bounds)], highlights.Count > 1 || !outline ? 1 : null,
+            HighlightPadding(ctx), outline);
 
         var path = ctx.Call.Get("filename") is { } f
             ? ctx.Call.ResolvePath(f)
@@ -47,6 +49,10 @@ public sealed partial class CommandDispatcher
     /// <summary>The <c>--highlight-padding</c> option, else <c>highlight.padding</c> from the config file.</summary>
     private static int HighlightPadding(CommandContext ctx) =>
         ctx.Call.GetInt("highlight-padding") ?? ctx.Config.Highlight.Padding;
+
+    /// <summary>False with <c>--no-outline</c> or <c>highlight.outline: false</c> in the config file.</summary>
+    private static bool HighlightOutline(CommandContext ctx) =>
+        !ctx.Call.GetBool("no-outline") && ctx.Config.Highlight.Outline;
 
     private string Record(CommandContext ctx)
     {
@@ -141,7 +147,7 @@ public sealed partial class CommandDispatcher
                 foreach (var h in highlights) region = Rectangle.Union(region, h.Bounds);
                 using var bmp = Screenshotter.CaptureRegion(_s.Driver.Screen, region, out var captured);
                 Screenshotter.Annotate(bmp, captured.Location, [.. highlights.Select(h => h.Bounds)],
-                    highlights.Count == 1 ? doc.NextNumber : highlights.Count > 1 ? 1 : null, HighlightPadding(ctx));
+                    highlights.Count == 1 ? doc.NextNumber : highlights.Count > 1 ? 1 : null, HighlightPadding(ctx), HighlightOutline(ctx));
                 var step = doc.AddStep(text, bmp, null);
                 return $"### Result\nAdded step {step.Number}: {text}";
             }

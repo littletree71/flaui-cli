@@ -22,9 +22,10 @@ internal static class Screenshotter
 
     /// <summary>
     /// Outlines elements on the image. <paramref name="origin"/> is the screen position of the image's top-left corner.
-    /// <paramref name="padding"/> is the distance from each element to its outline (negative: inside).
+    /// <paramref name="padding"/> is the distance from each element to its outline (negative: inside). Without
+    /// <paramref name="outline"/> only the number badges are drawn, placed as if the outline were there.
     /// </summary>
-    public static void Annotate(Bitmap bmp, Point origin, IReadOnlyList<Rectangle> targets, int? firstNumber, int padding = 3)
+    public static void Annotate(Bitmap bmp, Point origin, IReadOnlyList<Rectangle> targets, int? firstNumber, int padding = 3, bool outline = true)
     {
         if (targets.Count == 0) return;
         using var g = Graphics.FromImage(bmp);
@@ -54,7 +55,7 @@ internal static class Screenshotter
         {
             var local = outlines[i];
             if (local.IsEmpty) continue;
-            g.DrawRectangle(pen, local);
+            if (outline) g.DrawRectangle(pen, local);
 
             if (firstNumber is null) continue;
             const int d = 24;
@@ -62,7 +63,7 @@ internal static class Screenshotter
             // One digit fits in a circle; longer numbers get a pill wide enough for the text
             var w = Math.Max(d, (int)Math.Ceiling(g.MeasureString(label, font, PointF.Empty, fmt).Width) + 10);
             var others = outlines.Where((o, j) => j != i && !o.IsEmpty).ToList();
-            var (bx, by) = BadgePosition(local, w, d, bmp.Size, placed, others);
+            var (bx, by) = BadgePosition(local, w, d, bmp.Size, placed, others, centered: !outline);
             var badge = new Rectangle(bx, by, w, d);
             placed.Add(badge);
             // A badge that had to move away from its outline points back to it
@@ -99,9 +100,13 @@ internal static class Screenshotter
     /// (straddling the top or bottom edge, or the sides), and only when none of those is free does it move sideways
     /// (the caller then draws a leader line back to the outline).
     /// </para>
+    /// <para>
+    /// With <paramref name="centered"/> (no outline is drawn) the positions above and below the middle come first: a
+    /// badge off a corner, without the outline, looks like it belongs to the element next to that corner.
+    /// </para>
     /// </summary>
     internal static (int X, int Y) BadgePosition(Rectangle outline, int width, int height, Size image,
-        IReadOnlyList<Rectangle>? placed = null, IReadOnlyList<Rectangle>? others = null)
+        IReadOnlyList<Rectangle>? placed = null, IReadOnlyList<Rectangle>? others = null, bool centered = false)
     {
         const int touch = 4; // overlap with the outline so the badge visibly belongs to it
         (int X, int Y)[] candidates =
@@ -143,7 +148,10 @@ internal static class Screenshotter
             return others.All(o => Distance(o, center) > own && !Rectangle.Inflate(o, -6, -6).IntersectsWith(badge));
         }
 
-        foreach (var (x, y) in candidates.Take(1).Concat(beside).Concat(candidates.Skip(1)).Concat(onEdge))
+        var order = centered
+            ? beside.Concat(candidates)
+            : candidates.Take(1).Concat(beside).Concat(candidates.Skip(1));
+        foreach (var (x, y) in order.Concat(onEdge))
         {
             if (Fits(x, y) && Free(x, y) && Owned(x, y)) return (x, y);
         }

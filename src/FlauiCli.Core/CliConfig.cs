@@ -50,6 +50,9 @@ public sealed class CliConfig
         /// its edge, negative inside it (keeps the outlines of touching elements apart).
         /// </summary>
         public int Padding { get; set; } = 3;
+
+        /// <summary>Whether highlighted elements get a red outline; when false only the number badges are drawn.</summary>
+        public bool Outline { get; set; } = true;
     }
 
     private static readonly JsonSerializerOptions JsonOptions = new()

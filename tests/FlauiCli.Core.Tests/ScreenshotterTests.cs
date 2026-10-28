@@ -119,6 +119,34 @@ public sealed class ScreenshotterTests
             Assert.False(Red(bmp.GetPixel(x, 69)), $"an outline crosses the gap between One and Two at x={x}");
     }
 
+    [Fact]
+    public void WithoutOutlinesOnlyTheBadgesAreDrawn()
+    {
+        using var bmp = new Bitmap(202, 137);
+        using (var g = Graphics.FromImage(bmp)) g.Clear(Color.White);
+        Screenshotter.Annotate(bmp, Point.Empty, ButtonGrid, 1, outline: false);
+
+        static bool Red(Color p) => p.R > 180 && p.G < 120 && p.B < 120;
+        var red = 0;
+        for (var y = 0; y < bmp.Height; y++)
+        {
+            for (var x = 0; x < bmp.Width; x++)
+            {
+                if (Red(bmp.GetPixel(x, y))) red++;
+            }
+        }
+        Assert.True(red > 0, "no badges were drawn");
+        // The left edge of One's outline (x = 8, halfway down the button) stays white
+        Assert.False(Red(bmp.GetPixel(8, 69)), "an outline was drawn");
+    }
+
+    [Fact]
+    public void WithoutAnOutlineTheBadgeSitsAboveTheMiddle()
+    {
+        var outline = new Rectangle(97, 97, 46, 26);
+        Assert.Equal((97 + (46 - 24) / 2, 97 - 24 + 4), Screenshotter.BadgePosition(outline, 24, 24, new Size(300, 200), [], centered: true));
+    }
+
     private static void AssertBadgesOwned(Size image, IReadOnlyList<Rectangle> outlines)
     {
         var placed = new List<Rectangle>();

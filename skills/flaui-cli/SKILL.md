@@ -63,7 +63,7 @@ Selectors wait for the element to appear (5 s by default, change with `--timeout
 | Actions | `click <t> [--button right] [--double] [--invoke]`, `dblclick`, `hover`, `fill <t> <text> [--keyboard]`, `type <text>`, `press <keys> [--target t]` (`Enter`, `Ctrl+S`), `select <t> <item or #index>`, `check`, `uncheck`, `expand`, `collapse`, `invoke`, `scroll <t> [--dir down] [--amount 3]`, `drag <src> <dst>` |
 | Reading | `get text\|value\|name\|state\|rect <t>`, `get prop <t> HelpText` |
 | Waiting / asserting | `wait <t> --state visible\|hidden\|exists\|gone\|enabled\|disabled`, `assert exists\|not-exists\|visible\|hidden\|enabled\|disabled\|checked\|unchecked <t>`, `assert text\|contains\|matches\|value <t> <expected>`, `sleep <ms>` |
-| Screenshots | `screenshot [t] [--filename f.png] [--highlight t ...] [--highlight-padding px] [--screen]` |
+| Screenshots | `screenshot [t] [--filename f.png] [--highlight t ...] [--highlight-padding px] [--no-outline] [--screen]` |
 
 Element commands take `--timeout <ms>`; action commands take `--note <text>` (the step description in documents).
 `close` closes the window and stops the session's daemon; `close --keep-app` ends the session and leaves the app running.
