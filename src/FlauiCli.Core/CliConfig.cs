@@ -1,4 +1,5 @@
 using System.Text.Json;
+using FlauiCli.Core.Protocol;
 using System.Text.Json.Serialization;
 
 namespace FlauiCli.Core;
@@ -21,6 +22,9 @@ public sealed class CliConfig
     public SnapshotConfig Snapshot { get; set; } = new();
 
     public HighlightConfig Highlight { get; set; } = new();
+
+    /// <summary>How much commands print: error, warn, info (default) or debug (see <see cref="OutputLevel"/>).</summary>
+    public string LogLevel { get; set; } = "info";
 
     /// <summary>Minutes of inactivity after which the daemon exits.</summary>
     public int DaemonIdleMinutes { get; set; } = 30;

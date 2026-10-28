@@ -27,12 +27,21 @@ internal static class CliApp
         Recursive = true,
     };
 
+    private static readonly Option<string?> LogLevelOption = new("--log-level")
+    {
+        Description = "How much each command prints besides its result: error (nothing else), warn (+ warnings), " +
+                      "info (+ window and snapshot link after actions; the default), debug (+ timing, like --verbose). " +
+                      "Defaults to logLevel in the config file",
+        Recursive = true,
+    };
+
     public static int Run(string[] args)
     {
         var root = new RootCommand("flaui-cli: Windows desktop UI automation CLI powered by FlaUI (modelled on playwright-cli)");
         root.Options.Add(SessionOption);
         root.Options.Add(JsonOption);
         root.Options.Add(VerboseOption);
+        root.Options.Add(LogLevelOption);
         foreach (var spec in CommandCatalog.All) root.Subcommands.Add(Build(spec));
         return root.Parse(args).Invoke();
     }
@@ -104,6 +113,7 @@ internal static class CliApp
             }
 
             if (pr.GetValue(VerboseOption)) call.Set(CommandCall.VerboseKey, "true");
+            if (pr.GetValue(LogLevelOption) is { } level) call.Set(CommandCall.LogLevelKey, level);
             var session = pr.GetValue(SessionOption) ?? Environment.GetEnvironmentVariable(SessionEnvVar) ?? "default";
             var json = pr.GetValue(JsonOption);
             try

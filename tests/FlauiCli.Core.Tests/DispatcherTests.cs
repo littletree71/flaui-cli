@@ -378,6 +378,48 @@ public sealed class DispatcherTests : IDisposable
     }
 
     [Fact]
+    public void LogLevelsDecideWhichSectionsArePrinted()
+    {
+        Ok(_app.Open());
+        _app.Dispatcher.AutoSnapshot = true;
+        // Two touching buttons outlined together: a warning about overlapping outlines
+        (string, string)[] shot = [("highlight", "id=num1Button" + CommandCall.MultiValueSeparator + "id=num2Button"), ("highlight-padding", "20")];
+
+        var info = _app.Run("click", ("target", "id=num1Button"));
+        Assert.Contains("### Result", info.Text);
+        Assert.Contains("### Snapshot", info.Text);
+        Assert.DoesNotContain("### Timing", info.Text);
+
+        var error = _app.Run("click", ("target", "id=num1Button"), (CommandCall.LogLevelKey, "error"));
+        Assert.Contains("### Result", error.Text);
+        Assert.DoesNotContain("### Snapshot", error.Text);
+
+        var quiet = _app.Run("screenshot", [.. shot, (CommandCall.LogLevelKey, "error")]);
+        Assert.DoesNotContain("### Warnings", quiet.Text);
+        Assert.Contains("overlap", quiet.Data!["warnings"]);
+        Assert.Contains("### Warnings", _app.Run("screenshot", [.. shot, (CommandCall.LogLevelKey, "warn")]).Text);
+
+        var debug = _app.Run("click", ("target", "id=num1Button"), (CommandCall.LogLevelKey, "debug"));
+        Assert.Contains("### Timing", debug.Text);
+        Assert.Contains("### Snapshot", debug.Text);
+
+        Assert.Contains("Unknown log level", _app.Run("status", (CommandCall.LogLevelKey, "loud")).Error);
+    }
+
+    [Fact]
+    public void LogLevelComesFromTheConfigFileUnlessGiven()
+    {
+        Ok(_app.Open());
+        _app.Dispatcher.AutoSnapshot = true;
+        Directory.CreateDirectory(Path.Combine(_app.Cwd, ".flaui-cli"));
+        File.WriteAllText(Path.Combine(_app.Cwd, ".flaui-cli", "config.json"), """{ "logLevel": "error" }""");
+
+        Assert.DoesNotContain("### Snapshot", _app.Run("click", ("target", "id=num1Button")).Text);
+        Assert.Contains("### Snapshot", _app.Run("click", ("target", "id=num1Button"), (CommandCall.LogLevelKey, "info")).Text);
+        Assert.Contains("### Timing", _app.Run("click", ("target", "id=num1Button"), (CommandCall.VerboseKey, "true")).Text);
+    }
+
+    [Fact]
     public void YamlStyleAssertions()
     {
         Ok(_app.Open());

@@ -16,6 +16,9 @@ public sealed class CommandCall
     /// <summary>Set by the global <c>--verbose</c> option: the result ends with a timing breakdown. Never recorded.</summary>
     public const string VerboseKey = "verbose";
 
+    /// <summary>The <c>--log-level</c> option; like <see cref="VerboseKey"/>, it is not part of recorded steps.</summary>
+    public const string LogLevelKey = "log-level";
+
     public CommandCall() { }
 
     public CommandCall(string command, IDictionary<string, string>? args = null)
