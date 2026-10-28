@@ -137,7 +137,7 @@ without saving when a mask is not found; do not post-process images to hide data
 
 Scripts can produce documents directly: `flaui-cli run flow.yaml --doc docs/flow`.
 
-### Looking at screenshots costs tokens
+### Saving tokens with screenshots
 
 Reading a screenshot adds the image to the conversation for the rest of the task. With some providers' prompt caching, such as
 Claude's, adding an image also invalidates the cached conversation, so the next turn is processed again at full price.
