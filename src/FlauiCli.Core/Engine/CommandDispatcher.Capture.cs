@@ -3,6 +3,7 @@ using FlauiCli.Core.Abstractions;
 using System.Text;
 using FlauiCli.Core.Docs;
 using FlauiCli.Core.Imaging;
+using FlauiCli.Core.Protocol;
 using FlauiCli.Core.Recording;
 using FlauiCli.Core.Scripting;
 
@@ -73,6 +74,7 @@ public sealed partial class CommandDispatcher
         var shown = warnings.Take(MaxWarnings).ToList();
         if (warnings.Count > MaxWarnings) shown.Add($"...and {warnings.Count - MaxWarnings} more");
         ctx.Data["warnings"] = string.Join("\n", shown);
+        if (ctx.Level < OutputLevel.Warn) return "";
         return "\n### Warnings\n" + string.Join("\n", shown.Select(w => "- " + w));
     }
 
