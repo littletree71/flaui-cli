@@ -19,6 +19,7 @@ internal static class LocalCommands
         "kill-all" => KillAll(json),
         "run" => Run(call, json),
         "install-skill" => InstallSkill(call, json),
+        "lock-status" => LockStatus(json),
         "daemon" => DaemonHost.Run(session, () => new FlaUIDriver()),
         _ => throw new CliException($"Unknown local command: {call.Command}"),
     };
@@ -68,6 +69,28 @@ internal static class LocalCommands
         if (count == 0) sb.AppendLine("(no running sessions)");
         Output.Print(CommandResult.Success(sb.ToString().TrimEnd()), json);
         return ExitCodes.Success;
+    }
+
+    /// <summary>
+    /// Whether mouse / keyboard input and screenshots can reach the desktop: exit code 0 when they can, 4 while the
+    /// workstation is locked or a secure desktop (UAC prompt, Ctrl+Alt+Del) is shown. Needs no session.
+    /// </summary>
+    private static int LockStatus(bool json)
+    {
+        var reason = FlaUIDriver.CheckDesktop();
+        var data = new Dictionary<string, string> { ["inputAvailable"] = reason is null ? "true" : "false" };
+        if (reason is not null) data["reason"] = reason;
+        var result = reason is null
+            ? CommandResult.Success("### Result\nInput: available (the workstation is not locked)", data)
+            : new CommandResult
+            {
+                Ok = false,
+                ExitCode = ExitCodes.DesktopUnavailable,
+                Error = $"Input: unavailable ({reason}). Commands that move the mouse, press keys or take screenshots fail until it is unlocked",
+                Data = data,
+            };
+        Output.Print(result, json);
+        return result.ExitCode;
     }
 
     private static int CloseAll(bool json)

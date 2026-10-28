@@ -34,7 +34,7 @@ public sealed partial class CommandDispatcher
         }
 
         var masks = MaskAreas(ctx, required: true);
-        using var bmp = Screenshotter.CaptureRegion(_s.Driver.Screen, region, out var captured);
+        using var bmp = Capture(region, out var captured);
         Screenshotter.Mask(bmp, captured.Location, masks);
         // Without outlines a single highlight still needs its badge
         var style = Style(ctx);
@@ -227,7 +227,7 @@ public sealed partial class CommandDispatcher
                 var region = WindowBounds(window);
                 foreach (var h in highlights) region = Rectangle.Union(region, h.Bounds);
                 var masks = MaskAreas(ctx, required: true).Concat(DocMaskAreas(ctx)).ToList();
-                using var bmp = Screenshotter.CaptureRegion(_s.Driver.Screen, region, out var captured);
+                using var bmp = Capture(region, out var captured);
                 Screenshotter.Mask(bmp, captured.Location, masks);
                 var warnings = Screenshotter.Annotate(bmp, captured.Location, [.. highlights.Select(h => h.Bounds)],
                     highlights.Count == 1 ? doc.NextNumber : highlights.Count > 1 ? 1 : null, Style(ctx), ctx.Call.GetList("highlight"));
