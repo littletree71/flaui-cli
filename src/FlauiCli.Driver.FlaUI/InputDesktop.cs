@@ -43,8 +43,9 @@ internal static class InputDesktop
         if (!WTSQuerySessionInformation(0, WTS_CURRENT_SESSION, WTSSessionInfoEx, out var buffer, out var bytes)) return false;
         try
         {
-            // WTSINFOEXW: Level, then WTSINFOEX_LEVEL1_W: SessionId, SessionState, SessionFlags
-            return bytes >= 16 && Marshal.ReadInt32(buffer, 0) == 1 && Marshal.ReadInt32(buffer, 12) == WTS_SESSIONSTATE_LOCK;
+            // WTSINFOEXW: Level (DWORD), then the WTSINFOEX_LEVEL1_W union member, aligned to 8 bytes because it holds
+            // LARGE_INTEGER times: SessionId at 8, SessionState at 12, SessionFlags at 16
+            return bytes >= 20 && Marshal.ReadInt32(buffer, 0) == 1 && Marshal.ReadInt32(buffer, 16) == WTS_SESSIONSTATE_LOCK;
         }
         finally
         {
