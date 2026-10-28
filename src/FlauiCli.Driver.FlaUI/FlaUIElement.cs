@@ -74,7 +74,14 @@ public sealed class FlaUIElement : IUiElement
     {
         get
         {
-            try { return Inner.IsAvailable; }
+            try
+            {
+                if (!Inner.IsAvailable) return false;
+                // UIA keeps reporting some closed windows as available (a WinForms MessageBox): a window whose handle
+                // no longer exists is gone
+                var hwnd = WindowHandle;
+                return hwnd == 0 || NativeWindows.Exists(hwnd);
+            }
             catch { return false; }
         }
     }
@@ -338,15 +345,11 @@ public sealed class FlaUIElement : IUiElement
         return true;
     }
 
-    public bool TryClose()
-    {
-        if (Kind == ControlKind.Window)
-        {
-            Inner.AsWindow().Close();
-            return true;
-        }
-        return Try(Inner.Patterns.Window.PatternOrDefault, p => p.Close());
-    }
+    /// <summary>
+    /// WindowPattern only. FlaUI's Window.Close() presses the title bar close button of WinForms / Win32 windows, which
+    /// blocked for about 10 seconds on a WinForms MessageBox; close-window falls back to WM_CLOSE instead.
+    /// </summary>
+    public bool TryClose() => Try(Inner.Patterns.Window.PatternOrDefault, p => p.Close());
 
     private static bool Try<T>(T? pattern, Action<T> action) where T : class
     {
