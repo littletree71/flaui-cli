@@ -139,14 +139,10 @@ Scripts can produce documents directly: `flaui-cli run flow.yaml --doc docs/flow
 
 ### Looking at screenshots costs tokens
 
-Taking a screenshot only writes a file; reading the PNG to look at it adds the image to the conversation, typically one to a
-few thousand tokens, and it stays there for every later turn of the task. Check state through text first (`snapshot`, `get`,
-`assert`), and open an image only when the picture itself is the point (outlines, badges, masks, layout).
-
-When usage matters and the task is long or already needs a lot of context, such as producing a whole manual, act as a
-coordinator: hand the screenshot checks to a subagent that reads the images and reports back in text (for example "badge 3 sits
-on the Cancel button; the Partner column is masked"). The images then stay in the subagent's context, and the main conversation
-only carries the short report.
+Reading a screenshot adds the image to the conversation for the rest of the task. With some providers' prompt caching, such as
+Claude's, adding an image also invalidates the cached conversation, so the next turn is processed again at full price.
+Check state with text (`snapshot`, `get`, `assert`) and open images only when the picture itself matters. In long tasks,
+consider letting a subagent read the images and report back in text.
 
 ## Configuration
 
