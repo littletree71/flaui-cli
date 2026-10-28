@@ -21,7 +21,12 @@ internal sealed class CommandContext(CommandCall call, CliConfig config)
     public int Timeout => Call.GetInt("timeout") ?? Config.Timeouts.Action;
 
     /// <summary>Whether the result ends with a timing breakdown (<c>--verbose</c>).</summary>
-    public bool Verbose => Call.GetBool(CommandCall.VerboseKey);
+    public bool Verbose => Level >= OutputLevel.Debug;
+
+    /// <summary>How much the result shows: <c>--verbose</c> means debug, else <c>--log-level</c>, else the config file.</summary>
+    public OutputLevel Level => Call.GetBool(CommandCall.VerboseKey)
+        ? OutputLevel.Debug
+        : OutputLevels.Parse(Call.Get(CommandCall.LogLevelKey) ?? Config.LogLevel);
 
     /// <summary>Time spent resolving targets (selectors and refs), for the timing breakdown.</summary>
     public TimeSpan FindTime { get; set; }
@@ -117,6 +122,7 @@ public sealed partial class CommandDispatcher
             var config = CliConfig.Load(call.Cwd);
             ConfigOverride?.Invoke(config);
             ctx = new CommandContext(call, config);
+            _ = ctx.Level; // an unknown level fails before anything runs
             _unlockWaitMs = config.Timeouts.Unlock;
             if (!_handlers.TryGetValue(call.Command, out var handler))
                 throw new CliException($"Unknown command: {call.Command} (run flaui-cli --help for the list of commands)");
@@ -135,7 +141,9 @@ public sealed partial class CommandDispatcher
                 && CommandCatalog.ActionCommands.Contains(call.Command))
             {
                 var start = total.Elapsed;
-                text += AutoSnapshotSection(ctx);
+                // The snapshot file is saved at every level; the link is part of the info output
+                var section = AutoSnapshotSection(ctx);
+                if (ctx.Level >= OutputLevel.Info) text += section;
                 snapshotTime = total.Elapsed - start;
             }
 
@@ -189,8 +197,13 @@ public sealed partial class CommandDispatcher
     }
 
     /// <summary>The breakdown for a failed command (a lookup that timed out is exactly what a performance report needs).</summary>
-    private static string FailureTiming(CommandContext? ctx, TimeSpan handler, TimeSpan total) =>
-        ctx is { Verbose: true } ? Timing(ctx, handler == TimeSpan.Zero ? total : handler, null, total) : "";
+    private static string FailureTiming(CommandContext? ctx, TimeSpan handler, TimeSpan total)
+    {
+        // An unknown --log-level is itself the failure being reported
+        try { if (ctx is not { Verbose: true }) return ""; }
+        catch (CliException) { return ""; }
+        return Timing(ctx, handler == TimeSpan.Zero ? total : handler, null, total);
+    }
 
     internal static string Seconds(TimeSpan t) => $"{t.TotalSeconds.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)} s";
 
@@ -425,7 +438,7 @@ public sealed partial class CommandDispatcher
     /// <summary>The command with refs replaced by stable selectors (for recording, documents and reports).</summary>
     private static CommandCall Recordable(CommandContext ctx)
     {
-        var rec = ctx.Call.Clone().Remove(CommandCall.VerboseKey);
+        var rec = ctx.Call.Clone().Remove(CommandCall.VerboseKey).Remove(CommandCall.LogLevelKey);
         rec.Cwd = null;
         foreach (var arg in CommandCatalog.TargetArgNames)
         {

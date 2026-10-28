@@ -77,6 +77,8 @@ screenshots impossible; reading the UI and `click --invoke` still work). When ac
 `flaui-cli lock-status` (no session needed; exit 0 = unlocked, 4 = locked) before looking for other causes; while locked, ask the
 user to unlock and retry. Add `--json` for structured output and
 `--verbose` for a timing breakdown (`find` / `action` / `snapshot` / `total`) at the end of the result.
+`--log-level error|warn|info|debug` (or `logLevel` in the config file) sets how much is printed besides the result: `warn` drops
+the window and snapshot link added after every action, which saves tokens in long runs; `debug` is the same as `--verbose`.
 Use `-s <name>` (or the `FLAUI_CLI_SESSION` environment variable) to run several sessions.
 
 ## Producing YAML test scripts
@@ -148,6 +150,7 @@ Scripts can produce documents directly: `flaui-cli run flow.yaml --doc docs/flow
   "autoSnapshot": true,
   "snapshot": { "depth": 0, "includeOffscreen": false },
   "highlight": { "padding": 3, "outline": true, "badge": "auto" },
+  "logLevel": "info",
   "daemonIdleMinutes": 30
 }
 ```
@@ -162,6 +165,7 @@ Scripts can produce documents directly: `flaui-cli run flow.yaml --doc docs/flow
   `highlight` and a command's `--highlight-padding` / `--no-outline` / `--badge-position`.
   `screenshot` / `doc step` report hard-to-read annotations under `### Warnings` (overlapping outlines, badges covering other
   highlights); the screenshot is still saved, so follow the suggested option and take it again if needed.
+- `logLevel`: `error` / `warn` / `info` (default) / `debug`, like `--log-level`; `--json` data is complete at every level.
 - `daemonIdleMinutes`: idle minutes before a session's daemon exits (read when the daemon starts).
 
 ## Notes

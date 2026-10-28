@@ -136,6 +136,12 @@ internal static class LocalCommands
         var docFormats = (call.Get("doc-format") ?? "md,html").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         var bail = call.GetBool("bail");
 
+        var level = call.GetBool(CommandCall.VerboseKey)
+            ? OutputLevel.Debug
+            : OutputLevels.Parse(call.Get(CommandCall.LogLevelKey) ?? CliConfig.Load(Environment.CurrentDirectory).LogLevel);
+        // Below info, only failing steps are listed (the summary and failures are always printed)
+        Action<StepResult>? onStep = json ? null : level >= OutputLevel.Info ? PrintStep : s => { if (!s.Passed) PrintStep(s); };
+
         var runner = new ScriptRunner(() => new FlaUIDriver());
         var results = new List<ScriptResult>();
         foreach (var file in files)
@@ -162,7 +168,7 @@ internal static class LocalCommands
                 DocDir = docDir,
                 DocFormats = docFormats,
                 Cwd = Environment.CurrentDirectory,
-                OnStep = json ? null : PrintStep,
+                OnStep = onStep,
             });
             results.Add(result);
 
