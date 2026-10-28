@@ -9,6 +9,9 @@ public static class ExitCodes
     public const int AssertionFailed = 1;
     public const int Error = 2;
     public const int DaemonUnavailable = 3;
+
+    /// <summary>The workstation is locked (or a secure desktop is shown): input cannot be simulated; retry after unlocking.</summary>
+    public const int DesktopUnavailable = 4;
 }
 
 /// <summary>Result of a command.</summary>

@@ -44,6 +44,10 @@ public static class CommandCatalog
         "Only draw the number badges, without the red outlines (defaults to highlight.outline in the config file)", Flag: true);
     private static readonly OptSpec BadgePosition = new("badge-position",
         "Where number badges go: auto|top|bottom|left|right|top-left|top-right|bottom-left|bottom-right|inside (defaults to highlight.badge in the config file, auto)");
+    private static readonly OptSpec Mask = new("mask",
+        "Element to cover with a solid box, for names and other data that must not be published; can be repeated. The command fails when it is not found", Multiple: true);
+    private static readonly OptSpec MaskColumn = new("mask-column",
+        "Column header of a table: covers every visible cell of that column; can be repeated", Multiple: true);
     private static readonly ArgSpec Target = new("target", "Element: snapshot ref (e12) or selector (id=..., name=..., type=...&&name=..., xpath=...)");
 
     private static CommandSpec Element(string name, string description, params OptSpec[] extra) =>
@@ -62,6 +66,9 @@ public static class CommandCatalog
         new("status", "Application", "Show the current session status", [], []),
         new("list", "Application", "List all sessions", [], [], CommandLocation.Local),
         new("close-all", "Application", "Close all sessions", [], [], CommandLocation.Local),
+        new("lock-status", "Application",
+            "Check whether the workstation is locked (input and screenshots impossible): exit code 0 when unlocked, 4 when locked; run it when actions fail or seem to do nothing",
+            [], [], CommandLocation.Local),
         new("kill-all", "Application", "Forcefully stop all daemon processes", [], [], CommandLocation.Local),
 
         // ── Windows ──
@@ -94,9 +101,12 @@ public static class CommandCatalog
         new("fill", "Actions", "Clear an input and type text (uses ValuePattern when available)",
             [Target, new("text", "Text to enter")], [new("keyboard", "Always simulate keyboard input", Flag: true), Timeout, Note]),
         new("type", "Actions", "Type text into the focused element", [new("text", "Text")], [Note]),
-        new("press", "Actions", "Press a key or key combination, for example Enter, Ctrl+A, Alt+F4", [new("keys", "Keys")], [new("target", "Focus this element first"), Timeout, Note]),
-        new("select", "Actions", "Select an item in a ComboBox / ListBox / Tab / Tree container",
-            [Target, new("item", "Item name or index (#2 is the third item)")], [Timeout, Note]),
+        new("press", "Actions", "Press a key or key combination, for example Enter, Ctrl+A, Alt+F4", [new("keys", "Keys")],
+            [new("target", "Focus this element before every press (use it when the application moves the focus, for example to step through a drop-down)"),
+             new("repeat", "Press the keys this many times (default 1, at most 100)"), Timeout, Note]),
+        new("select", "Actions", "Select an item in a ComboBox / ListBox / Tab / Tree container (through UI Automation, which may not raise the application's selection events, such as WinForms SelectedIndexChanged; use --keyboard then)",
+            [Target, new("item", "Item name or index (#2 is the third item)")],
+            [new("keyboard", "Select with the arrow keys like a person, so the application reacts as it does to a user (combo boxes and lists)", Flag: true), Timeout, Note]),
         Element("check", "Check a check box or toggle button"),
         Element("uncheck", "Uncheck a check box or toggle button"),
         Element("expand", "Expand a tree node, drop-down or menu"),
@@ -128,7 +138,7 @@ public static class CommandCatalog
         new("screenshot", "Screenshots", "Capture the current window or an element",
             [new("target", "Only capture this element", Required: false)],
             [new("filename", "Output file name (defaults to the output directory)"), new("highlight", "Element to outline in red; can be repeated", Multiple: true),
-             HighlightPadding, NoOutline, BadgePosition, new("screen", "Capture the whole screen", Flag: true), Timeout]),
+             HighlightPadding, NoOutline, BadgePosition, Mask, MaskColumn, new("screen", "Capture the whole screen", Flag: true), Timeout]),
 
         // ── Recording ──
         new("record", "Recording", "Record actions and export them as a YAML script",
@@ -139,7 +149,9 @@ public static class CommandCatalog
         new("doc", "Documentation", "Produce step-by-step documentation with annotated screenshots",
             [new("action", "start | step | stop | status"), new("text", "Description for step", Required: false)],
             [new("title", "Document title (start)"), new("out", "Output folder (stop)"), new("format", "md,html (default both)"),
-             new("highlight", "Element to outline for step; can be repeated", Multiple: true), HighlightPadding, NoOutline, BadgePosition]),
+             new("highlight", "Element to outline for step; can be repeated", Multiple: true), HighlightPadding, NoOutline, BadgePosition,
+             new("mask", "Element to cover: with start, in every screenshot of the document (skipped where it is not shown); with step, in that screenshot; can be repeated", Multiple: true),
+             new("mask-column", "Column header of a table whose cells are covered, like --mask; can be repeated", Multiple: true)]),
 
         // ── Scripts ──
         new("run", "Scripts", "Run YAML test scripts",
@@ -161,7 +173,7 @@ public static class CommandCatalog
 
     /// <summary>Commands that do not change the UI and are skipped by the recorder.</summary>
     public static readonly HashSet<string> ReadOnlyCommands =
-        new(["status", "windows", "snapshot", "find", "inspect", "get", "record", "doc", "list"], StringComparer.OrdinalIgnoreCase);
+        new(["status", "windows", "snapshot", "find", "inspect", "get", "record", "doc", "list", "lock-status"], StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Commands that operate on elements; they save an automatic snapshot and are captured in documents.</summary>
     public static readonly HashSet<string> ActionCommands =
