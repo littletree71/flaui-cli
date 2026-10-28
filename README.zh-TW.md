@@ -290,6 +290,8 @@ dotnet test tests/FlauiCli.E2E.Tests                                    # 需要
 ## 已知限制
 
 - 動作會移動真實滑鼠、送出真實按鍵，執行期間請勿操作電腦（`click --invoke` 可避免移動滑鼠）。
+- 應用程式可能在處理按鍵時移動焦點（例如 WinForms 表單在下拉選單變更時跳到下一個欄位），下一次 `press` 就會送到別處；`press`
+  會回報焦點移到哪裡。`press Down --target <目標> --repeat 3` 會在每次按鍵前重新聚焦目標。
 - WinForms 程式中，若控制項開啟了強制回應（modal）對話框，InvokePattern 會等到對話框關閉才返回：`click --invoke` / `invoke` 會在 `--timeout` 後失敗，對話框關閉前只有 `status`、`sleep`、`press <按鍵>` 可用。會開對話框的按鈕請用一般 `click`。
 - UWP 程式的視窗由 ApplicationFrameHost 承載，`open` 需要 `--window` 指定標題；`close` 只會關閉視窗，不會結束共用程序。
 - WinForms `ListView`（Details 檢視、未開 `FullRowSelect`）的 `listitem` 元素範圍是整列，`click` 會點到文字右邊的空白處而選不到項目。

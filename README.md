@@ -304,6 +304,9 @@ dotnet test tests/FlauiCli.E2E.Tests                                    # needs 
 ## Known limitations
 
 - Actions move the real mouse and send real key presses; do not use the computer while they run (`click --invoke` avoids moving the mouse).
+- An application may move the focus while it handles a key (for example a WinForms form jumping to the next field when a
+  drop-down changes), so the next `press` goes elsewhere; `press` reports where the focus went. `press Down --target <t> --repeat 3`
+  focuses the target again before every press.
 - On WinForms apps, InvokePattern does not return while a modal dialog it opened is shown: `click --invoke` / `invoke` fail after `--timeout`, and until the dialog closes only `status`, `sleep` and `press <keys>` work. Use a plain `click` for buttons that open a dialog.
 - UWP windows are hosted by ApplicationFrameHost, so `open` needs `--window <title>`; `close` only closes the window and never kills the shared process.
 - In a WinForms `ListView` (Details view without `FullRowSelect`) the `listitem` element spans the whole row, so `click` on it
