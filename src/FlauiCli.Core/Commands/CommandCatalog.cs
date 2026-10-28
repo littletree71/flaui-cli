@@ -44,6 +44,10 @@ public static class CommandCatalog
         "Only draw the number badges, without the red outlines (defaults to highlight.outline in the config file)", Flag: true);
     private static readonly OptSpec BadgePosition = new("badge-position",
         "Where number badges go: auto|top|bottom|left|right|top-left|top-right|bottom-left|bottom-right|inside (defaults to highlight.badge in the config file, auto)");
+    private static readonly OptSpec Mask = new("mask",
+        "Element to cover with a solid box, for names and other data that must not be published; can be repeated. The command fails when it is not found", Multiple: true);
+    private static readonly OptSpec MaskColumn = new("mask-column",
+        "Column header of a table: covers every visible cell of that column; can be repeated", Multiple: true);
     private static readonly ArgSpec Target = new("target", "Element: snapshot ref (e12) or selector (id=..., name=..., type=...&&name=..., xpath=...)");
 
     private static CommandSpec Element(string name, string description, params OptSpec[] extra) =>
@@ -128,7 +132,7 @@ public static class CommandCatalog
         new("screenshot", "Screenshots", "Capture the current window or an element",
             [new("target", "Only capture this element", Required: false)],
             [new("filename", "Output file name (defaults to the output directory)"), new("highlight", "Element to outline in red; can be repeated", Multiple: true),
-             HighlightPadding, NoOutline, BadgePosition, new("screen", "Capture the whole screen", Flag: true), Timeout]),
+             HighlightPadding, NoOutline, BadgePosition, Mask, MaskColumn, new("screen", "Capture the whole screen", Flag: true), Timeout]),
 
         // ── Recording ──
         new("record", "Recording", "Record actions and export them as a YAML script",
@@ -139,7 +143,9 @@ public static class CommandCatalog
         new("doc", "Documentation", "Produce step-by-step documentation with annotated screenshots",
             [new("action", "start | step | stop | status"), new("text", "Description for step", Required: false)],
             [new("title", "Document title (start)"), new("out", "Output folder (stop)"), new("format", "md,html (default both)"),
-             new("highlight", "Element to outline for step; can be repeated", Multiple: true), HighlightPadding, NoOutline, BadgePosition]),
+             new("highlight", "Element to outline for step; can be repeated", Multiple: true), HighlightPadding, NoOutline, BadgePosition,
+             new("mask", "Element to cover: with start, in every screenshot of the document (skipped where it is not shown); with step, in that screenshot; can be repeated", Multiple: true),
+             new("mask-column", "Column header of a table whose cells are covered, like --mask; can be repeated", Multiple: true)]),
 
         // ── Scripts ──
         new("run", "Scripts", "Run YAML test scripts",

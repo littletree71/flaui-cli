@@ -457,7 +457,9 @@ public sealed partial class CommandDispatcher
         var target = el?.Bounds ?? Rectangle.Empty;
         if (!target.IsEmpty) region = Rectangle.Union(region, target);
 
+        var masks = DocMaskAreas(ctx);
         using var bmp = Screenshotter.CaptureRegion(_s.Driver.Screen, region, out var captured);
+        Screenshotter.Mask(bmp, captured.Location, masks);
         if (!target.IsEmpty) Screenshotter.Annotate(bmp, captured.Location, [target], doc.NextNumber, HighlightStyle.From(ctx.Config.Highlight));
         doc.AddStep(text, bmp, CommandFormatter.ToCli(Recordable(ctx)));
     }

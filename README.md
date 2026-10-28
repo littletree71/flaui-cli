@@ -195,6 +195,19 @@ flaui-cli doc stop --out docs/calculator --format md,html    # index.md + images
 Generated step descriptions are in English (for example `Click the "One" button`); `--note` and the script `doc:` field accept any language.
 Most actions are captured before they run; `fill`, `type`, `select`, `check` and `uncheck` are captured after they run so the screenshot shows the new value.
 
+### Hiding private data
+
+Screenshots for published documents often show names or other data that must not appear. `--mask <target>` covers an element
+with a solid box and `--mask-column <column header>` covers every visible cell of a table column; both can be repeated:
+
+```bash
+flaui-cli screenshot --mask id=customerName --mask-column "id=dataGridView1 >> name=Partner" --highlight id=okButton
+flaui-cli doc start --title "Orders" --mask-column "id=dataGridView1 >> name=Partner"   # every screenshot of the document
+```
+
+Masks are drawn before outlines and badges, so those stay visible. `screenshot` and `doc step` fail without saving anything when a
+mask is not found; masks given to `doc start` are applied to every screenshot of the document wherever they are shown.
+
 ## Configuration
 
 `.flaui-cli/config.json` in the current working directory. Every field is optional; the values below are the defaults.

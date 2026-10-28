@@ -63,7 +63,7 @@ Selectors wait for the element to appear (5 s by default, change with `--timeout
 | Actions | `click <t> [--button right] [--double] [--invoke]`, `dblclick`, `hover`, `fill <t> <text> [--keyboard]`, `type <text>`, `press <keys> [--target t]` (`Enter`, `Ctrl+S`), `select <t> <item or #index>`, `check`, `uncheck`, `expand`, `collapse`, `invoke`, `scroll <t> [--dir down] [--amount 3]`, `drag <src> <dst>` |
 | Reading | `get text\|value\|name\|state\|rect <t>`, `get prop <t> HelpText` |
 | Waiting / asserting | `wait <t> --state visible\|hidden\|exists\|gone\|enabled\|disabled`, `assert exists\|not-exists\|visible\|hidden\|enabled\|disabled\|checked\|unchecked <t>`, `assert text\|contains\|matches\|value <t> <expected>`, `sleep <ms>` |
-| Screenshots | `screenshot [t] [--filename f.png] [--highlight t ...] [--highlight-padding px] [--no-outline] [--badge-position p] [--screen]` |
+| Screenshots | `screenshot [t] [--filename f.png] [--highlight t ...] [--highlight-padding px] [--no-outline] [--badge-position p] [--mask t ...] [--mask-column header ...] [--screen]` |
 
 Element commands take `--timeout <ms>`; action commands take `--note <text>` (the step description in documents).
 `close` closes the window and stops the session's daemon; `close --keep-app` ends the session and leaves the app running.
@@ -123,6 +123,11 @@ flaui-cli doc stop --out docs/calculator         # writes index.md + images/ and
 `doc status` shows the document being recorded. Generated step descriptions are in English; `--note` accepts any language.
 Most actions are captured before they run (showing what to operate); `fill`, `type`, `select`, `check` and `uncheck` are
 captured after they run, so the screenshot shows the entered value. Tooltips left over from an earlier `hover` are hidden first.
+
+To hide names or other private data, add `--mask <t>` (an element) or `--mask-column <column header>` (every visible cell of a
+table column, for example `--mask-column "id=dataGridView1 >> name=Partner"`) to `screenshot` / `doc step`, or to `doc start` to
+cover them in every screenshot of the document. A solid box is drawn before outlines and badges. `screenshot` / `doc step` fail
+without saving when a mask is not found; do not post-process images to hide data.
 
 Scripts can produce documents directly: `flaui-cli run flow.yaml --doc docs/flow`.
 

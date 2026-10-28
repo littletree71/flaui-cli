@@ -1,4 +1,5 @@
 using System.Drawing;
+using FlauiCli.Core.Abstractions;
 using System.Text;
 using FlauiCli.Core.Docs;
 using FlauiCli.Core.Imaging;
@@ -32,7 +33,9 @@ public sealed partial class CommandDispatcher
             foreach (var h in highlights) region = Rectangle.Union(region, h.Bounds);
         }
 
+        var masks = MaskAreas(ctx, required: true);
         using var bmp = Screenshotter.CaptureRegion(_s.Driver.Screen, region, out var captured);
+        Screenshotter.Mask(bmp, captured.Location, masks);
         // Without outlines a single highlight still needs its badge
         var style = Style(ctx);
         var warnings = Screenshotter.Annotate(bmp, captured.Location, [.. highlights.Select(h => h.Bounds)],
@@ -74,6 +77,57 @@ public sealed partial class CommandDispatcher
     }
 
     private const int MaxWarnings = 5;
+
+    /// <summary>
+    /// Screen areas of the command's <c>--mask</c> and <c>--mask-column</c> targets. With <paramref name="required"/>, a
+    /// target that is not found fails the command (waiting like any target): a screenshot that was meant to hide
+    /// something must not be saved without it.
+    /// </summary>
+    private List<Rectangle> MaskAreas(CommandContext ctx, bool required) =>
+        MaskAreas(ctx, ctx.Call.GetList("mask"), ctx.Call.GetList("mask-column"), required);
+
+    /// <summary>The masks given to <c>doc start</c>, applied to every screenshot of the document where they are shown.</summary>
+    private List<Rectangle> DocMaskAreas(CommandContext ctx) =>
+        _s.Doc is { } doc ? MaskAreas(ctx, doc.Masks, doc.MaskColumns, required: false) : [];
+
+    private List<Rectangle> MaskAreas(CommandContext ctx, IReadOnlyList<string> masks, IReadOnlyList<string> columns, bool required)
+    {
+        IUiElement? Find(string raw) => required ? Resolve(ctx, raw) : TryResolveOnce(ctx, raw);
+
+        var areas = new List<Rectangle>();
+        foreach (var m in masks)
+        {
+            if (Find(m) is { } el && !el.IsOffscreen) areas.Add(el.Bounds);
+        }
+        foreach (var c in columns)
+        {
+            if (Find(c) is { } header) areas.AddRange(ColumnCells(header));
+        }
+        return areas;
+    }
+
+    /// <summary>
+    /// The visible cells below a column header: data items of the enclosing table that span the same columns as the
+    /// header. When the table exposes no such cells, the area from the header down to the bottom of the table.
+    /// </summary>
+    private static List<Rectangle> ColumnCells(IUiElement header)
+    {
+        var h = header.Bounds;
+        var table = header.Parent;
+        for (var i = 0; i < 4 && table is not null && table.Kind is not (ControlKind.DataGrid or ControlKind.Table or ControlKind.List); i++)
+            table = table.Parent;
+        if (table is null) throw new CliException($"{Friendly(header)} is not inside a table; use --mask for single elements");
+
+        static bool Near(int a, int b) => Math.Abs(a - b) <= 2;
+        var cells = table.FindAll(new ElementQuery(Kind: ControlKind.DataItem))
+            .Where(e => !e.IsOffscreen && Near(e.Bounds.Left, h.Left) && Near(e.Bounds.Right, h.Right) && e.Bounds.Top >= h.Top)
+            .Select(e => e.Bounds)
+            .ToList();
+        if (cells.Count > 0) return cells;
+
+        var t = table.Bounds;
+        return t.Bottom > h.Bottom ? [Rectangle.FromLTRB(h.Left, h.Bottom, h.Right, t.Bottom)] : [];
+    }
 
     private string Record(CommandContext ctx)
     {
@@ -152,9 +206,15 @@ public sealed partial class CommandDispatcher
             {
                 if (_s.Doc is not null) throw new CliException("Already recording a document. Run doc stop first");
                 var title = ctx.Call.Get("title") ?? ctx.Call.Get("text") ?? DocBuilder.DefaultTitle;
-                _s.Doc = new DocBuilder(title, Path.Combine(ctx.OutputDir, $"doc-work-{Stamp()}"));
-                return $"### Result\nRecording document \"{title}\". Every action is captured with an annotated screenshot; " +
-                       "add manual steps with doc step \"text\" and finish with doc stop --out <folder>";
+                _s.Doc = new DocBuilder(title, Path.Combine(ctx.OutputDir, $"doc-work-{Stamp()}"))
+                {
+                    Masks = ctx.Call.GetList("mask"),
+                    MaskColumns = ctx.Call.GetList("mask-column"),
+                };
+                var masked = _s.Doc.Masks.Count + _s.Doc.MaskColumns.Count;
+                return $"### Result\nRecording document \"{title}\". Every action is captured with an annotated screenshot" +
+                       (masked > 0 ? $", with {masked} mask(s) applied wherever they are shown" : "") +
+                       "; add manual steps with doc step \"text\" and finish with doc stop --out <folder>";
             }
 
             case "step":
@@ -166,7 +226,9 @@ public sealed partial class CommandDispatcher
                 TryForeground(window);
                 var region = WindowBounds(window);
                 foreach (var h in highlights) region = Rectangle.Union(region, h.Bounds);
+                var masks = MaskAreas(ctx, required: true).Concat(DocMaskAreas(ctx)).ToList();
                 using var bmp = Screenshotter.CaptureRegion(_s.Driver.Screen, region, out var captured);
+                Screenshotter.Mask(bmp, captured.Location, masks);
                 var warnings = Screenshotter.Annotate(bmp, captured.Location, [.. highlights.Select(h => h.Bounds)],
                     highlights.Count == 1 ? doc.NextNumber : highlights.Count > 1 ? 1 : null, Style(ctx), ctx.Call.GetList("highlight"));
                 var step = doc.AddStep(text, bmp, null);

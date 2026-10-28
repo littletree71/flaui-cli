@@ -33,6 +33,12 @@ public sealed class DocBuilder
 
     public int NextNumber => _steps.Count + 1;
 
+    /// <summary>Elements covered in every screenshot of the document (<c>doc start --mask</c>).</summary>
+    public IReadOnlyList<string> Masks { get; init; } = [];
+
+    /// <summary>Table columns covered in every screenshot of the document (<c>doc start --mask-column</c>).</summary>
+    public IReadOnlyList<string> MaskColumns { get; init; } = [];
+
     public DocStep AddStep(string text, Bitmap? image, string? command)
     {
         var number = NextNumber;

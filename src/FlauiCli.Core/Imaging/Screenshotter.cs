@@ -49,6 +49,24 @@ internal static class Screenshotter
 {
     private static readonly Color HighlightColor = Color.FromArgb(229, 57, 53);
 
+    private static readonly Color MaskColor = Color.FromArgb(96, 96, 96);
+
+    /// <summary>
+    /// Covers areas with a solid box (names and other data that must not be published). A solid fill, not a blur:
+    /// blurred text can sometimes still be read. Draw masks before <see cref="Annotate"/> so outlines and badges stay
+    /// visible on top of them.
+    /// </summary>
+    public static void Mask(Bitmap bmp, Point origin, IEnumerable<Rectangle> areas)
+    {
+        using var g = Graphics.FromImage(bmp);
+        using var brush = new SolidBrush(MaskColor);
+        foreach (var r in areas)
+        {
+            if (r.IsEmpty) continue;
+            g.FillRectangle(brush, r.X - origin.X, r.Y - origin.Y, r.Width, r.Height);
+        }
+    }
+
     /// <summary>Captures a rectangle of the screen (clipped to the virtual screen).</summary>
     public static Bitmap CaptureRegion(IScreenCapture screen, Rectangle region, out Rectangle captured)
     {
