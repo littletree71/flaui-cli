@@ -143,8 +143,8 @@ steps:
 ```
 
 - 最上層欄位：`name`、`app`、`timeout`（每個步驟的預設逾時毫秒數；啟動程式至少等待 `timeouts.launch`）、
-  `highlight`（`padding` / `outline`，套用到這份腳本的所有截圖，覆蓋設定檔的 `highlight`；步驟自己的 `highlight-padding` /
-  `no-outline` 優先）、`steps`。
+  `highlight`（`padding` / `outline` / `badge`，套用到這份腳本的所有截圖，覆蓋設定檔的 `highlight`；步驟自己的
+  `highlight-padding` / `no-outline` / `badge-position` 優先）、`steps`。
 - `app`：`launch`（exe 或 AUMID）、`args`、`window`、`attach`（PID 或程序名稱）、`close`（結束後是否關閉程式；
   `launch` 預設為 `true`、`attach` 預設為 `false`）。直接寫字串等同 `launch`。
   啟動的程式在 script 失敗時也會關閉，一直沒出現視窗時會被終止。設定 `close: false` 時程式會繼續執行，並保有它繼承的標準輸出入，
@@ -200,7 +200,7 @@ flaui-cli doc stop --out docs/calculator --format md,html    # index.md + images
   "outputDir": ".flaui-cli",
   "autoSnapshot": true,
   "snapshot": { "depth": 0, "includeOffscreen": false },
-  "highlight": { "padding": 3, "outline": true },
+  "highlight": { "padding": 3, "outline": true, "badge": "auto" },
   "daemonIdleMinutes": 30
 }
 ```
@@ -215,13 +215,16 @@ flaui-cli doc stop --out docs/calculator --format md,html    # index.md + images
 | `snapshot.includeOffscreen` | `false` | snapshot 是否包含畫面外的元素（同 `snapshot --all`） |
 | `highlight.padding` | `3` | 元素與紅框之間的像素：正數在元素外、`0` 貼齊邊緣、負數在元素內 |
 | `highlight.outline` | `true` | 設為 `false` 時不畫紅框，只畫編號 |
+| `highlight.badge` | `auto` | 編號的位置：`auto`（逐一自動決定）、`top`、`bottom`、`left`、`right`、`top-left`、`top-right`、`bottom-left`、`bottom-right` 或 `inside`（紅框內左上角） |
 | `daemonIdleMinutes` | `30` | 工作階段的 daemon 閒置多少分鐘後結束 |
 
 - 每個指令都會重新讀取設定檔，修改後立即生效；只有 `daemonIdleMinutes` 是在工作階段的 daemon 啟動時讀一次。
 - 可以寫 `//` 註解、結尾多一個逗號，欄位名稱不分大小寫。檔案格式錯誤時指令會失敗並顯示檔案路徑，不會默默改用預設值。
 - `highlight` 套用在 `screenshot --highlight`、`doc step --highlight` 以及 `doc` 為動作拍的截圖。標示的元素彼此相鄰（例如一排排
   按鈕）時，設成負數（如 `-3`）可以讓紅框分開。不畫紅框時，編號位置與有紅框時相同，並優先放在元素正上方或正下方的中間。
-- 標示設定的優先順序：指令的 `--highlight-padding` / `--no-outline` > 腳本最上層的 `highlight` > 設定檔 > 預設值。
+- `auto` 會讓編號貼著自己的元素，並避開其他編號。指定固定位置時，每個編號都放在紅框的同一側，即使因此落在相鄰元素旁邊
+  （例如按鈕兩排排列時，第二排用 `top`）。
+- 標示設定的優先順序：指令的 `--highlight-padding` / `--no-outline` / `--badge-position` > 腳本最上層的 `highlight` > 設定檔 > 預設值。
 
 ## 大型應用程式
 

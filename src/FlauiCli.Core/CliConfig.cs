@@ -53,6 +53,12 @@ public sealed class CliConfig
 
         /// <summary>Whether highlighted elements get a red outline; when false only the number badges are drawn.</summary>
         public bool Outline { get; set; } = true;
+
+        /// <summary>
+        /// Where number badges go: auto (chosen per element), top, bottom, left, right, top-left, top-right, bottom-left,
+        /// bottom-right or inside.
+        /// </summary>
+        public string Badge { get; set; } = "auto";
     }
 
     private static readonly JsonSerializerOptions JsonOptions = new()

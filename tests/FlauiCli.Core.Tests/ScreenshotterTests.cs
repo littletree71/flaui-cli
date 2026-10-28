@@ -111,7 +111,7 @@ public sealed class ScreenshotterTests
     {
         using var bmp = new Bitmap(202, 137);
         using (var g = Graphics.FromImage(bmp)) g.Clear(Color.White);
-        Screenshotter.Annotate(bmp, Point.Empty, ButtonGrid, 1, padding: -3);
+        Screenshotter.Annotate(bmp, Point.Empty, ButtonGrid, 1, new HighlightStyle(Padding: -3));
 
         // One ends at x=69 and Two starts at x=71: neither outline reaches into the space where the buttons meet
         static bool Red(Color p) => p.R > 180 && p.G < 120 && p.B < 120;
@@ -124,7 +124,7 @@ public sealed class ScreenshotterTests
     {
         using var bmp = new Bitmap(202, 137);
         using (var g = Graphics.FromImage(bmp)) g.Clear(Color.White);
-        Screenshotter.Annotate(bmp, Point.Empty, ButtonGrid, 1, outline: false);
+        Screenshotter.Annotate(bmp, Point.Empty, ButtonGrid, 1, new HighlightStyle(Outline: false));
 
         static bool Red(Color p) => p.R > 180 && p.G < 120 && p.B < 120;
         var red = 0;
@@ -146,6 +146,41 @@ public sealed class ScreenshotterTests
         var outline = new Rectangle(97, 97, 46, 26);
         Assert.Equal((97 + (46 - 24) / 2, 97 - 24 + 4), Screenshotter.BadgePosition(outline, 24, 24, new Size(300, 200), [], centered: true));
     }
+
+    [Theory]
+    [InlineData("Top", 97 + 11, 97 - 20)]
+    [InlineData("Bottom", 97 + 11, 123 - 4)]
+    [InlineData("Left", 97 - 20, 97 + 1)]
+    [InlineData("Right", 143 - 4, 97 + 1)]
+    [InlineData("TopRight", 143 - 4, 97 - 20)]
+    [InlineData("BottomLeft", 97 - 20, 123 - 4)]
+    [InlineData("Inside", 100, 100)]
+    public void ChosenBadgePositionsTouchTheOutline(string placement, int x, int y)
+    {
+        var outline = new Rectangle(97, 97, 46, 26);
+        Assert.Equal((x, y), Screenshotter.FixedBadgePosition(outline, 24, 24, new Size(300, 200), Enum.Parse<BadgePlacement>(placement)));
+    }
+
+    [Fact]
+    public void ChosenBadgePositionsStayInsideTheImage()
+    {
+        // An element in the top-left corner: a badge above-left of it is pushed into the image
+        Assert.Equal((0, 0), Screenshotter.FixedBadgePosition(new Rectangle(-3, -3, 46, 26), 24, 24, new Size(300, 200), BadgePlacement.TopLeft));
+    }
+
+    [Theory]
+    [InlineData("auto", "Auto")]
+    [InlineData("top-right", "TopRight")]
+    [InlineData("BottomLeft", "BottomLeft")]
+    [InlineData(null, "Auto")]
+    public void BadgePositionsAreParsed(string? value, string expected) =>
+        Assert.Equal(expected, HighlightStyle.ParseBadge(value).ToString());
+
+    [Theory]
+    [InlineData("middle")]
+    [InlineData("3")]
+    public void UnknownBadgePositionsAreRejected(string value) =>
+        Assert.Contains("Unknown badge position", Assert.Throws<CliException>(() => HighlightStyle.ParseBadge(value)).Message);
 
     private static void AssertBadgesOwned(Size image, IReadOnlyList<Rectangle> outlines)
     {

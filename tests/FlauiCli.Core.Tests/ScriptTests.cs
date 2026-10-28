@@ -14,7 +14,7 @@ public class ScriptTests
           launch: calc.exe
           window: Calculator
         timeout: 3000
-        highlight: { padding: -3, outline: false }
+        highlight: { padding: -3, outline: false, badge: bottom }
         steps:
           - click: id=num1Button
             doc: Press 1
@@ -36,6 +36,7 @@ public class ScriptTests
         Assert.Equal(3000, doc.Timeout);
         Assert.Equal(-3, doc.Highlight!.Padding);
         Assert.False(doc.Highlight.Outline);
+        Assert.Equal("bottom", doc.Highlight.Badge);
         Assert.Equal(6, doc.Steps.Count);
 
         Assert.Equal("click", doc.Steps[0].Command);
@@ -58,6 +59,7 @@ public class ScriptTests
     [InlineData("timeout: abc", "timeout must be an integer")]
     [InlineData("highlight: { padding: x }", "highlight padding must be an integer")]
     [InlineData("highlight: { color: red }", "unknown highlight field")]
+    [InlineData("highlight: { badge: middle }", "unknown badge position")]
     public void ErrorMessagesAreClear(string yaml, string message)
     {
         var ex = Assert.Throws<CliException>(() => ScriptYaml.Parse(yaml));
@@ -75,6 +77,7 @@ public class ScriptTests
         Assert.Equal(doc.App!.Window, again.App!.Window);
         Assert.Equal(doc.Highlight!.Padding, again.Highlight!.Padding);
         Assert.Equal(doc.Highlight.Outline, again.Highlight.Outline);
+        Assert.Equal(doc.Highlight.Badge, again.Highlight.Badge);
         Assert.Equal(doc.Steps.Count, again.Steps.Count);
         for (var i = 0; i < doc.Steps.Count; i++)
         {

@@ -1,5 +1,6 @@
 using System.Globalization;
 using FlauiCli.Core.Commands;
+using FlauiCli.Core.Imaging;
 using FlauiCli.Core.Protocol;
 using YamlDotNet.Core;
 using YamlDotNet.RepresentationModel;
@@ -97,7 +98,7 @@ public static class ScriptYaml
 
     private static HighlightSpec ParseHighlight(YamlNode node, string where)
     {
-        if (node is not YamlMappingNode m) throw new CliException($"{where}: highlight must be a mapping (padding, outline)");
+        if (node is not YamlMappingNode m) throw new CliException($"{where}: highlight must be a mapping (padding, outline, badge)");
         var spec = new HighlightSpec();
         foreach (var (k, v) in m.Children)
         {
@@ -111,7 +112,13 @@ public static class ScriptYaml
                         : throw new CliException($"{where}: highlight padding must be an integer");
                     break;
                 case "outline": spec.Outline = ParseBool(value, where); break;
-                default: throw new CliException($"{where}: unknown highlight field {key} (use padding, outline)");
+                case "badge":
+                    // Checked here so a typo fails when the script is loaded, not at its first screenshot
+                    try { HighlightStyle.ParseBadge(value); }
+                    catch (CliException) { throw new CliException($"{where}: unknown badge position {value} (use {HighlightStyle.BadgeNames})"); }
+                    spec.Badge = value;
+                    break;
+                default: throw new CliException($"{where}: unknown highlight field {key} (use padding, outline, badge)");
             }
         }
         return spec;
@@ -204,6 +211,7 @@ public static class ScriptYaml
             var hl = new Dictionary<string, object>();
             if (h.Padding is not null) hl["padding"] = h.Padding.Value;
             if (h.Outline is not null) hl["outline"] = h.Outline.Value;
+            if (h.Badge is not null) hl["badge"] = h.Badge;
             if (hl.Count > 0) root["highlight"] = hl;
         }
 

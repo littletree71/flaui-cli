@@ -31,8 +31,11 @@ public sealed class HighlightSpec
 
     public bool? Outline { get; set; }
 
+    public string? Badge { get; set; }
+
     public void ApplyTo(CliConfig config)
     {
+        if (Badge is not null) config.Highlight.Badge = Badge;
         if (Padding is int padding) config.Highlight.Padding = padding;
         if (Outline is bool outline) config.Highlight.Outline = outline;
     }

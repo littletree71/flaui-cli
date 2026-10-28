@@ -34,9 +34,8 @@ public sealed partial class CommandDispatcher
 
         using var bmp = Screenshotter.CaptureRegion(_s.Driver.Screen, region, out var captured);
         // Without outlines a single highlight still needs its badge
-        var outline = HighlightOutline(ctx);
-        Screenshotter.Annotate(bmp, captured.Location, [.. highlights.Select(h => h.Bounds)], highlights.Count > 1 || !outline ? 1 : null,
-            HighlightPadding(ctx), outline);
+        var style = Style(ctx);
+        Screenshotter.Annotate(bmp, captured.Location, [.. highlights.Select(h => h.Bounds)], highlights.Count > 1 || !style.Outline ? 1 : null, style);
 
         var path = ctx.Call.Get("filename") is { } f
             ? ctx.Call.ResolvePath(f)
@@ -46,13 +45,18 @@ public sealed partial class CommandDispatcher
         return $"### Result\nScreenshot saved: {ctx.Relative(path)}";
     }
 
-    /// <summary>The <c>--highlight-padding</c> option, else <c>highlight.padding</c> from the config file.</summary>
-    private static int HighlightPadding(CommandContext ctx) =>
-        ctx.Call.GetInt("highlight-padding") ?? ctx.Config.Highlight.Padding;
-
-    /// <summary>False with <c>--no-outline</c> or <c>highlight.outline: false</c> in the config file.</summary>
-    private static bool HighlightOutline(CommandContext ctx) =>
-        !ctx.Call.GetBool("no-outline") && ctx.Config.Highlight.Outline;
+    /// <summary>
+    /// Highlight style from the <c>--highlight-padding</c>, <c>--no-outline</c> and <c>--badge-position</c> options,
+    /// else from <c>highlight</c> in the config file (a script's own settings are already applied to it).
+    /// </summary>
+    private static HighlightStyle Style(CommandContext ctx)
+    {
+        var config = ctx.Config.Highlight;
+        return new HighlightStyle(
+            ctx.Call.GetInt("highlight-padding") ?? config.Padding,
+            !ctx.Call.GetBool("no-outline") && config.Outline,
+            HighlightStyle.ParseBadge(ctx.Call.Get("badge-position") ?? config.Badge));
+    }
 
     private string Record(CommandContext ctx)
     {
@@ -147,7 +151,7 @@ public sealed partial class CommandDispatcher
                 foreach (var h in highlights) region = Rectangle.Union(region, h.Bounds);
                 using var bmp = Screenshotter.CaptureRegion(_s.Driver.Screen, region, out var captured);
                 Screenshotter.Annotate(bmp, captured.Location, [.. highlights.Select(h => h.Bounds)],
-                    highlights.Count == 1 ? doc.NextNumber : highlights.Count > 1 ? 1 : null, HighlightPadding(ctx), HighlightOutline(ctx));
+                    highlights.Count == 1 ? doc.NextNumber : highlights.Count > 1 ? 1 : null, Style(ctx));
                 var step = doc.AddStep(text, bmp, null);
                 return $"### Result\nAdded step {step.Number}: {text}";
             }

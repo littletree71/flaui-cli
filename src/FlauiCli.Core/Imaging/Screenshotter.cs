@@ -6,6 +6,40 @@ using FlauiCli.Core.Abstractions;
 
 namespace FlauiCli.Core.Imaging;
 
+/// <summary>Where number badges go relative to their outline.</summary>
+internal enum BadgePlacement
+{
+    /// <summary>Chosen per element, away from other elements and badges.</summary>
+    Auto,
+    Top,
+    Bottom,
+    Left,
+    Right,
+    TopLeft,
+    TopRight,
+    BottomLeft,
+    BottomRight,
+
+    /// <summary>Inside the outline's top-left corner.</summary>
+    Inside,
+}
+
+/// <summary>How highlighted elements are drawn (see <see cref="CliConfig.HighlightConfig"/>).</summary>
+internal sealed record HighlightStyle(int Padding = 3, bool Outline = true, BadgePlacement Badge = BadgePlacement.Auto)
+{
+    public static readonly HighlightStyle Default = new();
+
+    public const string BadgeNames = "auto, top, bottom, left, right, top-left, top-right, bottom-left, bottom-right, inside";
+
+    public static HighlightStyle From(CliConfig.HighlightConfig config) => new(config.Padding, config.Outline, ParseBadge(config.Badge));
+
+    /// <summary>Parses a badge position such as <c>top-right</c>.</summary>
+    public static BadgePlacement ParseBadge(string? value) =>
+        Enum.TryParse<BadgePlacement>((value ?? "auto").Replace("-", ""), ignoreCase: true, out var p) && Enum.IsDefined(p) && !int.TryParse(value, out _)
+            ? p
+            : throw new CliException($"Unknown badge position: {value} (use {BadgeNames})");
+}
+
 /// <summary>Screenshots and annotations (red outline + number). Coordinates are always physical screen pixels.</summary>
 internal static class Screenshotter
 {
@@ -22,11 +56,12 @@ internal static class Screenshotter
 
     /// <summary>
     /// Outlines elements on the image. <paramref name="origin"/> is the screen position of the image's top-left corner.
-    /// <paramref name="padding"/> is the distance from each element to its outline (negative: inside). Without
-    /// <paramref name="outline"/> only the number badges are drawn, placed as if the outline were there.
+    /// <see cref="HighlightStyle.Padding"/> is the distance from each element to its outline (negative: inside). Without
+    /// <see cref="HighlightStyle.Outline"/> only the number badges are drawn, placed as if the outline were there.
     /// </summary>
-    public static void Annotate(Bitmap bmp, Point origin, IReadOnlyList<Rectangle> targets, int? firstNumber, int padding = 3, bool outline = true)
+    public static void Annotate(Bitmap bmp, Point origin, IReadOnlyList<Rectangle> targets, int? firstNumber, HighlightStyle? style = null)
     {
+        style ??= HighlightStyle.Default;
         if (targets.Count == 0) return;
         using var g = Graphics.FromImage(bmp);
         g.SmoothingMode = SmoothingMode.AntiAlias;
@@ -45,7 +80,7 @@ internal static class Screenshotter
             if (r.IsEmpty) return Rectangle.Empty;
             var local = new Rectangle(r.X - origin.X, r.Y - origin.Y, r.Width, r.Height);
             // An outline cannot shrink past the middle of the element
-            var pad = Math.Max(padding, -(Math.Min(local.Width, local.Height) - 2) / 2);
+            var pad = Math.Max(style.Padding, -(Math.Min(local.Width, local.Height) - 2) / 2);
             local.Inflate(pad, pad);
             return local;
         }).ToList();
@@ -55,7 +90,7 @@ internal static class Screenshotter
         {
             var local = outlines[i];
             if (local.IsEmpty) continue;
-            if (outline) g.DrawRectangle(pen, local);
+            if (style.Outline) g.DrawRectangle(pen, local);
 
             if (firstNumber is null) continue;
             const int d = 24;
@@ -63,7 +98,9 @@ internal static class Screenshotter
             // One digit fits in a circle; longer numbers get a pill wide enough for the text
             var w = Math.Max(d, (int)Math.Ceiling(g.MeasureString(label, font, PointF.Empty, fmt).Width) + 10);
             var others = outlines.Where((o, j) => j != i && !o.IsEmpty).ToList();
-            var (bx, by) = BadgePosition(local, w, d, bmp.Size, placed, others, centered: !outline);
+            var (bx, by) = style.Badge == BadgePlacement.Auto
+                ? BadgePosition(local, w, d, bmp.Size, placed, others, centered: !style.Outline)
+                : FixedBadgePosition(local, w, d, bmp.Size, style.Badge);
             var badge = new Rectangle(bx, by, w, d);
             placed.Add(badge);
             // A badge that had to move away from its outline points back to it
@@ -180,6 +217,32 @@ internal static class Screenshotter
             }
         }
         return (fx, fy);
+    }
+
+    /// <summary>
+    /// The badge at a position the user chose, touching the outline from outside (or inside its top-left corner for
+    /// <see cref="BadgePlacement.Inside"/>). Only moved to stay inside the image.
+    /// </summary>
+    internal static (int X, int Y) FixedBadgePosition(Rectangle outline, int width, int height, Size image, BadgePlacement placement)
+    {
+        const int touch = 4;
+        int left = outline.Left - width + touch, right = outline.Right - touch;
+        int top = outline.Top - height + touch, bottom = outline.Bottom - touch;
+        int midX = outline.Left + (outline.Width - width) / 2, midY = outline.Top + (outline.Height - height) / 2;
+        var (x, y) = placement switch
+        {
+            BadgePlacement.Top => (midX, top),
+            BadgePlacement.Bottom => (midX, bottom),
+            BadgePlacement.Left => (left, midY),
+            BadgePlacement.Right => (right, midY),
+            BadgePlacement.TopLeft => (left, top),
+            BadgePlacement.TopRight => (right, top),
+            BadgePlacement.BottomLeft => (left, bottom),
+            BadgePlacement.BottomRight => (right, bottom),
+            BadgePlacement.Inside => (outline.Left + 3, outline.Top + 3),
+            _ => throw new ArgumentOutOfRangeException(nameof(placement)),
+        };
+        return (Math.Clamp(x, 0, Math.Max(0, image.Width - width)), Math.Clamp(y, 0, Math.Max(0, image.Height - height)));
     }
 
     private static void FillBadge(Graphics g, Brush brush, int x, int y, int width, int height)

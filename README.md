@@ -147,8 +147,8 @@ steps:
 ```
 
 - Top-level fields: `name`, `app`, `timeout` (default ms for every step; launching the app waits at least
-  `timeouts.launch`), `highlight` (`padding` / `outline` for every screenshot of the script, overriding `highlight` in the
-  config file; a step's own `highlight-padding` / `no-outline` still wins), `steps`.
+  `timeouts.launch`), `highlight` (`padding` / `outline` / `badge` for every screenshot of the script, overriding `highlight`
+  in the config file; a step's own `highlight-padding` / `no-outline` / `badge-position` still wins), `steps`.
 - `app`: `launch` (exe or AUMID), `args`, `window`, `attach` (PID or process name) and `close` (close the app afterwards;
   defaults to `true` for `launch` and `false` for `attach`). A plain string means `launch`. A launched app is closed even
   when the script fails, and terminated when its window never appeared. With `close: false` the app keeps running and
@@ -205,7 +205,7 @@ Most actions are captured before they run; `fill`, `type`, `select`, `check` and
   "outputDir": ".flaui-cli",
   "autoSnapshot": true,
   "snapshot": { "depth": 0, "includeOffscreen": false },
-  "highlight": { "padding": 3, "outline": true },
+  "highlight": { "padding": 3, "outline": true, "badge": "auto" },
   "daemonIdleMinutes": 30
 }
 ```
@@ -220,6 +220,7 @@ Most actions are captured before they run; `fill`, `type`, `select`, `check` and
 | `snapshot.includeOffscreen` | `false` | Include off-screen elements in snapshots (like `snapshot --all`) |
 | `highlight.padding` | `3` | Pixels between an element and its red outline: positive outside, `0` on the edge, negative inside |
 | `highlight.outline` | `true` | `false` draws only the number badges, without outlines |
+| `highlight.badge` | `auto` | Where number badges go: `auto` (chosen per element), `top`, `bottom`, `left`, `right`, `top-left`, `top-right`, `bottom-left`, `bottom-right` or `inside` (inside the outline's top-left corner) |
 | `daemonIdleMinutes` | `30` | Minutes without commands after which a session's daemon exits |
 
 - The file is read again for every command, so changes apply right away. `daemonIdleMinutes` is the exception: it is read once,
@@ -229,8 +230,10 @@ Most actions are captured before they run; `fill`, `type`, `select`, `check` and
 - `highlight` applies to `screenshot --highlight`, `doc step --highlight` and the screenshots `doc` takes for actions. When
   highlighted elements touch each other (a grid of buttons), a negative padding such as `-3` keeps their outlines apart. Without
   outlines the badges sit where they would with them, preferring the middle above or below the element.
-- Precedence for highlights: a command's `--highlight-padding` / `--no-outline`, then a script's top-level `highlight`, then this
-  file, then the defaults.
+- `auto` keeps a badge next to its own element and away from other badges. A fixed `badge` puts every badge on the same side of
+  its outline, even where it then lands next to a neighbouring element (for example `top` on the second row of a button grid).
+- Precedence for highlights: a command's `--highlight-padding` / `--no-outline` / `--badge-position`, then a script's top-level
+  `highlight`, then this file, then the defaults.
 
 ## Large applications
 
