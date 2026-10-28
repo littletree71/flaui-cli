@@ -137,18 +137,6 @@ without saving when a mask is not found; do not post-process images to hide data
 
 Scripts can produce documents directly: `flaui-cli run flow.yaml --doc docs/flow`.
 
-### Tip: saving tokens with screenshots
-
-If you want to save tokens:
-
-- To check whether an action worked, you can ask with text commands (`get`, `assert`, `snapshot`) instead of taking a
-  screenshot and looking at it.
-- When a long task needs many screenshots looked at, you can have a subagent look at them and tell you what it sees, so the
-  images never enter your own conversation.
-
-Why: every screenshot you read stays in the conversation until the task ends, and with some providers, such as Claude, adding an
-image means the whole conversation is processed again instead of coming from the cache.
-
 ## Configuration
 
 `.flaui-cli/config.json` in the working directory (every field optional, re-read for every command):
@@ -212,3 +200,15 @@ image means the whole conversation is processed again instead of coming from the
   need a larger timeout: scope it from a nearby container. Add `--verbose` to see whether the time goes into finding the
   element, the action or the automatic snapshot.
 - A snapshot of a minimized window has no content; run `restore` first.
+
+## Tip: saving tokens with screenshots
+
+If you want to save tokens:
+
+- To check whether an action worked, you can ask with text commands (`get`, `assert`, `snapshot`) instead of taking a
+  screenshot and looking at it.
+- When a long task needs many screenshots looked at, you can have a subagent look at them and tell you what it sees, so the
+  images never enter your own conversation.
+
+Why: every screenshot you read stays in the conversation until the task ends, and with some providers, such as Claude, adding an
+image means the whole conversation is processed again instead of coming from the cache.
