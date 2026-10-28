@@ -137,12 +137,12 @@ without saving when a mask is not found; do not post-process images to hide data
 
 Scripts can produce documents directly: `flaui-cli run flow.yaml --doc docs/flow`.
 
-### Saving tokens with screenshots
+### Tip: saving tokens with screenshots
 
-Reading a screenshot adds the image to the conversation for the rest of the task. With some providers' prompt caching, such as
-Claude's, adding an image also invalidates the cached conversation, so the next turn is processed again at full price.
-Check state with text (`snapshot`, `get`, `assert`) and open images only when the picture itself matters. In long tasks,
-consider letting a subagent read the images and report back in text.
+Reading a screenshot adds the image to the conversation for the rest of the task, and with some providers' prompt caching, such
+as Claude's, adding an image also invalidates the cached conversation. If token usage is a concern, text commands (`snapshot`,
+`get`, `assert`) can often confirm the state without an image, and in long tasks a subagent may read the images and report back
+in text.
 
 ## Configuration
 
