@@ -104,7 +104,7 @@ Run `flaui-cli --help` or `flaui-cli <command> --help` for details.
 
 | Area | Commands |
 |---|---|
-| Application | `open` `attach` `close` `status` `list` `close-all` `kill-all` |
+| Application | `open` `attach` `close` `status` `list` `close-all` `kill-all` `lock-status` |
 | Windows | `windows` `window` `focus` `maximize` `minimize` `restore` `resize` `move` `wait-window` `close-window` |
 | Inspection | `snapshot` `find` `inspect` |
 | Actions | `click` `dblclick` `hover` `fill` `type` `press` `select` `check` `uncheck` `expand` `collapse` `invoke` `scroll` `drag` |
@@ -127,7 +127,8 @@ tooltips and unnamed popups are left out.
 `wait-window <title>` prefers an exact title, then one that starts with the text, then one that contains it; `--exact` only
 accepts an exact title and `--regex` treats the title as a regular expression (useful for MDI children, whose title also
 appears in the MDI parent's title).
-Exit codes: `0` success, `1` assertion failed, `2` error, `3` session not running.
+Exit codes: `0` success, `1` assertion failed, `2` error, `3` session not running, `4` the workstation is locked (input and
+screenshots are not possible; unlock and retry).
 
 ## YAML test scripts
 
@@ -201,7 +202,7 @@ Most actions are captured before they run; `fill`, `type`, `select`, `check` and
 
 ```json
 {
-  "timeouts": { "action": 5000, "launch": 20000 },
+  "timeouts": { "action": 5000, "launch": 20000, "unlock": 0 },
   "outputDir": ".flaui-cli",
   "autoSnapshot": true,
   "snapshot": { "depth": 0, "includeOffscreen": false },
@@ -214,6 +215,7 @@ Most actions are captured before they run; `fill`, `type`, `select`, `check` and
 |---|---|---|
 | `timeouts.action` | `5000` | Milliseconds to wait for elements (selectors, `wait`, `assert`). `--timeout` overrides it for one command, `timeout:` for a script |
 | `timeouts.launch` | `20000` | Milliseconds `open` waits for the application's window |
+| `timeouts.unlock` | `0` | Milliseconds a command that needs mouse / keyboard input or a screenshot waits for a locked workstation to be unlocked; `0` fails at once with exit code `4`. Set it for long unattended runs, so they continue after the user unlocks |
 | `outputDir` | `.flaui-cli` | Folder for automatic snapshots, screenshots and documents without an explicit path; relative to the working directory, or absolute |
 | `autoSnapshot` | `true` | Save a snapshot after every action command. Turn it off for large windows |
 | `snapshot.depth` | `0` | Default depth of `snapshot` and of the automatic snapshot; `0` is unlimited. `snapshot --depth` overrides it |
@@ -304,6 +306,10 @@ dotnet test tests/FlauiCli.E2E.Tests                                    # needs 
 ## Known limitations
 
 - Actions move the real mouse and send real key presses; do not use the computer while they run (`click --invoke` avoids moving the mouse).
+- While the workstation is locked (or a UAC prompt is shown), commands that move the mouse, press keys or take screenshots fail
+  with exit code `4` instead of clicking the lock screen; reading the UI, `click --invoke` and `fill` through ValuePattern keep
+  working. `lock-status` (no session needed) exits with `0` when input is possible and `4` while locked, and `status` shows
+`Input: available` / `unavailable`, so a script can wait for the unlock and retry.
 - On WinForms apps, InvokePattern does not return while a modal dialog it opened is shown: `click --invoke` / `invoke` fail after `--timeout`, and until the dialog closes only `status`, `sleep` and `press <keys>` work. Use a plain `click` for buttons that open a dialog.
 - UWP windows are hosted by ApplicationFrameHost, so `open` needs `--window <title>`; `close` only closes the window and never kills the shared process.
 - In a WinForms `ListView` (Details view without `FullRowSelect`) the `listitem` element spans the whole row, so `click` on it
