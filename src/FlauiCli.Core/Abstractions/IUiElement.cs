@@ -112,6 +112,12 @@ public interface IUiElement : IEquatable<IUiElement>
     /// <summary>Selects a ComboBox item by text or index; on success returns the selected text.</summary>
     bool TrySelectComboBoxItem(string? text, int? index, out string? selected);
 
+    /// <summary>
+    /// The item texts of a ComboBox without changing its selection (a collapsed WinForms combo box exposes no item
+    /// elements), or null when they cannot be read.
+    /// </summary>
+    IReadOnlyList<string>? TryGetComboBoxItems();
+
     /// <summary>Full text of the TextPattern, or null when unsupported.</summary>
     string? TryGetDocumentText();
 

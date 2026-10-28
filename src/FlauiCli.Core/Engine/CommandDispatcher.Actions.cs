@@ -141,6 +141,7 @@ public sealed partial class CommandDispatcher
         var label = Label(el);
 
         EnsureInteractable(ctx, el);
+        if (ctx.Call.GetBool("keyboard")) return SelectWithKeyboard(ctx, el, item, index, label);
 
         string selected;
         if (el.Kind == ControlKind.ComboBox)
@@ -171,6 +172,70 @@ public sealed partial class CommandDispatcher
         Input.WaitUntilIdle();
         AfterAction(ctx, el, $"Select \"{item}\" in {Friendly(el)}");
         return $"### Result\nSelected \"{selected}\" in {label}";
+    }
+
+    /// <summary>
+    /// Selects with the arrow keys, as a person would. Selecting through UI Automation sets the value without the
+    /// application's own selection events (WinForms SelectedIndexChanged); key presses go through the control's normal
+    /// input handling, so the application reacts to them. The control is focused again before every key, in case the
+    /// application moves the focus when the selection changes.
+    /// </summary>
+    private string SelectWithKeyboard(CommandContext ctx, IUiElement el, string item, int? index, string label)
+    {
+        if (el.Kind is not (ControlKind.ComboBox or ControlKind.List))
+            throw new CliException($"select --keyboard works on combo boxes and lists; {label} is a {el.Kind.Role()}");
+
+        // Combo boxes: the item texts and the current value. Lists: the item elements and their selection state.
+        var comboItems = el.Kind == ControlKind.ComboBox ? el.TryGetComboBoxItems() : null;
+        var listItems = comboItems is null ? el.FindAll(ElementQuery.Any).Where(e => e.Kind == ControlKind.ListItem).ToList() : [];
+        List<string> names = comboItems is not null ? [.. comboItems] : [.. listItems.Select(e => e.Name)];
+        if (names.Count == 0) throw new CliException($"Cannot read the items of {label}; select without --keyboard instead");
+
+        var target = index ?? IndexOf(names, item);
+        if (target < 0 || target >= names.Count)
+        {
+            var available = string.Join(", ", names.Where(n => n.Length > 0).Take(20));
+            throw new CliException($"Item \"{item}\" not found in {label}. Available items: {available}");
+        }
+        var wanted = names[target];
+
+        int Current()
+        {
+            var selected = listItems.FindIndex(e => e.IsSelected == true);
+            return selected >= 0 || el.Value is not { } v ? selected : names.FindIndex(n => n.Trim() == v.Trim());
+        }
+
+        var delta = target - Current();
+        if (delta == 0)
+        {
+            AfterAction(ctx, el, $"Select \"{wanted}\" in {Friendly(el)}");
+            return $"### Result\n\"{wanted}\" is already selected in {label}; no key was pressed, so the application saw no selection change";
+        }
+
+        var key = delta > 0 ? "Down" : "Up";
+        var vks = KeyParser.Parse(key);
+        for (var i = 0; i < Math.Abs(delta); i++)
+        {
+            el.Focus();
+            Input.PressChord(vks);
+            Input.WaitUntilIdle();
+        }
+
+        if (!Poll(1000, () => Current() == target, intervalMs: 100))
+        {
+            var now = Current();
+            throw new CliException(
+                $"Pressed {key} {Math.Abs(delta)} time(s) in {label}, but \"{(now >= 0 ? names[now] : el.Value)}\" is selected instead of \"{wanted}\"");
+        }
+
+        AfterAction(ctx, el, $"Select \"{wanted}\" in {Friendly(el)}");
+        return $"### Result\nSelected \"{wanted}\" in {label} with the keyboard ({key} × {Math.Abs(delta)})";
+    }
+
+    private static int IndexOf(List<string> names, string name)
+    {
+        var exact = names.FindIndex(n => n == name);
+        return exact >= 0 ? exact : names.FindIndex(n => n.Contains(name, StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>

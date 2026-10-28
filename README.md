@@ -304,6 +304,10 @@ dotnet test tests/FlauiCli.E2E.Tests                                    # needs 
 ## Known limitations
 
 - Actions move the real mouse and send real key presses; do not use the computer while they run (`click --invoke` avoids moving the mouse).
+- `select` changes the selection through UI Automation, which does not raise the application's own selection events: a WinForms
+  combo box shows the new item, but its `SelectedIndexChanged` handler never runs. `select --keyboard` selects with the arrow keys
+  instead, so the application reacts as it does to a user (items passed on the way raise the event as well). Selecting the item
+  that is already selected raises no event either way.
 - On WinForms apps, InvokePattern does not return while a modal dialog it opened is shown: `click --invoke` / `invoke` fail after `--timeout`, and until the dialog closes only `status`, `sleep` and `press <keys>` work. Use a plain `click` for buttons that open a dialog.
 - UWP windows are hosted by ApplicationFrameHost, so `open` needs `--window <title>`; `close` only closes the window and never kills the shared process.
 - In a WinForms `ListView` (Details view without `FullRowSelect`) the `listitem` element spans the whole row, so `click` on it
