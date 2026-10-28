@@ -117,6 +117,7 @@ public sealed partial class CommandDispatcher
             var config = CliConfig.Load(call.Cwd);
             ConfigOverride?.Invoke(config);
             ctx = new CommandContext(call, config);
+            _unlockWaitMs = config.Timeouts.Unlock;
             if (!_handlers.TryGetValue(call.Command, out var handler))
                 throw new CliException($"Unknown command: {call.Command} (run flaui-cli --help for the list of commands)");
 
@@ -200,9 +201,12 @@ public sealed partial class CommandDispatcher
     }
 
     /// <summary>Screenshots of a locked workstation are black: fail instead of saving one.</summary>
+    /// <summary>How long a command waits for a locked workstation to be unlocked (<c>timeouts.unlock</c>).</summary>
+    private int _unlockWaitMs;
+
     private Bitmap Capture(Rectangle region, out Rectangle captured)
     {
-        if (_s.Driver.DesktopUnavailableReason() is { } reason) throw new DesktopUnavailableException(reason);
+        if (CheckedInput.WaitForDesktop(_s.Driver, _unlockWaitMs) is { } reason) throw new DesktopUnavailableException(reason);
         return Screenshotter.CaptureRegion(_s.Driver.Screen, region, out captured);
     }
 

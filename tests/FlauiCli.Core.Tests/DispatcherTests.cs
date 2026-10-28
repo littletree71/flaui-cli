@@ -201,6 +201,28 @@ public sealed class DispatcherTests : IDisposable
     }
 
     [Fact]
+    public async Task CommandsWaitForTheUnlockWithAnUnlockTimeout()
+    {
+        Ok(_app.Open());
+        Directory.CreateDirectory(Path.Combine(_app.Cwd, ".flaui-cli"));
+        File.WriteAllText(Path.Combine(_app.Cwd, ".flaui-cli", "config.json"), """{ "timeouts": { "unlock": 5000 } }""");
+        _app.Driver.Locked = "the workstation is locked";
+        // The user unlocks while the click waits
+        var unlock = Task.Run(async () => { await Task.Delay(300); _app.Driver.Locked = null; });
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        Ok(_app.Run("click", ("target", "id=num1Button")));
+        Assert.True(sw.ElapsedMilliseconds >= 250, $"the click did not wait ({sw.ElapsedMilliseconds}ms)");
+        Assert.Contains(_app.Driver.Input.Log, l => l.StartsWith("click"));
+        await unlock;
+
+        // Still locked when the wait ends: exit code 4
+        File.WriteAllText(Path.Combine(_app.Cwd, ".flaui-cli", "config.json"), """{ "timeouts": { "unlock": 300 } }""");
+        _app.Driver.Locked = "the workstation is locked";
+        Assert.Equal(ExitCodes.DesktopUnavailable, _app.Run("click", ("target", "id=num1Button")).ExitCode);
+    }
+
+    [Fact]
     public void UnexpectedFailuresWhileLockedAreExplained()
     {
         Ok(_app.Open());

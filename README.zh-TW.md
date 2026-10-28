@@ -103,7 +103,7 @@ selector 會自動等待元素出現，斷言會自動重試直到逾時（預�
 
 | 類別 | 指令 |
 |---|---|
-| 應用程式 | `open` `attach` `close` `status` `list` `close-all` `kill-all` |
+| 應用程式 | `open` `attach` `close` `status` `list` `close-all` `kill-all` `lock-status` |
 | 視窗 | `windows` `window` `focus` `maximize` `minimize` `restore` `resize` `move` `wait-window` `close-window` |
 | 檢視 | `snapshot` `find` `inspect` |
 | 動作 | `click` `dblclick` `hover` `fill` `type` `press` `select` `check` `uncheck` `expand` `collapse` `invoke` `scroll` `drag` |
@@ -196,7 +196,7 @@ flaui-cli doc stop --out docs/calculator --format md,html    # index.md + images
 
 ```json
 {
-  "timeouts": { "action": 5000, "launch": 20000 },
+  "timeouts": { "action": 5000, "launch": 20000, "unlock": 0 },
   "outputDir": ".flaui-cli",
   "autoSnapshot": true,
   "snapshot": { "depth": 0, "includeOffscreen": false },
@@ -209,6 +209,7 @@ flaui-cli doc stop --out docs/calculator --format md,html    # index.md + images
 |---|---|---|
 | `timeouts.action` | `5000` | 等待元素的毫秒數（selector、`wait`、`assert`）。單一指令用 `--timeout`、腳本用 `timeout:` 覆寫 |
 | `timeouts.launch` | `20000` | `open` 等待應用程式視窗出現的毫秒數 |
+| `timeouts.unlock` | `0` | 需要滑鼠／鍵盤輸入或截圖的指令遇到工作站鎖定時，等待解鎖的毫秒數；`0` 立即以結束碼 `4` 失敗。長時間無人看守的執行可以設定它，使用者解鎖後就會繼續 |
 | `outputDir` | `.flaui-cli` | 自動 snapshot、未指定路徑的截圖與文件放置的資料夾；相對於工作目錄，也可以是絕對路徑 |
 | `autoSnapshot` | `true` | 每個動作指令後自動存一份 snapshot。大型視窗建議關閉 |
 | `snapshot.depth` | `0` | `snapshot` 與自動 snapshot 的預設深度，`0` 為不限。`snapshot --depth` 可覆寫 |
@@ -291,7 +292,8 @@ dotnet test tests/FlauiCli.E2E.Tests                                    # 需要
 
 - 動作會移動真實滑鼠、送出真實按鍵，執行期間請勿操作電腦（`click --invoke` 可避免移動滑鼠）。
 - 工作站鎖定（或顯示 UAC 提示）時，移動滑鼠、按鍵與截圖的指令會以結束碼 `4` 失敗，不會點到鎖定畫面；讀取 UI、`click --invoke`
-  與透過 ValuePattern 的 `fill` 仍可運作。`status` 會顯示 `Input: available` / `unavailable`，腳本可以據此等待解鎖後重試。
+  與透過 ValuePattern 的 `fill` 仍可運作。`lock-status`（不需要 session）可以操作時結束碼為 `0`、鎖定時為 `4`，`status` 也會顯示
+`Input: available` / `unavailable`，腳本可以據此等待解鎖後重試。
 - WinForms 程式中，若控制項開啟了強制回應（modal）對話框，InvokePattern 會等到對話框關閉才返回：`click --invoke` / `invoke` 會在 `--timeout` 後失敗，對話框關閉前只有 `status`、`sleep`、`press <按鍵>` 可用。會開對話框的按鈕請用一般 `click`。
 - UWP 程式的視窗由 ApplicationFrameHost 承載，`open` 需要 `--window` 指定標題；`close` 只會關閉視窗，不會結束共用程序。
 - WinForms `ListView`（Details 檢視、未開 `FullRowSelect`）的 `listitem` 元素範圍是整列，`click` 會點到文字右邊的空白處而選不到項目。

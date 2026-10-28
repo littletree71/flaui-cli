@@ -32,6 +32,12 @@ public sealed class CliConfig
 
         /// <summary>Timeout (ms) for launching an application and waiting for its window.</summary>
         public int Launch { get; set; } = 20000;
+
+        /// <summary>
+        /// Timeout (ms) a command that needs mouse / keyboard input or a screenshot waits for a locked workstation to be
+        /// unlocked; 0 fails at once (exit code 4).
+        /// </summary>
+        public int Unlock { get; set; }
     }
 
     public sealed class SnapshotConfig

@@ -25,6 +25,9 @@ public sealed class FlaUIDriver : IUiDriver
 
     public string? DesktopUnavailableReason() => InputDesktop.UnavailableReason();
 
+    /// <summary>The same check without a driver instance (the lock-status command needs no UI Automation).</summary>
+    public static string? CheckDesktop() => InputDesktop.UnavailableReason();
+
     public IScreenCapture Screen { get; } = new FlaUIScreenCapture();
 
     public IReadOnlyList<IUiElement> GetTopLevelWindows(int? processId = null)
