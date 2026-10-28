@@ -224,6 +224,8 @@ flaui-cli doc stop --out docs/calculator --format md,html    # index.md + images
   按鈕）時，設成負數（如 `-3`）可以讓紅框分開。不畫紅框時，編號位置與有紅框時相同，並優先放在元素正上方或正下方的中間。
 - `auto` 會讓編號貼著自己的元素，並避開其他編號。指定固定位置時，每個編號都放在紅框的同一側，即使因此落在相鄰元素旁邊
   （例如按鈕兩排排列時，第二排用 `top`）。
+- 標註可能不易辨識時，`screenshot` 與 `doc step` 會在結果加上 `### Warnings`（`--json` 的 data 也有 `warnings`）：紅框互相交疊、
+  編號蓋到其他標示的元素或其他編號、編號為了留在圖片內被移動。截圖照樣儲存，退出碼仍為 0。只檢查有標示的元素。
 - 標示設定的優先順序：指令的 `--highlight-padding` / `--no-outline` / `--badge-position` > 腳本最上層的 `highlight` > 設定檔 > 預設值。
 
 ## 大型應用程式

@@ -182,6 +182,49 @@ public sealed class ScreenshotterTests
     public void UnknownBadgePositionsAreRejected(string value) =>
         Assert.Contains("Unknown badge position", Assert.Throws<CliException>(() => HighlightStyle.ParseBadge(value)).Message);
 
+    private static List<string> AnnotateGrid(HighlightStyle style)
+    {
+        using var bmp = new Bitmap(202, 137);
+        return Screenshotter.Annotate(bmp, Point.Empty, ButtonGrid, 1, style, ["id=button1", "id=button2", "id=button3", "id=button4", "id=button5"]);
+    }
+
+    [Fact]
+    public void TouchingOutlinesAreReported()
+    {
+        // Side by side and on top of each other; the diagonal neighbours (1 and 5, 2 and 4) only touch at a corner
+        var warnings = AnnotateGrid(HighlightStyle.Default);
+        Assert.Equal(["Outlines overlap (highlights 1-2, 1-4, 2-3, 2-5, 4-5); try --highlight-padding -3"], warnings);
+    }
+
+    [Fact]
+    public void ApartOutlinesWithAutomaticBadgesAreNotReported()
+    {
+        Assert.Empty(AnnotateGrid(new HighlightStyle(Padding: -3)));
+    }
+
+    [Fact]
+    public void BadgesOnNeighboursAreReported()
+    {
+        var warnings = AnnotateGrid(new HighlightStyle(Padding: -3, Badge: BadgePlacement.TopRight));
+        Assert.Contains(warnings, w => w.StartsWith("Badge 1 covers highlight 2 (id=button2); try --badge-position auto"));
+    }
+
+    [Fact]
+    public void BadgesMovedIntoTheImageAreReported()
+    {
+        using var bmp = new Bitmap(300, 200);
+        var warnings = Screenshotter.Annotate(bmp, Point.Empty, [new Rectangle(0, 0, 40, 20)], 1, new HighlightStyle(Badge: BadgePlacement.TopLeft));
+        Assert.Equal(["Badge 1 does not fit top-left of highlight 1 and was moved into the image"], warnings);
+    }
+
+    [Fact]
+    public void NestedHighlightsAreNotReported()
+    {
+        // A button inside a highlighted panel
+        using var bmp = new Bitmap(300, 200);
+        Assert.Empty(Screenshotter.Annotate(bmp, Point.Empty, [new Rectangle(50, 50, 200, 120), new Rectangle(100, 100, 60, 24)], 1));
+    }
+
     private static void AssertBadgesOwned(Size image, IReadOnlyList<Rectangle> outlines)
     {
         var placed = new List<Rectangle>();

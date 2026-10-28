@@ -35,14 +35,15 @@ public sealed partial class CommandDispatcher
         using var bmp = Screenshotter.CaptureRegion(_s.Driver.Screen, region, out var captured);
         // Without outlines a single highlight still needs its badge
         var style = Style(ctx);
-        Screenshotter.Annotate(bmp, captured.Location, [.. highlights.Select(h => h.Bounds)], highlights.Count > 1 || !style.Outline ? 1 : null, style);
+        var warnings = Screenshotter.Annotate(bmp, captured.Location, [.. highlights.Select(h => h.Bounds)],
+            highlights.Count > 1 || !style.Outline ? 1 : null, style, ctx.Call.GetList("highlight"));
 
         var path = ctx.Call.Get("filename") is { } f
             ? ctx.Call.ResolvePath(f)
             : Path.Combine(ctx.OutputDir, $"screenshot-{Stamp()}.png");
         Screenshotter.SavePng(bmp, path);
         ctx.Data["path"] = path;
-        return $"### Result\nScreenshot saved: {ctx.Relative(path)}";
+        return $"### Result\nScreenshot saved: {ctx.Relative(path)}" + WarningsSection(ctx, warnings);
     }
 
     /// <summary>
@@ -57,6 +58,22 @@ public sealed partial class CommandDispatcher
             !ctx.Call.GetBool("no-outline") && config.Outline,
             HighlightStyle.ParseBadge(ctx.Call.Get("badge-position") ?? config.Badge));
     }
+
+    /// <summary>
+    /// Warnings about the annotations, after the result (the screenshot is saved anyway); at most
+    /// <see cref="MaxWarnings"/> lines, so a crowded screenshot does not flood the output. Also in the result data as
+    /// <c>warnings</c>, one per line.
+    /// </summary>
+    private static string WarningsSection(CommandContext ctx, IReadOnlyList<string> warnings)
+    {
+        if (warnings.Count == 0) return "";
+        var shown = warnings.Take(MaxWarnings).ToList();
+        if (warnings.Count > MaxWarnings) shown.Add($"...and {warnings.Count - MaxWarnings} more");
+        ctx.Data["warnings"] = string.Join("\n", shown);
+        return "\n### Warnings\n" + string.Join("\n", shown.Select(w => "- " + w));
+    }
+
+    private const int MaxWarnings = 5;
 
     private string Record(CommandContext ctx)
     {
@@ -150,10 +167,10 @@ public sealed partial class CommandDispatcher
                 var region = WindowBounds(window);
                 foreach (var h in highlights) region = Rectangle.Union(region, h.Bounds);
                 using var bmp = Screenshotter.CaptureRegion(_s.Driver.Screen, region, out var captured);
-                Screenshotter.Annotate(bmp, captured.Location, [.. highlights.Select(h => h.Bounds)],
-                    highlights.Count == 1 ? doc.NextNumber : highlights.Count > 1 ? 1 : null, Style(ctx));
+                var warnings = Screenshotter.Annotate(bmp, captured.Location, [.. highlights.Select(h => h.Bounds)],
+                    highlights.Count == 1 ? doc.NextNumber : highlights.Count > 1 ? 1 : null, Style(ctx), ctx.Call.GetList("highlight"));
                 var step = doc.AddStep(text, bmp, null);
-                return $"### Result\nAdded step {step.Number}: {text}";
+                return $"### Result\nAdded step {step.Number}: {text}" + WarningsSection(ctx, warnings);
             }
 
             case "status":

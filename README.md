@@ -232,6 +232,9 @@ Most actions are captured before they run; `fill`, `type`, `select`, `check` and
   outlines the badges sit where they would with them, preferring the middle above or below the element.
 - `auto` keeps a badge next to its own element and away from other badges. A fixed `badge` puts every badge on the same side of
   its outline, even where it then lands next to a neighbouring element (for example `top` on the second row of a button grid).
+- `screenshot` and `doc step` add a `### Warnings` section (and `warnings` in `--json` data) when the annotations may be hard to
+  read: outlines running into each other, a badge covering another highlighted element or another badge, or a badge moved to stay
+  inside the image. The screenshot is saved anyway and the exit code stays 0. Only highlighted elements are checked.
 - Precedence for highlights: a command's `--highlight-padding` / `--no-outline` / `--badge-position`, then a script's top-level
   `highlight`, then this file, then the defaults.
 

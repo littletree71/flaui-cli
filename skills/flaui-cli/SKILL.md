@@ -148,6 +148,8 @@ Scripts can produce documents directly: `flaui-cli run flow.yaml --doc docs/flow
   `highlight.outline: false` draws only number badges. `highlight.badge`: `auto` (per element, avoids neighbours) or a fixed
   side for every badge: `top|bottom|left|right|top-left|top-right|bottom-left|bottom-right|inside`. Overridden by a script's
   `highlight` and a command's `--highlight-padding` / `--no-outline` / `--badge-position`.
+  `screenshot` / `doc step` report hard-to-read annotations under `### Warnings` (overlapping outlines, badges covering other
+  highlights); the screenshot is still saved, so follow the suggested option and take it again if needed.
 - `daemonIdleMinutes`: idle minutes before a session's daemon exits (read when the daemon starts).
 
 ## Notes
