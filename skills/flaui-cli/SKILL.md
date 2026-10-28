@@ -207,8 +207,8 @@ Scripts can produce documents directly: `flaui-cli run flow.yaml --doc docs/flow
 - Focus: forms often move the focus while handling a key (a drop-down jumping to the next field from `SelectedIndexChanged`), so a
   second `press` without `--target` lands elsewhere; `press` then says where the focus went. Use
   `press Down --target <t> --repeat 3`: the target is focused again before every press.
-- ListView rows: the `listitem` box spans the whole row, so `click` may hit empty space. Use `select <list> <item>` or click the
-  text inside the row (`id=lvItems >> type=text&&name=BRAVO`).
+- ListView rows: in details view only the first column selects a row, so `click` on a `listitem` clicks its first cell. Clicking
+  the text of another column does not select the row; `select <list> <item>` works too.
 
 ### Large windows
 
