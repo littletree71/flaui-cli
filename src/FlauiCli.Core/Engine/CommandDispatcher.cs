@@ -103,6 +103,9 @@ public sealed partial class CommandDispatcher
     /// <summary>Whether action commands save a snapshot file afterwards (disabled when running scripts).</summary>
     public bool AutoSnapshot { get; set; } = true;
 
+    /// <summary>Applied to the config file's settings for every command (a script's own settings).</summary>
+    public Action<CliConfig>? ConfigOverride { get; set; }
+
     public CommandResult Execute(CommandCall call)
     {
         var total = Stopwatch.StartNew();
@@ -111,7 +114,9 @@ public sealed partial class CommandDispatcher
         TimeSpan? snapshotTime = null;
         try
         {
-            ctx = new CommandContext(call, CliConfig.Load(call.Cwd));
+            var config = CliConfig.Load(call.Cwd);
+            ConfigOverride?.Invoke(config);
+            ctx = new CommandContext(call, config);
             if (!_handlers.TryGetValue(call.Command, out var handler))
                 throw new CliException($"Unknown command: {call.Command} (run flaui-cli --help for the list of commands)");
 

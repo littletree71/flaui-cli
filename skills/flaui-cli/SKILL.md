@@ -101,7 +101,9 @@ steps:
   - assert: { target: id=CalculatorResults, text: Display is 1 }
 ```
 
-- Top-level fields: `name`, `app`, `timeout` (default ms per step; launching waits at least `timeouts.launch`, 20 s by default), `steps`.
+- Top-level fields: `name`, `app`, `timeout` (default ms per step; launching waits at least `timeouts.launch`, 20 s by default),
+  `highlight` (`{ padding: -3, outline: false }`: outline distance in px and whether to draw outlines, for every screenshot of the
+  script including `run --doc`; overrides the config file, a step's `highlight-padding` / `no-outline` overrides it), `steps`.
 - `app`: `launch` (exe or AUMID), `args`, `window`, `attach` (PID or process name), `close` (default `true` for launch, `false` for attach).
   A launched app is closed even when the script fails, and terminated when its window never appeared.
 - A scalar step value is the command's first argument; a mapping gives named arguments and options. Local commands (`run`, `list`...) are not allowed.

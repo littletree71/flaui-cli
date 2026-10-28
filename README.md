@@ -147,7 +147,8 @@ steps:
 ```
 
 - Top-level fields: `name`, `app`, `timeout` (default ms for every step; launching the app waits at least
-  `timeouts.launch`), `steps`.
+  `timeouts.launch`), `highlight` (`padding` / `outline` for every screenshot of the script, overriding `highlight` in the
+  config file; a step's own `highlight-padding` / `no-outline` still wins), `steps`.
 - `app`: `launch` (exe or AUMID), `args`, `window`, `attach` (PID or process name) and `close` (close the app afterwards;
   defaults to `true` for `launch` and `false` for `attach`). A plain string means `launch`. A launched app is closed even
   when the script fails, and terminated when its window never appeared. With `close: false` the app keeps running and
