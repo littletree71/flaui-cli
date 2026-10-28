@@ -310,6 +310,9 @@ dotnet test tests/FlauiCli.E2E.Tests                                    # needs 
   combo box shows the new item, but its `SelectedIndexChanged` handler never runs. `select --keyboard` selects with the arrow keys
   instead, so the application reacts as it does to a user (items passed on the way raise the event as well). Selecting the item
   that is already selected raises no event either way.
+- An application may move the focus while it handles a key (for example a WinForms form jumping to the next field when a
+  drop-down changes), so the next `press` goes elsewhere; `press` reports where the focus went. `press Down --target <t> --repeat 3`
+  focuses the target again before every press.
 - While the workstation is locked (or a UAC prompt is shown), commands that move the mouse, press keys or take screenshots fail
   with exit code `4` instead of clicking the lock screen; reading the UI, `click --invoke` and `fill` through ValuePattern keep
   working. `lock-status` (no session needed) exits with `0` when input is possible and `4` while locked, and `status` shows

@@ -106,30 +106,52 @@ public sealed partial class CommandDispatcher
     {
         var keys = ctx.Call.Require("keys");
         var vks = KeyParser.Parse(keys);
+        var repeat = ctx.Call.GetInt("repeat") ?? 1;
+        if (repeat is < 1 or > 100) throw new CliException($"--repeat must be between 1 and 100: {repeat}");
+        var times = repeat > 1 ? $" {repeat} times" : "";
         var hasTarget = ctx.Call.Get("target") is not null;
         if (IsInvokePending && !hasTarget)
         {
             // UI Automation is blocked by the pending invoke; send the keys to the foreground window (the dialog)
-            Input.PressChord(vks);
-            Input.WaitUntilIdle();
-            return $"### Result\nPressed {keys} (sent to the foreground window; UI Automation is waiting for {_pendingInvoke!.Label})";
+            for (var i = 0; i < repeat; i++)
+            {
+                Input.PressChord(vks);
+                Input.WaitUntilIdle();
+            }
+            return $"### Result\nPressed {keys}{times} (sent to the foreground window; UI Automation is waiting for {_pendingInvoke!.Label})";
         }
         var target = hasTarget ? ResolveArg(ctx) : _s.Driver.GetFocusedElement();
 
-        BeforeAction(ctx, target, $"Press {keys}");
-        if (hasTarget)
+        BeforeAction(ctx, target, $"Press {keys}{times}");
+        if (hasTarget) EnsureInteractable(ctx, target!);
+        else TryForeground(_s.RequireWindow());
+
+        for (var i = 0; i < repeat; i++)
         {
-            EnsureInteractable(ctx, target!);
-            target!.Focus();
-        }
-        else
-        {
-            TryForeground(_s.RequireWindow());
+            // An application may move the focus while handling a key (WinForms forms often jump to the next field
+            // from SelectedIndexChanged): with a target, every press goes back to it
+            if (hasTarget) target!.Focus();
+            Input.PressChord(vks);
+            Input.WaitUntilIdle();
         }
 
-        Input.PressChord(vks);
-        Input.WaitUntilIdle();
-        return $"### Result\nPressed {keys}";
+        return $"### Result\nPressed {keys}{times}" + (hasTarget ? "" : FocusMovedNote(target));
+    }
+
+    /// <summary>
+    /// When the application moved the focus away from the element that had it before the key press, says so: later
+    /// presses without a target go to the new element, which looks like the keys stopped working.
+    /// </summary>
+    private string FocusMovedNote(IUiElement? before)
+    {
+        if (before is null) return "";
+        IUiElement? after;
+        try { after = _s.Driver.GetFocusedElement(); }
+        catch { return ""; }
+        if (after is null || after.Equals(before)) return "";
+        var r = _s.Refs.GetOrAssign(before);
+        return $"\nThe focus moved from {Label(before)} to {Label(after)}; further keys go there. " +
+               $"To keep pressing keys in {r}, use press <keys> --target {r}";
     }
 
     private static readonly HashSet<ControlKind> ItemKinds =
