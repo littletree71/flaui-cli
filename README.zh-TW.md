@@ -265,6 +265,105 @@ UIA3 的子孫搜尋在某些 provider（例如 WinForms）走訪約 512 個元�
 
 ## 架構
 
+以下的圖由整體到程式碼，逐層展開。
+
+**1. 它做什麼。** 輸入指令或腳本，透過 UI Automation 操作應用程式，回傳文字結果、snapshot、截圖與文件。
+
+```mermaid
+flowchart LR
+    U["你或 AI 代理"] -->|"指令、YAML 腳本"| CLI["flaui-cli"]
+    CLI -->|"UI Automation"| App["Windows 應用程式<br/>WPF / WinForms / Win32 / UWP"]
+    CLI -->|"結果、snapshot、<br/>截圖、文件"| U
+```
+
+**2. 行程。** 每個指令都是短暫的 client。每個 session 的 daemon 在指令之間保留 UI Automation 連線與元素 ref。
+`run` 在自己的行程中執行腳本；只有 `record capture` 會啟動錄製程式。
+
+```mermaid
+flowchart LR
+    subgraph session["一個 session（-s 名稱）"]
+        C["flaui-cli click ...<br/>短暫的 client"] -->|"Named Pipe<br/>僅限目前使用者"| D["flaui-cli daemon<br/>由 open / attach 啟動<br/>閒置後結束"]
+    end
+    D -->|"UI Automation（FlaUI、UIA3）"| App["目標應用程式"]
+    D -->|"stdin / stdout<br/>只在 record capture"| R["flaui-cli-record.exe<br/>鍵盤與滑鼠 hook"]
+    R -.->|"觀察真人輸入"| App
+    Run["flaui-cli run flow.yaml"] -->|"同一行程，不經過 daemon"| App
+```
+
+**3. 一個指令。** 執行 `flaui-cli click id=okButton` 時發生的事：
+
+```mermaid
+sequenceDiagram
+    participant CLI as flaui-cli（client）
+    participant Host as DaemonHost
+    participant UIA as UIA 執行緒
+    participant Disp as CommandDispatcher
+    participant Find as TargetResolver
+    participant Drv as FlaUIDriver
+    participant App as 應用程式
+    CLI->>CLI: 解析參數（CommandCatalog）
+    CLI->>Host: 以 JSON 經 Pipe 送出 CommandCall（必要時先啟動 daemon）
+    Host->>UIA: 排入佇列（所有 UIA 呼叫都在同一個執行緒）
+    UIA->>Disp: Execute
+    Disp->>Find: 解析 id=okButton（ref 或 selector，等待至 --timeout）
+    Find->>Drv: FindFirst / FindAll
+    Drv->>App: UI Automation 查詢
+    Disp->>Drv: 點擊（滑鼠）或 InvokePattern（--invoke）
+    Drv->>App: 輸入 / pattern 呼叫
+    Disp->>Disp: snapshot 檔、錄製與文件步驟
+    Host-->>CLI: CommandResult（Markdown 文字、data、結束碼）
+```
+
+**4. 程式碼。** 各專案與引擎的主要部分。只有 driver 專案引用 FlaUI，其餘都只依賴 `IUiDriver` / `IUiElement` 抽象；
+單元測試用假的 driver 實作它們。
+
+```mermaid
+flowchart TB
+    subgraph cli["FlauiCli：flaui-cli.exe"]
+        Parse["CliApp<br/>System.CommandLine"]
+        Client["DaemonClient"]
+        Local["LocalCommands<br/>list、run、install-skill、daemon"]
+    end
+    subgraph core["FlauiCli.Core"]
+        Protocol["Protocol<br/>CommandCall、CommandResult"]
+        Daemon["Daemon<br/>DaemonHost"]
+        Engine["Engine<br/>CommandDispatcher、AutomationSession、<br/>SingleThreadWorker"]
+        Targeting["Targeting<br/>Selector、ElementFinder、TargetResolver"]
+        Snapshot["Snapshot<br/>格式化、ref"]
+        Imaging["Imaging<br/>截圖、標註"]
+        Output["Docs、Scripting、Recording"]
+        Abs["Abstractions<br/>IUiDriver、IUiElement"]
+    end
+    subgraph drv["FlauiCli.Driver.FlaUI"]
+        FlaUIDriver["FlaUIDriver、FlaUIElement"]
+    end
+    subgraph rec["FlauiCli.Recorder：flaui-cli-record.exe"]
+        Hooks["InputRecorder<br/>低階 hook"]
+    end
+    FlaUI[("FlaUI 5 / UIA3")]
+    Fake["FakeDriver<br/>FlauiCli.Core.Tests"]
+
+    Parse --> Client
+    Parse --> Local
+    Client --> Protocol
+    Local --> Daemon
+    Local --> Output
+    Daemon --> Engine
+    Engine --> Targeting
+    Engine --> Snapshot
+    Engine --> Imaging
+    Engine --> Output
+    Targeting --> Abs
+    Engine --> Abs
+    FlaUIDriver -. 實作 .-> Abs
+    Fake -. 實作 .-> Abs
+    FlaUIDriver --> FlaUI
+    Output -->|"record capture：<br/>子行程"| Hooks
+    Hooks --> FlaUIDriver
+```
+
+原始碼結構：
+
 ```
 src/
   FlauiCli/                CLI 前端（System.CommandLine）、daemon client、本機指令
