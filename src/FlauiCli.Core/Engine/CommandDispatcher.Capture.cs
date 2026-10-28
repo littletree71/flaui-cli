@@ -32,7 +32,7 @@ public sealed partial class CommandDispatcher
             foreach (var h in highlights) region = Rectangle.Union(region, h.Bounds);
         }
 
-        using var bmp = Screenshotter.CaptureRegion(_s.Driver.Screen, region, out var captured);
+        using var bmp = Capture(region, out var captured);
         // Without outlines a single highlight still needs its badge
         var style = Style(ctx);
         var warnings = Screenshotter.Annotate(bmp, captured.Location, [.. highlights.Select(h => h.Bounds)],
@@ -166,7 +166,7 @@ public sealed partial class CommandDispatcher
                 TryForeground(window);
                 var region = WindowBounds(window);
                 foreach (var h in highlights) region = Rectangle.Union(region, h.Bounds);
-                using var bmp = Screenshotter.CaptureRegion(_s.Driver.Screen, region, out var captured);
+                using var bmp = Capture(region, out var captured);
                 var warnings = Screenshotter.Annotate(bmp, captured.Location, [.. highlights.Select(h => h.Bounds)],
                     highlights.Count == 1 ? doc.NextNumber : highlights.Count > 1 ? 1 : null, Style(ctx), ctx.Call.GetList("highlight"));
                 var step = doc.AddStep(text, bmp, null);

@@ -123,7 +123,7 @@ session 會繼續；關掉的是目前視窗時，會切回在它之前的目前
 不會列出 tooltip 與沒有名稱的 popup。
 `wait-window <標題>` 依序比對完全相同、以該文字開頭、包含該文字的標題；`--exact` 只接受完全相同的標題，
 `--regex` 把標題當成正規表示式（適合 MDI 子視窗，因為 MDI 主視窗的標題也會包含子視窗標題）。
-結束碼：`0` 成功、`1` 斷言失敗、`2` 錯誤、`3` session 未啟動。
+結束碼：`0` 成功、`1` 斷言失敗、`2` 錯誤、`3` session 未啟動、`4` 工作站已鎖定（無法模擬輸入與截圖，解鎖後重試）。
 
 ## YAML 測試腳本
 
@@ -290,6 +290,8 @@ dotnet test tests/FlauiCli.E2E.Tests                                    # 需要
 ## 已知限制
 
 - 動作會移動真實滑鼠、送出真實按鍵，執行期間請勿操作電腦（`click --invoke` 可避免移動滑鼠）。
+- 工作站鎖定（或顯示 UAC 提示）時，移動滑鼠、按鍵與截圖的指令會以結束碼 `4` 失敗，不會點到鎖定畫面；讀取 UI、`click --invoke`
+  與透過 ValuePattern 的 `fill` 仍可運作。`status` 會顯示 `Input: available` / `unavailable`，腳本可以據此等待解鎖後重試。
 - WinForms 程式中，若控制項開啟了強制回應（modal）對話框，InvokePattern 會等到對話框關閉才返回：`click --invoke` / `invoke` 會在 `--timeout` 後失敗，對話框關閉前只有 `status`、`sleep`、`press <按鍵>` 可用。會開對話框的按鈕請用一般 `click`。
 - UWP 程式的視窗由 ApplicationFrameHost 承載，`open` 需要 `--window` 指定標題；`close` 只會關閉視窗，不會結束共用程序。
 - WinForms `ListView`（Details 檢視、未開 `FullRowSelect`）的 `listitem` 元素範圍是整列，`click` 會點到文字右邊的空白處而選不到項目。

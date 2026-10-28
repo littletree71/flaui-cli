@@ -23,6 +23,8 @@ public sealed class FlaUIDriver : IUiDriver
 
     public IInputDevice Input { get; } = new FlaUIInput();
 
+    public string? DesktopUnavailableReason() => InputDesktop.UnavailableReason();
+
     public IScreenCapture Screen { get; } = new FlaUIScreenCapture();
 
     public IReadOnlyList<IUiElement> GetTopLevelWindows(int? processId = null)

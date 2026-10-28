@@ -175,6 +175,48 @@ public sealed class DispatcherTests : IDisposable
     }
 
     [Fact]
+    public void SimulatedInputFailsClearlyWhileTheWorkstationIsLocked()
+    {
+        Ok(_app.Open());
+        _app.Driver.Locked = "the workstation is locked";
+
+        var click = _app.Run("click", ("target", "id=num1Button"));
+        Assert.False(click.Ok);
+        Assert.Equal(ExitCodes.DesktopUnavailable, click.ExitCode);
+        Assert.Contains("input cannot be simulated: the workstation is locked", click.Error);
+        Assert.DoesNotContain(_app.Driver.Input.Log, l => l.StartsWith("click"));
+
+        Assert.Equal(ExitCodes.DesktopUnavailable, _app.Run("press", ("keys", "Enter")).ExitCode);
+        Assert.Equal(ExitCodes.DesktopUnavailable, _app.Run("screenshot").ExitCode);
+
+        // UI Automation keeps working: reading, invoking and the status (which tells why input is unavailable)
+        Ok(_app.Run("get", ("kind", "text"), ("target", "id=CalculatorResults")));
+        Ok(_app.Run("click", ("target", "id=num1Button"), ("invoke", "true")));
+        var status = _app.Run("status");
+        Assert.Contains("- Input: unavailable (the workstation is locked)", status.Text);
+
+        _app.Driver.Locked = null;
+        Ok(_app.Run("click", ("target", "id=num1Button")));
+        Assert.Contains("- Input: available", _app.Run("status").Text);
+    }
+
+    [Fact]
+    public void UnexpectedFailuresWhileLockedAreExplained()
+    {
+        Ok(_app.Open());
+        // SendInput fails before the desktop check would have caught it (the lock happened in between)
+        _app.Driver.Input.OnPress = () =>
+        {
+            _app.Driver.Locked = "the workstation is locked";
+            throw new System.ComponentModel.Win32Exception(5);
+        };
+        var r = _app.Run("press", ("keys", "Enter"));
+        Assert.Equal(ExitCodes.DesktopUnavailable, r.ExitCode);
+        Assert.Contains("the workstation is locked", r.Error);
+        Assert.Contains("Win32Exception", r.Error);
+    }
+
+    [Fact]
     public void YamlStyleAssertions()
     {
         Ok(_app.Open());

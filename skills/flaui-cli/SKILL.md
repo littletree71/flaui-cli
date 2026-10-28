@@ -69,7 +69,8 @@ Element commands take `--timeout <ms>`; action commands take `--note <text>` (th
 `close` closes the window and stops the session's daemon; `close --keep-app` ends the session and leaves the app running.
 `open` treats a value containing `!` as a Store app AUMID (for example `Microsoft.WindowsCalculator_8wekyb3d8bbwe!App`).
 
-Exit codes: 0 success, 1 assertion failed, 2 error, 3 session not running. Add `--json` for structured output and
+Exit codes: 0 success, 1 assertion failed, 2 error, 3 session not running, 4 workstation locked (mouse/keyboard input and
+screenshots impossible; reading the UI and `click --invoke` still work; wait until `status` shows `Input: available`, then retry). Add `--json` for structured output and
 `--verbose` for a timing breakdown (`find` / `action` / `snapshot` / `total`) at the end of the result.
 Use `-s <name>` (or the `FLAUI_CLI_SESSION` environment variable) to run several sessions.
 

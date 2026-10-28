@@ -31,6 +31,11 @@ public sealed class FakeDriver : IUiDriver
 
     public IScreenCapture Screen { get; } = new FakeScreen();
 
+    /// <summary>Set to simulate a locked workstation.</summary>
+    public string? Locked { get; set; }
+
+    public string? DesktopUnavailableReason() => Locked;
+
     public IReadOnlyList<IUiElement> GetTopLevelWindows(int? processId = null) =>
         [.. TopLevel.Where(w => w.Alive && (processId is null || w.ProcessId == processId))];
 
@@ -123,9 +128,13 @@ public sealed class FakeInput(FakeDriver driver) : IInputDevice
     public void PressChord(IReadOnlyList<ushort> virtualKeys)
     {
         Log.Add("press " + string.Join("+", virtualKeys.Select(v => $"0x{v:X2}")));
+        OnPress?.Invoke();
         // Simulate Ctrl+A, Delete clearing the focused element
         if (virtualKeys is [0x2E] && driver.Focused is { Value: not null } f) f.Value = "";
     }
+
+    /// <summary>Called on every key press, to simulate an application reacting to it (for example moving the focus).</summary>
+    public Action? OnPress { get; set; }
 
     public void WaitUntilIdle() { }
 }

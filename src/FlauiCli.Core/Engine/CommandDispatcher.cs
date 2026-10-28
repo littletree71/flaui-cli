@@ -146,12 +146,23 @@ public sealed partial class CommandDispatcher
         {
             return CommandResult.Failure(ex.Message, ExitCodes.AssertionFailed, FailureTiming(ctx, handlerTime, total.Elapsed));
         }
+        catch (DesktopUnavailableException ex)
+        {
+            return CommandResult.Failure(ex.Message, ExitCodes.DesktopUnavailable, FailureTiming(ctx, handlerTime, total.Elapsed));
+        }
         catch (CliException ex)
         {
             return CommandResult.Failure(ex.Message, text: FailureTiming(ctx, handlerTime, total.Elapsed));
         }
         catch (Exception ex)
         {
+            // An unexpected failure (typically Win32Exception "Access is denied" from SendInput) while the workstation is
+            // locked: say that instead
+            if (DesktopUnavailable() is { } reason)
+            {
+                return CommandResult.Failure(new DesktopUnavailableException(reason, $"{ex.GetType().Name}: {ex.Message}").Message,
+                    ExitCodes.DesktopUnavailable, FailureTiming(ctx, handlerTime, total.Elapsed));
+            }
             return CommandResult.Failure($"{ex.GetType().Name}: {ex.Message}", text: FailureTiming(ctx, handlerTime, total.Elapsed));
         }
     }
@@ -181,6 +192,19 @@ public sealed partial class CommandDispatcher
         ctx is { Verbose: true } ? Timing(ctx, handler == TimeSpan.Zero ? total : handler, null, total) : "";
 
     internal static string Seconds(TimeSpan t) => $"{t.TotalSeconds.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)} s";
+
+    private string? DesktopUnavailable()
+    {
+        try { return _s.Driver.DesktopUnavailableReason(); }
+        catch { return null; }
+    }
+
+    /// <summary>Screenshots of a locked workstation are black: fail instead of saving one.</summary>
+    private Bitmap Capture(Rectangle region, out Rectangle captured)
+    {
+        if (_s.Driver.DesktopUnavailableReason() is { } reason) throw new DesktopUnavailableException(reason);
+        return Screenshotter.CaptureRegion(_s.Driver.Screen, region, out captured);
+    }
 
     // ───────────────────────── Pending invoke ─────────────────────────
 
@@ -457,7 +481,7 @@ public sealed partial class CommandDispatcher
         var target = el?.Bounds ?? Rectangle.Empty;
         if (!target.IsEmpty) region = Rectangle.Union(region, target);
 
-        using var bmp = Screenshotter.CaptureRegion(_s.Driver.Screen, region, out var captured);
+        using var bmp = Capture(region, out var captured);
         if (!target.IsEmpty) Screenshotter.Annotate(bmp, captured.Location, [target], doc.NextNumber, HighlightStyle.From(ctx.Config.Highlight));
         doc.AddStep(text, bmp, CommandFormatter.ToCli(Recordable(ctx)));
     }
