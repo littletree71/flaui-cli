@@ -218,3 +218,15 @@ Scripts can produce documents directly: `flaui-cli run flow.yaml --doc docs/flow
 - Past about 512 elements UIA3 truncates searches silently. flaui-cli fills in the rest level by level within `--timeout`, so a
   selector that matches nothing waits out the timeout, and a deep one may need a larger timeout: scope it from a nearby container.
 - `--verbose` shows whether the time goes into finding the element, the action or the automatic snapshot.
+
+## Tip: saving tokens with screenshots
+
+If you want to save tokens:
+
+- To check whether an action worked, you can ask with text commands (`get`, `assert`, `snapshot`) instead of taking a
+  screenshot and looking at it.
+- When a long task needs many screenshots looked at, you can have a subagent look at them and tell you what it sees, so the
+  images never enter your own conversation.
+
+Why: every screenshot you read stays in the conversation until the task ends, and with some providers, such as Claude, adding an
+image means the whole conversation is processed again instead of coming from the cache.
