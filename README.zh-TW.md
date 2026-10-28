@@ -119,7 +119,8 @@ selector 會自動等待元素出現，斷言會自動重試直到逾時（預�
 
 全域選項：`-s, --session <名稱>`（多個 session 並行；未指定時用環境變數 `FLAUI_CLI_SESSION`，再沒有則為 `default`）、
 `--json`（結構化輸出）、`--verbose`（在結果最後附上時間分解：尋找元素、動作本身、自動 snapshot、daemon 內的總時間，以及含往返的
-總時間）。元素相關指令可加 `--timeout <毫秒>`，動作指令可加 `--note <文字>` 作為文件的步驟說明。
+總時間）、`--log-level <等級>`（結果以外要印多少：`error` 不印其他、`warn` 加上 `### Warnings`、`info` 再加上動作後的視窗與
+snapshot 連結，為預設值、`debug` 再加上計時，同 `--verbose`；`--json` 的 data 在任何等級都完整）。元素相關指令可加 `--timeout <毫秒>`，動作指令可加 `--note <文字>` 作為文件的步驟說明。
 `close` 會關閉視窗並結束該 session 的 daemon；`close --keep-app` 只結束 session，保留應用程式繼續執行。
 `close-window [索引|ref|標題]` 只關閉單一視窗或對話框（優先用 WindowPattern，否則送 `WM_CLOSE`，沒有取消按鈕的對話框也能關），
 session 會繼續；關掉的是目前視窗時，會切回在它之前的目前視窗（例如開出對話框的 MDI 子視窗）。`windows` 列出可以切換的視窗，
@@ -217,6 +218,7 @@ flaui-cli doc start --title "訂單" --mask-column "id=dataGridView1 >> name=Par
   "autoSnapshot": true,
   "snapshot": { "depth": 0, "includeOffscreen": false },
   "highlight": { "padding": 3, "outline": true, "badge": "auto" },
+  "logLevel": "info",
   "daemonIdleMinutes": 30
 }
 ```
@@ -233,6 +235,7 @@ flaui-cli doc start --title "訂單" --mask-column "id=dataGridView1 >> name=Par
 | `highlight.padding` | `3` | 元素與紅框之間的像素：正數在元素外、`0` 貼齊邊緣、負數在元素內 |
 | `highlight.outline` | `true` | 設為 `false` 時不畫紅框，只畫編號 |
 | `highlight.badge` | `auto` | 編號的位置：`auto`（逐一自動決定）、`top`、`bottom`、`left`、`right`、`top-left`、`top-right`、`bottom-left`、`bottom-right` 或 `inside`（紅框內左上角） |
+| `logLevel` | `info` | 指令在結果以外要印多少：`error`、`warn`、`info` 或 `debug`（見 `--log-level`）。低於 `info` 時，`run` 只列出失敗的步驟 |
 | `daemonIdleMinutes` | `30` | 工作階段的 daemon 閒置多少分鐘後結束 |
 
 - 每個指令都會重新讀取設定檔，修改後立即生效；只有 `daemonIdleMinutes` 是在工作階段的 daemon 啟動時讀一次。

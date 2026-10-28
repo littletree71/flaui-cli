@@ -120,7 +120,9 @@ Run `flaui-cli --help` or `flaui-cli <command> --help` for details.
 
 Global options: `-s, --session <name>` (parallel sessions; defaults to the `FLAUI_CLI_SESSION` environment variable, then `default`),
 `--json` (structured output), `--verbose` (end the result with a timing breakdown: finding elements, the action, the
-automatic snapshot, the total in the daemon and the total including the round trip). Element commands take
+automatic snapshot, the total in the daemon and the total including the round trip), `--log-level <level>` (how much is printed
+besides the result: `error` nothing else, `warn` adds `### Warnings`, `info` adds the window and snapshot link after actions and
+is the default, `debug` adds the timing like `--verbose`; `--json` data is complete at every level). Element commands take
 `--timeout <ms>`, and action commands take `--note <text>` for documents.
 `close` closes the window and stops the session's daemon; `close --keep-app` ends the session but leaves the application running.
 `close-window [index|ref|title]` closes a single window or dialog (WindowPattern, else `WM_CLOSE`, so dialogs without a Cancel
@@ -223,6 +225,7 @@ mask is not found; masks given to `doc start` are applied to every screenshot of
   "autoSnapshot": true,
   "snapshot": { "depth": 0, "includeOffscreen": false },
   "highlight": { "padding": 3, "outline": true, "badge": "auto" },
+  "logLevel": "info",
   "daemonIdleMinutes": 30
 }
 ```
@@ -239,6 +242,7 @@ mask is not found; masks given to `doc start` are applied to every screenshot of
 | `highlight.padding` | `3` | Pixels between an element and its red outline: positive outside, `0` on the edge, negative inside |
 | `highlight.outline` | `true` | `false` draws only the number badges, without outlines |
 | `highlight.badge` | `auto` | Where number badges go: `auto` (chosen per element), `top`, `bottom`, `left`, `right`, `top-left`, `top-right`, `bottom-left`, `bottom-right` or `inside` (inside the outline's top-left corner) |
+| `logLevel` | `info` | How much commands print besides their result: `error`, `warn`, `info` or `debug` (see `--log-level`). `run` lists only failing steps below `info` |
 | `daemonIdleMinutes` | `30` | Minutes without commands after which a session's daemon exits |
 
 - The file is read again for every command, so changes apply right away. `daemonIdleMinutes` is the exception: it is read once,
