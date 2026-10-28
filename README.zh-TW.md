@@ -291,6 +291,9 @@ dotnet test tests/FlauiCli.E2E.Tests                                    # 需要
 ## 已知限制
 
 - 動作會移動真實滑鼠、送出真實按鍵，執行期間請勿操作電腦（`click --invoke` 可避免移動滑鼠）。
+- `select` 透過 UI Automation 變更選取，不會觸發應用程式自己的選取事件：WinForms 下拉選單畫面上顯示新項目，但
+  `SelectedIndexChanged` 不會執行。`select --keyboard` 改用方向鍵選取，應用程式的反應與真人操作相同（途中經過的項目也會觸發事件）。
+  選取已經選取的項目，兩種方式都不會觸發事件。
 - 應用程式可能在處理按鍵時移動焦點（例如 WinForms 表單在下拉選單變更時跳到下一個欄位），下一次 `press` 就會送到別處；`press`
   會回報焦點移到哪裡。`press Down --target <目標> --repeat 3` 會在每次按鍵前重新聚焦目標。
 - 工作站鎖定（或顯示 UAC 提示）時，移動滑鼠、按鍵與截圖的指令會以結束碼 `4` 失敗，不會點到鎖定畫面；讀取 UI、`click --invoke`

@@ -230,6 +230,9 @@ public sealed class FakeElement : IUiElement
         return true;
     }
 
+    public IReadOnlyList<string>? TryGetComboBoxItems() =>
+        Kind == ControlKind.ComboBox ? [.. Children.Where(c => c.Kind == ControlKind.ListItem).Select(c => c.Name)] : null;
+
     public string? TryGetDocumentText() => null;
 
     public bool TrySetWindowState(WindowStateKind state)
