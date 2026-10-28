@@ -45,12 +45,15 @@ Action commands print a `### Snapshot` link to a file (`.flaui-cli/snapshot-*.ym
 | `id=num1Button` | AutomationId |
 | `name="One"` or just `One` | Exact name |
 | `text=Disp` | Name contains (case-insensitive) |
+| `regex="^\s*Row 0$"` | Name matches a regular expression (case-insensitive); quote it when it has spaces |
 | `class=TextBox` | ClassName |
 | `type=Button&&name=OK` | Combined conditions (type is the ControlType: button, edit, checkbox, combobox...) |
 | `id=panel >> name=OK` | Search inside the previous match |
 | `type=ListItem&&nth=2` | Third match |
 | `xpath=//Button[@AutomationId='ok']` | FlaUI XPath |
 
+Unquoted values are trimmed: for names with leading / trailing spaces (snapshot shows `dataitem " Row 0"`, typical of DataGridView
+check box cells without header text) use `name=" Row 0"`, `text=` or `regex=` instead of parsing snapshot text for a ref.
 Selectors wait for the element to appear (5 s by default, change with `--timeout`); assertions retry until the timeout too.
 
 ## Common commands

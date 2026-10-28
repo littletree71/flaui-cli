@@ -24,6 +24,14 @@ public class SelectorTests
     }
 
     [Fact]
+    public void RegexCondition()
+    {
+        var part = Assert.Single(Selector.Parse(@"type=dataitem&&regex=""^\s*Row \d+$""").Parts);
+        Assert.Contains(new SelectorCondition("regex", @"^\s*Row \d+$"), part.Conditions);
+        Assert.Contains("Invalid regular expression", Assert.Throws<CliException>(() => Selector.Parse("regex=((")).Message);
+    }
+
+    [Fact]
     public void CombinedConditionsAndNth()
     {
         var part = Assert.Single(Selector.Parse("type=Button&&name=\"Save as\"&&nth=2").Parts);

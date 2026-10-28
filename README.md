@@ -89,6 +89,7 @@ never taken for the app.
 | `id=num1Button` | AutomationId |
 | `name="One"`, `One` | Exact name |
 | `text=Disp` | Name contains (case-insensitive) |
+| `regex="^\s*Row 0$"` | Name matches a regular expression (case-insensitive) |
 | `type=Button` | ControlType (button, edit, checkbox, combobox, listitem...) |
 | `class=TextBox` | ClassName |
 | `type=Button&&name=OK` | Combined conditions |
@@ -97,6 +98,8 @@ never taken for the app.
 | `xpath=//Button[@AutomationId='ok']` | FlaUI XPath |
 
 Selectors wait for elements to appear and assertions retry until the timeout (5 s by default; change it with `--timeout` or the config file).
+Values are trimmed unless quoted: a name with leading or trailing spaces (a DataGridView check box cell without header text is
+named `" Row 0"`) needs `name=" Row 0"`, or `text=` / `regex=`. Snapshots show such names in quotes, spaces included.
 
 ## Commands
 

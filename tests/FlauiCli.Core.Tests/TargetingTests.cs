@@ -27,6 +27,21 @@ public class TargetingTests
     }
 
     [Fact]
+    public void RegexMatchesNamesWithSurroundingSpaces()
+    {
+        // DataGridView check box cells without header text are named " Row 0": a leading space
+        var cell0 = new FakeElement(ControlKind.DataItem, " Row 0");
+        var cell1 = new FakeElement(ControlKind.DataItem, " Row 1");
+        var named = new FakeElement(ControlKind.DataItem, "Name Row 0");
+        var root = new FakeElement(ControlKind.Window, "W").Add(cell0, cell1, named);
+
+        Assert.Equal([cell0], ElementFinder.FindAll(Selector.Parse(@"type=dataitem&&regex=""^\s*row 0$"""), [root]));
+        Assert.Equal([cell0], ElementFinder.FindAll(Selector.Parse("type=dataitem&&name=\" Row 0\""), [root]));
+        Assert.Equal([cell0, named], ElementFinder.FindAll(Selector.Parse("text=Row 0"), [root]));
+        Assert.Empty(ElementFinder.FindAll(Selector.Parse("type=dataitem&&name=Row 0"), [root]));
+    }
+
+    [Fact]
     public void NestingLimitsTheScope()
     {
         var t = Tree();
