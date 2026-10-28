@@ -190,6 +190,19 @@ flaui-cli doc stop --out docs/calculator --format md,html    # index.md + images
 自動產生的步驟說明是英文（例如 `Click the "One" button`）；用 `--note` 或腳本的 `doc:` 可以寫任何語言。
 大部分動作在執行前截圖；`fill`、`type`、`select`、`check`、`uncheck` 則在執行後截圖，讓畫面顯示輸入的值。
 
+### 遮蔽不能公開的資料
+
+公開文件的截圖常會出現人名等不能公開的資料。`--mask <目標>` 以實心方塊蓋住元素，`--mask-column <欄位標題>` 蓋住表格該欄所有
+可見的儲存格；兩者都可以重複：
+
+```bash
+flaui-cli screenshot --mask id=customerName --mask-column "id=dataGridView1 >> name=Partner" --highlight id=okButton
+flaui-cli doc start --title "訂單" --mask-column "id=dataGridView1 >> name=Partner"   # 套用到文件的每一張截圖
+```
+
+遮蔽會先畫，紅框與編號後畫，所以不會被蓋住。`screenshot` 與 `doc step` 找不到遮蔽的目標時會失敗，不會存出未遮蔽的圖；
+`doc start` 給的遮蔽會套用到文件的每一張截圖，畫面上有出現的地方才遮。
+
 ## 設定檔
 
 `.flaui-cli/config.json`，放在目前工作目錄。所有欄位都可以省略，下面的值就是預設值。

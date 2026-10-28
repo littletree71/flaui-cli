@@ -174,6 +174,71 @@ public sealed class DispatcherTests : IDisposable
         Assert.False(_app.Run("press", ("keys", "Ctrl+Nope")).Ok);
     }
 
+    /// <summary>A table with a Name column (x 50..150) and an Amount column (x 150..250), two rows.</summary>
+    private FakeElement AddGrid()
+    {
+        var grid = new FakeElement(ControlKind.DataGrid, "Grid", "grid") { Bounds = new System.Drawing.Rectangle(40, 480, 220, 100) };
+        var header = new FakeElement(ControlKind.Group, "Top Row").Add(
+            new FakeElement(ControlKind.Header, "Name") { Bounds = new System.Drawing.Rectangle(50, 480, 100, 20) },
+            new FakeElement(ControlKind.Header, "Amount") { Bounds = new System.Drawing.Rectangle(150, 480, 100, 20) });
+        grid.Add(header);
+        for (var row = 0; row < 2; row++)
+        {
+            var y = 500 + row * 20;
+            grid.Add(new FakeElement(ControlKind.Group, $"Row {row}").Add(
+                new FakeElement(ControlKind.DataItem, $"Name Row {row}") { Bounds = new System.Drawing.Rectangle(50, y, 100, 20) },
+                new FakeElement(ControlKind.DataItem, $"Amount Row {row}") { Bounds = new System.Drawing.Rectangle(150, y, 100, 20) }));
+        }
+        _app.Window.Add(grid);
+        return grid;
+    }
+
+    private static bool Masked(System.Drawing.Bitmap bmp, int x, int y) => bmp.GetPixel(x, y).ToArgb() == System.Drawing.Color.FromArgb(96, 96, 96).ToArgb();
+
+    [Fact]
+    public void ScreenshotMasksElementsAndColumns()
+    {
+        Ok(_app.Open());
+        AddGrid();
+        var path = Path.Combine(_app.Cwd, "masked.png");
+        Ok(_app.Run("screenshot", ("filename", path), ("mask", "id=nameInput"), ("mask-column", "id=grid >> name=Name")));
+
+        using var bmp = new System.Drawing.Bitmap(path);
+        Assert.True(Masked(bmp, 100, 215), "the name input is not masked");
+        Assert.True(Masked(bmp, 100, 505) && Masked(bmp, 100, 525), "the Name cells are not masked");
+        Assert.False(Masked(bmp, 100, 485), "the Name header was masked");
+        Assert.False(Masked(bmp, 200, 505), "the Amount cells were masked");
+    }
+
+    [Fact]
+    public void ScreenshotFailsWithoutSavingWhenAMaskIsMissing()
+    {
+        Ok(_app.Open());
+        var path = Path.Combine(_app.Cwd, "leak.png");
+        var r = _app.Run("screenshot", ("filename", path), ("mask", "id=nope"), ("timeout", "200"));
+        Assert.False(r.Ok);
+        Assert.False(File.Exists(path), "a screenshot was saved without its mask");
+        Assert.Contains("not inside a table", _app.Run("screenshot", ("mask-column", "id=num1Button")).Error);
+    }
+
+    [Fact]
+    public void DocumentMasksApplyToEveryStepWhereTheyAreShown()
+    {
+        Ok(_app.Open());
+        AddGrid();
+        Ok(_app.Run("doc", ("action", "start"), ("mask-column", "id=grid >> name=Name"), ("mask", "id=gone")));
+        Ok(_app.Run("click", ("target", "id=num1Button")));
+        Ok(_app.Run("doc", ("action", "step"), ("text", "Done")));
+        var outDir = Path.Combine(_app.Cwd, "doc");
+        Ok(_app.Run("doc", ("action", "stop"), ("out", outDir), ("format", "md")));
+
+        foreach (var image in Directory.GetFiles(Path.Combine(outDir, "images"), "*.png"))
+        {
+            using var bmp = new System.Drawing.Bitmap(image);
+            Assert.True(Masked(bmp, 100, 505), $"{Path.GetFileName(image)} is not masked");
+        }
+    }
+
     [Fact]
     public void SelectWithTheKeyboardPressesArrowsFromTheCurrentItem()
     {
