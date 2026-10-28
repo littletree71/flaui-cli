@@ -197,7 +197,7 @@ Most actions are captured before they run; `fill`, `type`, `select`, `check` and
 
 ## Configuration
 
-`.flaui-cli/config.json` (relative to the current working directory, every field optional):
+`.flaui-cli/config.json` in the current working directory. Every field is optional; the values below are the defaults.
 
 ```json
 {
@@ -210,11 +210,27 @@ Most actions are captured before they run; `fill`, `type`, `select`, `check` and
 }
 ```
 
-`highlight.padding` is the distance in pixels between an element and its red outline (positive outside, 0 on the edge, negative
-inside), for `screenshot --highlight`, `doc step --highlight` and the screenshots `doc` takes for actions. When highlighted
-elements touch each other (a grid of buttons), a negative value such as `-3` keeps their outlines apart.
-`--highlight-padding <px>` overrides it for one command. `"outline": false` (or `--no-outline`) leaves out the red outlines and
-only draws the number badges, placed as if the outline were there.
+| Field | Default | Meaning |
+|---|---|---|
+| `timeouts.action` | `5000` | Milliseconds to wait for elements (selectors, `wait`, `assert`). `--timeout` overrides it for one command, `timeout:` for a script |
+| `timeouts.launch` | `20000` | Milliseconds `open` waits for the application's window |
+| `outputDir` | `.flaui-cli` | Folder for automatic snapshots, screenshots and documents without an explicit path; relative to the working directory, or absolute |
+| `autoSnapshot` | `true` | Save a snapshot after every action command. Turn it off for large windows |
+| `snapshot.depth` | `0` | Default depth of `snapshot` and of the automatic snapshot; `0` is unlimited. `snapshot --depth` overrides it |
+| `snapshot.includeOffscreen` | `false` | Include off-screen elements in snapshots (like `snapshot --all`) |
+| `highlight.padding` | `3` | Pixels between an element and its red outline: positive outside, `0` on the edge, negative inside |
+| `highlight.outline` | `true` | `false` draws only the number badges, without outlines |
+| `daemonIdleMinutes` | `30` | Minutes without commands after which a session's daemon exits |
+
+- The file is read again for every command, so changes apply right away. `daemonIdleMinutes` is the exception: it is read once,
+  when the session's daemon starts.
+- `//` comments and trailing commas are allowed, and field names are not case-sensitive. An invalid file makes commands fail with
+  the file's path instead of silently using the defaults.
+- `highlight` applies to `screenshot --highlight`, `doc step --highlight` and the screenshots `doc` takes for actions. When
+  highlighted elements touch each other (a grid of buttons), a negative padding such as `-3` keeps their outlines apart. Without
+  outlines the badges sit where they would with them, preferring the middle above or below the element.
+- Precedence for highlights: a command's `--highlight-padding` / `--no-outline`, then a script's top-level `highlight`, then this
+  file, then the defaults.
 
 ## Large applications
 

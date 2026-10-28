@@ -192,7 +192,7 @@ flaui-cli doc stop --out docs/calculator --format md,html    # index.md + images
 
 ## 設定檔
 
-`.flaui-cli/config.json`（相對於目前工作目錄，全部選填）：
+`.flaui-cli/config.json`，放在目前工作目錄。所有欄位都可以省略，下面的值就是預設值。
 
 ```json
 {
@@ -205,9 +205,23 @@ flaui-cli doc stop --out docs/calculator --format md,html    # index.md + images
 }
 ```
 
-`highlight.padding` 是元素與紅框之間的距離（像素；正數在元素外、0 貼齊邊緣、負數在元素內），套用在 `screenshot --highlight`、
-`doc step --highlight` 以及 `doc` 為動作拍的截圖。標示的元素彼此相鄰（例如一排排按鈕）時，設成負數（如 `-3`）可以讓紅框分開。
-單一指令可用 `--highlight-padding <px>` 覆寫。`"outline": false`（或 `--no-outline`）不畫紅框，只畫編號，編號位置與有紅框時相同。
+| 欄位 | 預設 | 說明 |
+|---|---|---|
+| `timeouts.action` | `5000` | 等待元素的毫秒數（selector、`wait`、`assert`）。單一指令用 `--timeout`、腳本用 `timeout:` 覆寫 |
+| `timeouts.launch` | `20000` | `open` 等待應用程式視窗出現的毫秒數 |
+| `outputDir` | `.flaui-cli` | 自動 snapshot、未指定路徑的截圖與文件放置的資料夾；相對於工作目錄，也可以是絕對路徑 |
+| `autoSnapshot` | `true` | 每個動作指令後自動存一份 snapshot。大型視窗建議關閉 |
+| `snapshot.depth` | `0` | `snapshot` 與自動 snapshot 的預設深度，`0` 為不限。`snapshot --depth` 可覆寫 |
+| `snapshot.includeOffscreen` | `false` | snapshot 是否包含畫面外的元素（同 `snapshot --all`） |
+| `highlight.padding` | `3` | 元素與紅框之間的像素：正數在元素外、`0` 貼齊邊緣、負數在元素內 |
+| `highlight.outline` | `true` | 設為 `false` 時不畫紅框，只畫編號 |
+| `daemonIdleMinutes` | `30` | 工作階段的 daemon 閒置多少分鐘後結束 |
+
+- 每個指令都會重新讀取設定檔，修改後立即生效；只有 `daemonIdleMinutes` 是在工作階段的 daemon 啟動時讀一次。
+- 可以寫 `//` 註解、結尾多一個逗號，欄位名稱不分大小寫。檔案格式錯誤時指令會失敗並顯示檔案路徑，不會默默改用預設值。
+- `highlight` 套用在 `screenshot --highlight`、`doc step --highlight` 以及 `doc` 為動作拍的截圖。標示的元素彼此相鄰（例如一排排
+  按鈕）時，設成負數（如 `-3`）可以讓紅框分開。不畫紅框時，編號位置與有紅框時相同，並優先放在元素正上方或正下方的中間。
+- 標示設定的優先順序：指令的 `--highlight-padding` / `--no-outline` > 腳本最上層的 `highlight` > 設定檔 > 預設值。
 
 ## 大型應用程式
 

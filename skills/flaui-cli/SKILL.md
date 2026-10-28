@@ -125,6 +125,29 @@ captured after they run, so the screenshot shows the entered value. Tooltips lef
 
 Scripts can produce documents directly: `flaui-cli run flow.yaml --doc docs/flow`.
 
+## Configuration
+
+`.flaui-cli/config.json` in the working directory (every field optional, re-read for every command):
+
+```json
+{
+  "timeouts": { "action": 5000, "launch": 20000 },
+  "outputDir": ".flaui-cli",
+  "autoSnapshot": true,
+  "snapshot": { "depth": 0, "includeOffscreen": false },
+  "highlight": { "padding": 3, "outline": true },
+  "daemonIdleMinutes": 30
+}
+```
+
+- `timeouts.action`: element wait in ms (`--timeout` per command). `timeouts.launch`: how long `open` waits for the window.
+- `outputDir`: where automatic snapshots and unnamed screenshots go. `autoSnapshot: false` speeds up large windows.
+- `snapshot.depth` / `snapshot.includeOffscreen`: defaults for `snapshot` and the automatic snapshot.
+- `highlight.padding`: px between element and outline (negative = inside, keeps touching elements' outlines apart);
+  `highlight.outline: false` draws only number badges. Overridden by a script's `highlight` and a command's
+  `--highlight-padding` / `--no-outline`.
+- `daemonIdleMinutes`: idle minutes before a session's daemon exits (read when the daemon starts).
+
 ## Notes
 
 - The window of a UWP app (Calculator etc.) belongs to ApplicationFrameHost, so `open` always needs `--window`.
