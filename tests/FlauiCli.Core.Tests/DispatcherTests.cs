@@ -718,6 +718,20 @@ public sealed class DispatcherTests : IDisposable
     }
 
     [Fact]
+    public void WaitWindowFindsTheMdiChildThatIsAlreadyCurrent()
+    {
+        // The child is neither a top-level window nor one of the owned windows, which leave out the current window
+        var (_, child) = Mdi();
+        Ok(_app.Open());
+        Ok(_app.Run("window", ("window", "Module-Function(1.0.0.4)")));
+
+        Ok(_app.Run("wait-window", ("title", "Module-Function(")));
+        Assert.Same(child, _app.Session.CurrentWindow);
+        Ok(_app.Run("wait-window", ("title", "^Module-Function"), ("regex", "true"), ("timeout", "500")));
+        Assert.Same(child, _app.Session.CurrentWindow);
+    }
+
+    [Fact]
     public void WaitWindowExactAndRegex()
     {
         var (parent, child) = Mdi();
