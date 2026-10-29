@@ -275,4 +275,16 @@ public sealed class DriverContractTests : IDisposable
         Assert.True(_app.HasExited);
         Assert.False(_window.IsAlive);
     }
+
+    [Fact]
+    public void ProcessThatExitsAtOnceKeepsItsId()
+    {
+        // Like calc.exe, which hands off to the UWP app and exits
+        using var launcher = _driver.Launch("cmd.exe", "/c exit", null);
+        var pid = launcher.ProcessId;
+        Assert.True(launcher.WaitForExit(TimeSpan.FromSeconds(5)));
+        Assert.Null(launcher.GetMainWindow(TimeSpan.FromMilliseconds(300)));
+        Assert.Equal(pid, launcher.ProcessId);
+        Assert.True(launcher.HasExited);
+    }
 }
