@@ -314,6 +314,21 @@ public sealed class DispatcherTests : IDisposable
     }
 
     [Fact]
+    public void PressSaysNothingWhenArrowKeysMoveWithinAList()
+    {
+        Ok(_app.Open());
+        FakeElement a = new(ControlKind.ListItem, "A"), b = new(ControlKind.ListItem, "B");
+        _app.Window.Add(new FakeElement(ControlKind.List, "Items", "items").Add(a, b));
+        _app.Driver.Focused = a;
+        _app.Driver.Input.OnPress = () => _app.Driver.Focused = b;
+        Assert.DoesNotContain("focus moved", _app.Run("press", ("keys", "Down")).Text);
+
+        // Leaving the list is still worth a note
+        _app.Driver.Input.OnPress = () => _app.Driver.Focused = _app.NameBox;
+        Assert.Contains("The focus moved from listitem \"B\"", _app.Run("press", ("keys", "Tab")).Text);
+    }
+
+    [Fact]
     public void SimulatedInputFailsClearlyWhileTheWorkstationIsLocked()
     {
         Ok(_app.Open());
