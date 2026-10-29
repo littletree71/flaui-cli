@@ -130,12 +130,19 @@ public sealed partial class CommandDispatcher
     /// an unrelated window whose title merely starts with or contains the text, such as an editor showing
     /// "calculator.flow.yaml", and a later close would close that window.
     /// </para>
+    /// <para>
+    /// With <paramref name="includeCurrent"/> the current window is a candidate too: an MDI child is neither a top-level
+    /// window nor one of the owned windows (which leave out the current window), so waiting for the MDI child that is
+    /// already current would otherwise switch to the MDI parent, whose title contains the child's.
+    /// </para>
     /// </summary>
-    private IUiElement? FindTopLevelByTitle(TitleMatch match, int? preferPid, HashSet<nint>? existing = null)
+    private IUiElement? FindTopLevelByTitle(TitleMatch match, int? preferPid, HashSet<nint>? existing = null, bool includeCurrent = false)
     {
         var all = _s.Driver.GetTopLevelWindows()
             .Where(w => w.Kind is ControlKind.Window or ControlKind.Pane && w.Name.Length > 0)
             .ToList();
+        if (includeCurrent && _s.CurrentWindow is { IsAlive: true } current && current.Name.Length > 0 && !all.Any(current.Equals))
+            all.Add(current);
         int Rank(IUiElement w) =>
             (existing is not null && existing.Contains(w.WindowHandle) ? 2 : 0) + (w.ProcessId == preferPid ? 0 : 1);
 

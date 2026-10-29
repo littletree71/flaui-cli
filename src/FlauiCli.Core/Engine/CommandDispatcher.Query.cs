@@ -80,7 +80,7 @@ public sealed partial class CommandDispatcher
         var match = TitleMatch.FromCall(ctx.Call, ctx.Call.Require("title"));
         var timeout = ctx.Timeout;
         IUiElement? found = null;
-        if (!Poll(timeout, () => (found = FindTopLevelByTitle(match, _s.CurrentWindow?.ProcessId)) is not null))
+        if (!Poll(timeout, () => (found = FindTopLevelByTitle(match, _s.CurrentWindow?.ProcessId, includeCurrent: true)) is not null))
             throw new CliException($"Timed out after {timeout}ms: no window {match}");
 
         if (!ctx.Call.GetBool("no-switch")) ActivateWindow(found!);
