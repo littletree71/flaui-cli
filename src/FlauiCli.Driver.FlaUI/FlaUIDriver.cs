@@ -73,7 +73,11 @@ public sealed class FlaUIDriver : IUiDriver
 
 internal sealed class FlaUIAppProcess(Application app, AutomationBase automation) : IAppProcess
 {
-    public int ProcessId => app.ProcessId;
+    /// <summary>
+    /// Read once at launch: after the process exits, Application.GetMainWindow replaces its Process object, and from
+    /// then on Application.ProcessId throws ("No process is associated with this object").
+    /// </summary>
+    public int ProcessId { get; } = app.ProcessId;
 
     public bool HasExited
     {
