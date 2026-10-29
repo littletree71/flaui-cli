@@ -812,6 +812,27 @@ public sealed class DispatcherTests : IDisposable
     }
 
     [Fact]
+    public void SimulatedInputFailsWhileTheWindowIsMinimized()
+    {
+        Ok(_app.Open());
+        var bounds = _app.Window.Bounds;
+        _app.Window.Bounds = new(-32000, -32000, 160, 28);
+
+        // The controls are off screen: a click would miss and still report success
+        var click = _app.Run("click", ("target", "id=num1Button"));
+        Assert.False(click.Ok);
+        Assert.Contains("is minimized, so mouse and keyboard input cannot reach it. Run restore first", click.Error);
+        Assert.False(_app.Run("press", ("keys", "Enter")).Ok);
+        Assert.DoesNotContain(_app.Driver.Input.Log, l => l.StartsWith("click") || l.StartsWith("press"));
+
+        // UI Automation needs no input and keeps working
+        Ok(_app.Run("click", ("target", "id=num1Button"), ("invoke", "true")));
+
+        _app.Window.Bounds = bounds;
+        Ok(_app.Run("click", ("target", "id=num1Button")));
+    }
+
+    [Fact]
     public void CloseWindowClosesOneDialogAndKeepsTheSession()
     {
         Ok(_app.Open());
