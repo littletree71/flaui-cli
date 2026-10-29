@@ -57,6 +57,13 @@ internal static class NativeWindows
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool IsWindowVisible(nint hwnd);
 
+    /// <summary>Whether the handle still refers to an existing window.</summary>
+    public static bool Exists(nint hwnd) => IsWindow(hwnd);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsWindow(nint hwnd);
+
     [DllImport("user32.dll")]
     private static extern int GetWindowLongW(nint hwnd, int index);
 }
