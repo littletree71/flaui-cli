@@ -46,7 +46,7 @@ public sealed partial class CommandDispatcher
         for (var i = 0; i < list.Count; i++)
         {
             var w = list[i];
-            sb.AppendLine($"- [{i}] {Label(w)}{(w.Equals(current) ? " (current)" : "")}");
+            sb.AppendLine($"- [{i}] {Label(w)}{(IsMinimizedSafe(w) ? " (minimized)" : "")}{(w.Equals(current) ? " (current)" : "")}");
         }
         return sb.ToString();
     }
@@ -128,10 +128,33 @@ public sealed partial class CommandDispatcher
     private static bool IsMinimized(IUiElement window) =>
         NativeMethods.IsMinimized(window.WindowHandle) || window.Bounds is { X: <= -32000, Y: <= -32000 };
 
+    private static bool IsMinimizedSafe(IUiElement window)
+    {
+        try { return IsMinimized(window); }
+        catch { return false; }    // The window closed meanwhile
+    }
+
+    /// <summary>Whether another window of the same application (a dialog) is on screen.</summary>
+    private static bool HasOtherWindowOnScreen(IUiElement window) =>
+        NativeMethods.VisibleTopLevelWindows(window.ProcessId).Any(w =>
+            w.Handle != window.WindowHandle
+            && !w.ClassName.Contains("tooltips_class32", StringComparison.OrdinalIgnoreCase)
+            && !NativeMethods.IsMinimized(w.Handle)
+            && NativeMethods.TryGetVisibleFrame(w.Handle, out var frame) && frame.Width > 0 && frame.Height > 0);
+
     private string SetWindowState(CommandContext ctx, WindowStateKind state)
     {
         var window = _s.RequireWindow();
-        if (!window.TrySetWindowState(state)) throw new CliException("This window does not support WindowPattern, so its state cannot be changed");
+        bool supported;
+        try
+        {
+            supported = window.TrySetWindowState(state);
+        }
+        catch (InvalidOperationException ex) when (!window.IsEnabled)
+        {
+            throw new CliException($"The window \"{window.Name}\" is disabled, so its state cannot be changed. A dialog of the application is probably open; act on it or close it first", ex);
+        }
+        if (!supported) throw new CliException("This window does not support WindowPattern, so its state cannot be changed");
         return $"### Result\nWindow {state switch { WindowStateKind.Maximized => "maximized", WindowStateKind.Minimized => "minimized", _ => "restored" }}";
     }
 

@@ -235,8 +235,12 @@ public sealed class FakeElement : IUiElement
 
     public string? TryGetDocumentText() => null;
 
+    /// <summary>Thrown by TrySetWindowState, as WindowPattern does while a modal dialog disables the window.</summary>
+    public Exception? WindowStateError { get; set; }
+
     public bool TrySetWindowState(WindowStateKind state)
     {
+        if (WindowStateError is { } error) throw error;
         Actions.Add("state:" + state);
         return Kind == ControlKind.Window;
     }

@@ -872,6 +872,32 @@ public sealed class DispatcherTests : IDisposable
     }
 
     [Fact]
+    public void ADisabledMinimizedWindowWithoutADialogOnScreenStillBlocksInput()
+    {
+        Ok(_app.Open());
+        _app.Window.Bounds = new(-32000, -32000, 160, 28);
+        _app.Window.IsEnabled = false;
+        _app.Window.ProcessId = -1;     // No real window belongs to it, so no dialog is on screen
+
+        var click = _app.Run("click", ("target", "id=num1Button"));
+        Assert.False(click.Ok);
+        Assert.Contains("is minimized", click.Error);
+        Assert.Contains("(minimized) (current)", _app.Run("windows").Text);
+    }
+
+    [Fact]
+    public void RestoreSaysADialogIsOpenWhenTheWindowIsDisabled()
+    {
+        Ok(_app.Open());
+        _app.Window.IsEnabled = false;
+        _app.Window.WindowStateError = new InvalidOperationException("Operation is not valid due to the current state of the object.");
+
+        var restore = _app.Run("restore");
+        Assert.False(restore.Ok);
+        Assert.Contains("is disabled, so its state cannot be changed. A dialog of the application is probably open", restore.Error);
+    }
+
+    [Fact]
     public void CloseWindowClosesOneDialogAndKeepsTheSession()
     {
         Ok(_app.Open());
