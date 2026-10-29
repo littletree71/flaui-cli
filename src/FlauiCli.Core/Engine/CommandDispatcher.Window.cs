@@ -164,7 +164,8 @@ public sealed partial class CommandDispatcher
             ctx.Call.GetBool("boxes"),
             ctx.Call.GetBool("all") || ctx.Config.Snapshot.IncludeOffscreen);
         var text = BuildSnapshot(root, options, includePopups: root.Equals(window));
-        if (root.Equals(window) && IsMinimized(window))
+        // Some minimized windows (UWP) expose no content; WinForms ones keep it, and then there is nothing to say
+        if (root.Equals(window) && IsMinimized(window) && window.FindFirst(ElementQuery.Any) is null)
             text += "\n# The window is minimized, so its content is not listed. Run restore first.";
 
         if (ctx.Call.Get("filename") is { } file)

@@ -779,11 +779,17 @@ public sealed class DispatcherTests : IDisposable
     }
 
     [Fact]
-    public void SnapshotHintsWhenTheWindowIsMinimized()
+    public void SnapshotHintsWhenTheWindowIsMinimizedAndEmpty()
     {
         Ok(_app.Open());
         Assert.DoesNotContain("minimized", _app.Run("snapshot").Text);
+
+        // Minimized with its content still listed (WinForms): no hint that would contradict the listing
         _app.Window.Bounds = new(-32000, -32000, 160, 28);
+        Assert.DoesNotContain("minimized", _app.Run("snapshot").Text);
+
+        // Minimized and empty (UWP)
+        _app.Window.Children.Clear();
         Assert.Contains("The window is minimized", _app.Run("snapshot").Text);
     }
 
