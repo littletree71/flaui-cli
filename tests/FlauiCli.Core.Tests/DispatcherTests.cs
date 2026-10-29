@@ -420,6 +420,24 @@ public sealed class DispatcherTests : IDisposable
     }
 
     [Fact]
+    public void ClickingAListViewRowHitsItsFirstCell()
+    {
+        Ok(_app.Open());
+        // A details-view row: the first column only selects the row, the centre of the row is in the second column
+        var row = new FakeElement(ControlKind.ListItem, "B") { Bounds = new System.Drawing.Rectangle(10, 500, 300, 20) }.Add(
+            new FakeElement(ControlKind.Text, "BRAVO item") { Bounds = new System.Drawing.Rectangle(60, 500, 250, 20) },
+            new FakeElement(ControlKind.Text, "B") { Bounds = new System.Drawing.Rectangle(10, 500, 50, 20) });
+        _app.Window.Add(new FakeElement(ControlKind.List, "Rows", "rows") { Bounds = new System.Drawing.Rectangle(10, 500, 300, 40) }.Add(row));
+
+        Ok(_app.Run("click", ("target", "id=rows >> type=listitem&&name=B")));
+        Assert.Contains("click 35,510 Left", _app.Driver.Input.Log);
+
+        // A list item without cells is clicked in its centre as before
+        Ok(_app.Run("click", ("target", "id=fruitList >> name=Apple")));
+        Assert.Contains("click 85,310 Left", _app.Driver.Input.Log);
+    }
+
+    [Fact]
     public void YamlStyleAssertions()
     {
         Ok(_app.Open());

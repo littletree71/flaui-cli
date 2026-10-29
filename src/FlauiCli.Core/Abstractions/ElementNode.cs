@@ -43,12 +43,35 @@ public static class ControlKindExtensions
 
 public static class UiElementExtensions
 {
-    /// <summary>Clickable point of the element, falling back to the center of its bounds.</summary>
+    /// <summary>
+    /// Clickable point of the element, falling back to the center of its bounds. A list item with cells (a ListView row
+    /// in details view) is clicked on its first cell: without full-row selection only the first column selects the row,
+    /// while the centre of the row usually lands in another column.
+    /// </summary>
     public static Point ClickPoint(this IUiElement el)
     {
+        if (el.Kind == ControlKind.ListItem && FirstCell(el) is { } cell) return cell.ClickPoint();
         if (el.TryGetClickablePoint() is { } p) return p;
         var r = el.Bounds;
         if (r.IsEmpty) throw new CliException("The element has no clickable point (it may be hidden or minimized)");
         return r.Center();
+    }
+
+    /// <summary>The leftmost visible child inside the row, when the row has children.</summary>
+    private static IUiElement? FirstCell(IUiElement row)
+    {
+        var bounds = row.Bounds;
+        if (bounds.IsEmpty) return null;
+        try
+        {
+            return row.FindAll(ElementQuery.Any, SearchScope.Children)
+                .Where(c => !c.Bounds.IsEmpty && bounds.Contains(c.Bounds.Center()))
+                .OrderBy(c => c.Bounds.Left)
+                .FirstOrDefault();
+        }
+        catch
+        {
+            return null;
+        }
     }
 }
