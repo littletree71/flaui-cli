@@ -314,6 +314,30 @@ public sealed class DispatcherTests : IDisposable
     }
 
     [Fact]
+    public void KeysWithoutATargetGoToADialogOfTheApplication()
+    {
+        Ok(_app.Open());
+        // A dialog opened by a plain click: the current window is still the parent, the focus is in the dialog
+        var ok = new FakeElement(ControlKind.Button, "OK", "okButton");
+        var dialog = new FakeElement(ControlKind.Window, "Dialog") { ProcessId = _app.Window.ProcessId }.Add(ok);
+        _app.Driver.TopLevel.Add(dialog);
+        _app.Driver.Focused = ok;
+        var raised = _app.Window.Actions.Count(a => a == "foreground");
+
+        Ok(_app.Run("type", ("text", "x")));
+        // Escape closes the dialog and the focus goes back to the parent: no note about the focus moving
+        _app.Driver.Input.OnPress = () => { dialog.Alive = false; ok.Alive = false; _app.Driver.Focused = _app.NameBox; };
+        Assert.DoesNotContain("focus moved", _app.Run("press", ("keys", "Escape")).Text);
+        Assert.Equal(raised, _app.Window.Actions.Count(a => a == "foreground"));
+        _app.Driver.Input.OnPress = null;
+
+        // With the focus in another application, the window is brought forward as before
+        _app.Driver.Focused = new FakeElement(ControlKind.Edit, "Other") { ProcessId = 999 };
+        Ok(_app.Run("press", ("keys", "Escape")));
+        Assert.Equal(raised + 1, _app.Window.Actions.Count(a => a == "foreground"));
+    }
+
+    [Fact]
     public void SimulatedInputFailsClearlyWhileTheWorkstationIsLocked()
     {
         Ok(_app.Open());
