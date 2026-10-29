@@ -11,14 +11,19 @@ namespace FlauiCli.Core.Engine;
 /// With <c>timeouts.unlock</c> set, a locked workstation is waited for (up to that many milliseconds) instead of failing
 /// at once, so an unattended run continues after the user unlocks.
 /// </para>
+/// <para>
+/// <paramref name="blocked"/> says why input cannot reach the application (its window is minimized), or null. Input
+/// would land off screen and the action would report success, so it fails instead.
+/// </para>
 /// </summary>
-internal sealed class CheckedInput(IUiDriver driver, Func<int> unlockWaitMs) : IInputDevice
+internal sealed class CheckedInput(IUiDriver driver, Func<int> unlockWaitMs, Func<string?> blocked) : IInputDevice
 {
     private IInputDevice Inner => driver.Input;
 
     private IInputDevice Checked()
     {
         if (WaitForDesktop(driver, unlockWaitMs()) is { } reason) throw new DesktopUnavailableException(reason);
+        if (blocked() is { } why) throw new CliException(why);
         return Inner;
     }
 

@@ -6,7 +6,22 @@ namespace FlauiCli.Core.Engine;
 // Action commands that operate on elements
 public sealed partial class CommandDispatcher
 {
-    private IInputDevice Input => _input ??= new CheckedInput(_s.Driver, () => _unlockWaitMs);
+    private IInputDevice Input => _input ??= new CheckedInput(_s.Driver, () => _unlockWaitMs, MinimizedWindowReason);
+
+    /// <summary>Why simulated input cannot reach the current window: it is minimized, so its controls are off screen.</summary>
+    private string? MinimizedWindowReason()
+    {
+        try
+        {
+            return _s.CurrentWindow is { } w && IsMinimized(w)
+                ? $"The window \"{w.Name}\" is minimized, so mouse and keyboard input cannot reach it. Run restore first"
+                : null;
+        }
+        catch
+        {
+            return null;    // The window closed meanwhile
+        }
+    }
 
     private CheckedInput? _input;
 
@@ -95,7 +110,7 @@ public sealed partial class CommandDispatcher
     {
         var text = ctx.Call.Require("text");
         var focused = _s.Driver.GetFocusedElement();
-        TryForeground(_s.RequireWindow());
+        ForegroundForKeys(focused);
         Input.Type(text);
         Input.WaitUntilIdle();
         AfterAction(ctx, focused, $"Type \"{text}\"");
@@ -124,7 +139,7 @@ public sealed partial class CommandDispatcher
 
         BeforeAction(ctx, target, $"Press {keys}{times}");
         if (hasTarget) EnsureInteractable(ctx, target!);
-        else TryForeground(_s.RequireWindow());
+        else ForegroundForKeys(target);
 
         for (var i = 0; i < repeat; i++)
         {
@@ -139,12 +154,32 @@ public sealed partial class CommandDispatcher
     }
 
     /// <summary>
+    /// Brings the current window forward before keys are sent without a target, unless the focus is already in the
+    /// application: in a dialog opened by a plain click the current window is still the parent, and bringing it
+    /// forward would send the keys there instead of to the dialog.
+    /// </summary>
+    private void ForegroundForKeys(IUiElement? focused)
+    {
+        var window = _s.RequireWindow();
+        try
+        {
+            if (focused is not null && focused.ProcessId == window.ProcessId) return;
+        }
+        catch
+        {
+            // The focused element went away; bring the window forward
+        }
+        TryForeground(window);
+    }
+
+    /// <summary>
     /// When the application moved the focus away from the element that had it before the key press, says so: later
     /// presses without a target go to the new element, which looks like the keys stopped working.
     /// </summary>
     private string FocusMovedNote(IUiElement? before)
     {
-        if (before is null) return "";
+        // A key that closed a dialog takes the focus back to the window that opened it, as expected
+        if (before is null || !before.IsAlive) return "";
         IUiElement? after;
         try { after = _s.Driver.GetFocusedElement(); }
         catch { return ""; }

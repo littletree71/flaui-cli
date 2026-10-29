@@ -329,6 +329,30 @@ public sealed class DispatcherTests : IDisposable
     }
 
     [Fact]
+    public void KeysWithoutATargetGoToADialogOfTheApplication()
+    {
+        Ok(_app.Open());
+        // A dialog opened by a plain click: the current window is still the parent, the focus is in the dialog
+        var ok = new FakeElement(ControlKind.Button, "OK", "okButton");
+        var dialog = new FakeElement(ControlKind.Window, "Dialog") { ProcessId = _app.Window.ProcessId }.Add(ok);
+        _app.Driver.TopLevel.Add(dialog);
+        _app.Driver.Focused = ok;
+        var raised = _app.Window.Actions.Count(a => a == "foreground");
+
+        Ok(_app.Run("type", ("text", "x")));
+        // Escape closes the dialog and the focus goes back to the parent: no note about the focus moving
+        _app.Driver.Input.OnPress = () => { dialog.Alive = false; ok.Alive = false; _app.Driver.Focused = _app.NameBox; };
+        Assert.DoesNotContain("focus moved", _app.Run("press", ("keys", "Escape")).Text);
+        Assert.Equal(raised, _app.Window.Actions.Count(a => a == "foreground"));
+        _app.Driver.Input.OnPress = null;
+
+        // With the focus in another application, the window is brought forward as before
+        _app.Driver.Focused = new FakeElement(ControlKind.Edit, "Other") { ProcessId = 999 };
+        Ok(_app.Run("press", ("keys", "Escape")));
+        Assert.Equal(raised + 1, _app.Window.Actions.Count(a => a == "foreground"));
+    }
+
+    [Fact]
     public void SimulatedInputFailsClearlyWhileTheWorkstationIsLocked()
     {
         Ok(_app.Open());
@@ -824,6 +848,27 @@ public sealed class DispatcherTests : IDisposable
         // Minimized and empty (UWP)
         _app.Window.Children.Clear();
         Assert.Contains("The window is minimized", _app.Run("snapshot").Text);
+    }
+
+    [Fact]
+    public void SimulatedInputFailsWhileTheWindowIsMinimized()
+    {
+        Ok(_app.Open());
+        var bounds = _app.Window.Bounds;
+        _app.Window.Bounds = new(-32000, -32000, 160, 28);
+
+        // The controls are off screen: a click would miss and still report success
+        var click = _app.Run("click", ("target", "id=num1Button"));
+        Assert.False(click.Ok);
+        Assert.Contains("is minimized, so mouse and keyboard input cannot reach it. Run restore first", click.Error);
+        Assert.False(_app.Run("press", ("keys", "Enter")).Ok);
+        Assert.DoesNotContain(_app.Driver.Input.Log, l => l.StartsWith("click") || l.StartsWith("press"));
+
+        // UI Automation needs no input and keeps working
+        Ok(_app.Run("click", ("target", "id=num1Button"), ("invoke", "true")));
+
+        _app.Window.Bounds = bounds;
+        Ok(_app.Run("click", ("target", "id=num1Button")));
     }
 
     [Fact]

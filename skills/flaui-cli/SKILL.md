@@ -174,6 +174,8 @@ Scripts can produce documents directly: `flaui-cli run flow.yaml --doc docs/flow
 
 - UWP apps (Calculator etc.): the window belongs to ApplicationFrameHost, so `open` always needs `--window`.
 - Some minimized windows (UWP apps) have no content in snapshots; `snapshot` then says so, and `restore` brings it back.
+- If the current window is minimized, mouse and keyboard actions fail; you can run `restore` first. Why: its controls are
+  off screen, so the input would miss. `click --invoke` and `fill` through ValuePattern still work.
 - `wait-window` prefers an exact title, then one starting with the text, then one containing it. In MDI apps the parent's title
   contains the child's title, so use `--exact` or `--regex "^Child title"` when the child's title varies.
 - `close-window [title]` closes one window or dialog (also dialogs without a Cancel button, where `press Escape` does nothing) and
