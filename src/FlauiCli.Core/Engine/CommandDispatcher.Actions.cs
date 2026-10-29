@@ -184,9 +184,33 @@ public sealed partial class CommandDispatcher
         try { after = _s.Driver.GetFocusedElement(); }
         catch { return ""; }
         if (after is null || after.Equals(before)) return "";
+        // Arrow keys in a list, tree, grid, menu or tab control move the focus to another item on purpose
+        if (ItemContainer(before) is { } container && container.Equals(ItemContainer(after))) return "";
         var r = _s.Refs.GetOrAssign(before);
         return $"\nThe focus moved from {Label(before)} to {Label(after)}; further keys go there. " +
                $"To keep pressing keys in {r}, use press <keys> --target {r}";
+    }
+
+    private static readonly HashSet<ControlKind> ItemContainerKinds =
+        [ControlKind.List, ControlKind.Tree, ControlKind.ComboBox, ControlKind.DataGrid, ControlKind.Table, ControlKind.Menu, ControlKind.MenuBar, ControlKind.Tab];
+
+    /// <summary>The list, tree, grid, menu or tab control an item belongs to; null when the element is not such an item.</summary>
+    private static IUiElement? ItemContainer(IUiElement el)
+    {
+        try
+        {
+            if (!ItemKinds.Contains(el.Kind)) return null;
+            var parent = el.Parent;
+            for (var depth = 0; parent is not null && depth < 8; depth++, parent = parent.Parent)
+            {
+                if (ItemContainerKinds.Contains(parent.Kind)) return parent;
+            }
+        }
+        catch
+        {
+            // The element went away
+        }
+        return null;
     }
 
     private static readonly HashSet<ControlKind> ItemKinds =
