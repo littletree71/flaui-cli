@@ -8,12 +8,16 @@ public sealed partial class CommandDispatcher
 {
     private IInputDevice Input => _input ??= new CheckedInput(_s.Driver, () => _unlockWaitMs, MinimizedWindowReason);
 
-    /// <summary>Why simulated input cannot reach the current window: it is minimized, so its controls are off screen.</summary>
+    /// <summary>
+    /// Why simulated input cannot reach the current window: it is minimized, so its controls are off screen. A
+    /// minimized window that a modal dialog disables (a login form shown while the main form stays minimized) does not
+    /// count: the input goes to the dialog, which is on screen.
+    /// </summary>
     private string? MinimizedWindowReason()
     {
         try
         {
-            return _s.CurrentWindow is { } w && IsMinimized(w)
+            return _s.CurrentWindow is { } w && IsMinimized(w) && !(!w.IsEnabled && HasOtherWindowOnScreen(w))
                 ? $"The window \"{w.Name}\" is minimized, so mouse and keyboard input cannot reach it. Run restore first"
                 : null;
         }
