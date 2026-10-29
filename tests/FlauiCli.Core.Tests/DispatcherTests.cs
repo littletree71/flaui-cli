@@ -477,6 +477,27 @@ public sealed class DispatcherTests : IDisposable
     }
 
     [Fact]
+    public void SelectWithClickClicksTheRowWithTheMouse()
+    {
+        Ok(_app.Open());
+        // A ListView that loads the details in its Click handler: SelectionItemPattern alone does not raise Click
+        var row = new FakeElement(ControlKind.ListItem, "B") { IsSelected = false, Bounds = new System.Drawing.Rectangle(10, 500, 300, 20) }.Add(
+            new FakeElement(ControlKind.Text, "BRAVO item") { Bounds = new System.Drawing.Rectangle(60, 500, 250, 20) },
+            new FakeElement(ControlKind.Text, "B") { Bounds = new System.Drawing.Rectangle(10, 500, 50, 20) });
+        _app.Window.Add(new FakeElement(ControlKind.List, "Rows", "rows") { Bounds = new System.Drawing.Rectangle(10, 500, 300, 40) }.Add(row));
+
+        Ok(_app.Run("select", ("target", "id=rows"), ("item", "B")));
+        Assert.True(row.IsSelected);
+        Assert.DoesNotContain("click 35,510 Left", _app.Driver.Input.Log);
+
+        Ok(_app.Run("select", ("target", "id=rows"), ("item", "B"), ("click", "true")));
+        Assert.Contains("click 35,510 Left", _app.Driver.Input.Log);
+
+        Assert.Contains("not both", _app.Run("select", ("target", "id=rows"), ("item", "B"), ("click", "true"), ("keyboard", "true")).Error);
+        Assert.Contains("combo boxes", _app.Run("select", ("target", "id=colorCombo"), ("item", "Green"), ("click", "true")).Error);
+    }
+
+    [Fact]
     public void YamlStyleAssertions()
     {
         Ok(_app.Open());

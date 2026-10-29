@@ -63,7 +63,7 @@ Selectors wait for the element to appear (5 s by default, change with `--timeout
 | Application | `open <exe\|AUMID> [args] [--window title]`, `attach [pid\|name] [--title title]`, `close [--keep-app]`, `status`, `list`, `close-all`, `kill-all`, `lock-status` |
 | Windows | `windows`, `window <index\|ref\|title>`, `focus [t]`, `wait-window <title> [--exact\|--regex] [--no-switch]`, `close-window [index\|ref\|title]`, `maximize`, `minimize`, `restore`, `resize W H`, `move X Y` |
 | Inspection | `snapshot`, `find <text> [--regex]`, `inspect <target>` (all properties, patterns and a suggested selector) |
-| Actions | `click <t> [--button right] [--double] [--invoke]`, `dblclick`, `hover`, `fill <t> <text> [--keyboard]`, `type <text>`, `press <keys> [--target t] [--repeat n]` (`Enter`, `Ctrl+S`), `select <t> <item or #index> [--keyboard]`, `check`, `uncheck`, `expand`, `collapse`, `invoke`, `scroll <t> [--dir down] [--amount 3]`, `drag <src> <dst>` |
+| Actions | `click <t> [--button right] [--double] [--invoke]`, `dblclick`, `hover`, `fill <t> <text> [--keyboard]`, `type <text>`, `press <keys> [--target t] [--repeat n]` (`Enter`, `Ctrl+S`), `select <t> <item or #index> [--keyboard] [--click]`, `check`, `uncheck`, `expand`, `collapse`, `invoke`, `scroll <t> [--dir down] [--amount 3]`, `drag <src> <dst>` |
 | Reading | `get text\|value\|name\|state\|rect <t>`, `get prop <t> HelpText` |
 | Waiting / asserting | `wait <t> --state visible\|hidden\|exists\|gone\|enabled\|disabled`, `assert exists\|not-exists\|visible\|hidden\|enabled\|disabled\|checked\|unchecked <t>`, `assert text\|contains\|matches\|value <t> <expected>`, `sleep <ms>` |
 | Screenshots | `screenshot [t] [--filename f.png] [--highlight t ...] [--highlight-padding px] [--no-outline] [--badge-position p] [--mask t ...] [--mask-column header ...] [--screen]` |
@@ -214,7 +214,11 @@ Scripts can produce documents directly: `flaui-cli run flow.yaml --doc docs/flow
 - If a form moves the focus while handling a key, you can use `press <keys> --target <t> --repeat N`.
   Why: a second `press` without `--target` lands in the new field; `press` says when this happens. With `--target`, the
   target is focused again before every press.
-- ListView rows: you can use `click` on the `listitem` or `select <list> <item>`, with the first column's text as the item.
+- ListView rows: you can use `click` on the `listitem`, or `select <list> <item> --click` with the first column's text as the
+  item.
+  Why: many apps load the row's details in the ListView's `Click` handler. Plain `select` highlights the row and `get state`
+  says `selected`, but `Click` does not run. `--keyboard` does not raise `Click` either.
+- If you click a ListView row yourself, you can click its first column.
   Why: in details view only the first column selects a row. Clicking the text of another column clears the selection.
 - DataGridView check box cells: you can set them with `fill <cell> True` / `False` and check them with `assert value <cell> True`.
   Why: they have no TogglePattern, so `check`, `uncheck` and `assert checked` fail. Cell refs change between commands, so

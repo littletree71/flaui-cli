@@ -228,7 +228,11 @@ public sealed partial class CommandDispatcher
         var label = Label(el);
 
         EnsureInteractable(ctx, el);
+        var click = ctx.Call.GetBool("click");
+        if (click && ctx.Call.GetBool("keyboard")) throw new CliException("Use either --click or --keyboard, not both");
         if (ctx.Call.GetBool("keyboard")) return SelectWithKeyboard(ctx, el, item, index, label);
+        if (click && el.Kind == ControlKind.ComboBox)
+            throw new CliException($"select --click does not work on combo boxes; use --keyboard for {label}");
 
         string selected;
         if (el.Kind == ControlKind.ComboBox)
@@ -252,7 +256,8 @@ public sealed partial class CommandDispatcher
                 throw new CliException($"Item \"{item}\" not found in {label}. Available items: {(names.Length > 0 ? names : "(none)")}");
             }
             if (target.IsOffscreen) target.TryScrollIntoView();
-            if (!target.TrySelectItem()) Input.Click(target.ClickPoint(), MouseButtonKind.Left);
+            // --click: a real mouse click, so handlers bound to Click / MouseClick (WinForms ListView) run too
+            if (click || !target.TrySelectItem()) Input.Click(target.ClickPoint(), MouseButtonKind.Left);
             selected = target.Name;
         }
 
