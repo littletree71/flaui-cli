@@ -172,54 +172,65 @@ Scripts can produce documents directly: `flaui-cli run flow.yaml --doc docs/flow
 
 ### Windows and sessions
 
-- UWP apps (Calculator etc.): the window belongs to ApplicationFrameHost, so `open` always needs `--window`.
-- Some minimized windows (UWP apps) have no content in snapshots; `snapshot` then says so, and `restore` brings it back.
-- If the current window is minimized, mouse and keyboard actions fail; you can run `restore` first. Why: its controls are
-  off screen, so the input would miss. `click --invoke` and `fill` through ValuePattern still work.
-- `wait-window` prefers an exact title, then one starting with the text, then one containing it. In MDI apps the parent's title
-  contains the child's title, so use `--exact` or `--regex "^Child title"` when the child's title varies.
-- `close-window [title]` closes one window or dialog (also dialogs without a Cancel button, where `press Escape` does nothing) and
-  keeps the session. Closing the current window switches back to the window that was current before it (the MDI child a dialog
-  came from). `close` ends the whole session.
+- UWP apps (Calculator etc.): you can open them with `open calc.exe --window Calculator`.
+  Why: `calc.exe` hands off to the app and exits, so `open` cannot find a window without `--window`. Opening by AUMID works
+  without it, but takes the inner window, where `minimize` / `maximize` do not work.
+- If the current window is minimized, mouse and keyboard actions fail; you can run `restore` first.
+  Why: its controls are off screen, so the input would miss. `click --invoke` and `fill` through ValuePattern still work.
+- Some minimized windows (UWP apps) have no content in snapshots; `snapshot` then says so.
+- If `wait-window` picks the MDI parent instead of the child, you can add `--exact` or `--regex "^Child title"`.
+  Why: it prefers an exact title, then one starting with the text, then one containing it, and the parent's title contains
+  the child's.
+- To close one window or dialog and keep the session, you can use `close-window [title]`. `close` ends the whole session.
+  Closing the current window switches back to the window that was current before it.
 
 ### Finding elements
 
-- When an element cannot be found, check with `snapshot` or `find <text>`; drop-downs and menus also appear in snapshots.
-- `inspect <target>` suggests a stable selector for an element found in a snapshot.
+- If an element cannot be found, you can look for it with `snapshot` or `find <text>`. Drop-downs and menus also appear in
+  snapshots.
+- To get a stable selector for an element from a snapshot, you can use `inspect <target>`.
 
 ### Input
 
-- Actions move the real mouse; do not use the computer while they run. `click --invoke` does not move the mouse.
-- `fill` uses ValuePattern when possible; add `--keyboard` when the app only reacts to real key presses.
-- `fill` on a password field is masked: the value appears as `********` in the command result, recorded scripts, generated
-  documents and the daemon log, so never expect a real password in the output. Scripts produced by `record capture` contain the
-  same placeholder; replace it with the real value before running them.
+- Actions move the real mouse; ask the user not to use the computer while they run. If you do not want the mouse to move, you
+  can use `click --invoke`.
+- If the app only reacts to real key presses, you can add `--keyboard` to `fill`.
+  Why: `fill` uses ValuePattern when it can.
+- Passwords never appear in the output: `fill` on a password field shows `********` in the result, recorded scripts, generated
+  documents and the daemon log. If a script from `record capture` contains `********`, replace it with the real value before
+  running it.
 
 ### WinForms
 
-- Modal dialogs: InvokePattern does not return while a dialog opened by the control is shown. `click --invoke` / `invoke` then
-  fail after `--timeout` (exit code 2), and until the dialog closes every command except `status`, `sleep` and `press <keys>`
-  (without `--target`) fails at once, because UI Automation calls to the app would wait. Close the dialog with `press Escape` /
-  `press Enter`, and use a plain `click` (without `--invoke`) for buttons that open a dialog.
-- Combo boxes: `select` goes through UI Automation. It checks that the value changed (else it sets it through ValuePattern, and
-  when that fails too it suggests `fill`), but it does not raise the app's selection events: the new item shows while
-  `SelectedIndexChanged` never runs, so later steps fail ("please select an item"). Use `select <t> <item> --keyboard` there: it
-  presses Up/Down from the current item, and every item passed on the way raises the event too, as for a person. Selecting the
-  item that is already selected raises no event in either mode.
-- Focus: forms often move the focus while handling a key (a drop-down jumping to the next field from `SelectedIndexChanged`), so a
-  second `press` without `--target` lands elsewhere; `press` then says where the focus went. Use
-  `press Down --target <t> --repeat 3`: the target is focused again before every press.
-- ListView rows: in details view only the first column selects a row, so `click` on a `listitem` clicks its first cell. Clicking
-  the text of another column does not select the row; `select <list> <item>` works too.
+- Buttons that open a dialog: you can use a plain `click`, not `click --invoke`.
+  Why: InvokePattern does not return while the dialog is shown. `click --invoke` then fails after `--timeout` (exit code 2),
+  and until the dialog closes every command except `status`, `sleep` and `press <keys>` (without `--target`) fails at once,
+  `close-window` too. To get out, you can close the dialog with `press Escape` or `press Enter`.
+- If a dialog does not close on Escape (a form without a Cancel button), you can use `close-window <title>`.
+- Combo boxes: if later steps act as if nothing was selected ("please select an item"), you can use
+  `select <t> <item> --keyboard`.
+  Why: plain `select` shows the new item but does not raise `SelectedIndexChanged`. `--keyboard` presses Up/Down from the
+  current item like a person, so every item passed on the way raises the event too.
+- If a form moves the focus while handling a key, you can use `press <keys> --target <t> --repeat N`.
+  Why: a second `press` without `--target` lands in the new field; `press` says when this happens. With `--target`, the
+  target is focused again before every press.
+- ListView rows: you can use `click` on the `listitem` or `select <list> <item>`, with the first column's text as the item.
+  Why: in details view only the first column selects a row. Clicking the text of another column clears the selection.
+- DataGridView check box cells: you can set them with `fill <cell> True` / `False` and check them with `assert value <cell> True`.
+  Why: they have no TogglePattern, so `check`, `uncheck` and `assert checked` fail. Cell refs change between commands, so
+  use a selector; cell names follow the system language (`" Row 0"`, `" 資料列 0"`).
 
 ### Large windows
 
-- Windows with hundreds of controls make every lookup slow. To speed it up: set `"autoSnapshot": false` in
-  `.flaui-cli/config.json`, use `snapshot --depth N` / `--root <t>`, prefer `id=` / `name=` / `type=` selectors (they stop at the
-  first match), scope with `>>`, close unused windows and raise `--timeout`.
-- Past about 512 elements UIA3 truncates searches silently. flaui-cli fills in the rest level by level within `--timeout`, so a
-  selector that matches nothing waits out the timeout, and a deep one may need a larger timeout: scope it from a nearby container.
-- `--verbose` shows whether the time goes into finding the element, the action or the automatic snapshot.
+- If every lookup is slow in a window with hundreds of controls, you can:
+  - set `"autoSnapshot": false` in `.flaui-cli/config.json`
+  - use `snapshot --depth N` or `--root <t>`
+  - prefer `id=` / `name=` / `type=` selectors, which stop at the first match, and scope them with `>>`
+  - close unused windows and raise `--timeout`
+- To see whether the time goes into finding the element, the action or the automatic snapshot, you can add `--verbose`.
+- If a selector waits out `--timeout` in a large window, you can scope it from a nearby container.
+  Why: past about 512 elements UIA3 truncates searches silently, and flaui-cli fills in the rest level by level within
+  `--timeout`.
 
 ## Tip: saving tokens with screenshots
 
