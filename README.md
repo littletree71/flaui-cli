@@ -73,6 +73,8 @@ Snapshot output:
 State markers: `[disabled]` `[checked]` `[mixed]` `[expanded]` `[collapsed]` `[selected]` `[focused]`.
 Unnamed containers and off-screen elements are left out; `snapshot --all` prints the full tree, `--depth N` limits the depth,
 `--root <target>` prints a subtree, `--boxes` adds element bounds and `--filename f.yml` saves to a file.
+Tables and lists show their first 50 rows followed by a line such as `- … 6950 more rows`; `--max-rows N` (or `snapshot.maxRows`)
+changes that, `--max-rows 0` reads every row.
 After every action command a snapshot is saved automatically (`.flaui-cli/snapshot-*.yml`, turn off with `autoSnapshot`).
 
 `open` also accepts a Store app AUMID (any value containing `!`, for example
@@ -132,6 +134,9 @@ tooltips and unnamed popups are left out.
 `wait-window <title>` prefers an exact title, then one that starts with the text, then one that contains it; `--exact` only
 accepts an exact title and `--regex` treats the title as a regular expression (useful for MDI children, whose title also
 appears in the MDI parent's title).
+`click <target> --offset x,y` clicks x,y pixels from the target's top-left corner, and `click --at x,y` clicks x,y pixels from
+the current window's top-left corner (physical pixels, as in a screenshot of the window): use them for parts of the UI that UI
+Automation cannot list, such as a cell of a very large table.
 Exit codes: `0` success, `1` assertion failed, `2` error, `3` session not running, `4` the workstation is locked (input and
 screenshots are not possible; unlock and retry).
 
@@ -211,6 +216,9 @@ flaui-cli screenshot --mask id=customerName --mask-column "id=dataGridView1 >> n
 flaui-cli doc start --title "Orders" --mask-column "id=dataGridView1 >> name=Partner"   # every screenshot of the document
 ```
 
+When the element cannot be found, `screenshot --mask-rect x,y,w,h` covers an area given in pixels from the window's top-left
+corner (as in a screenshot of the window); it can be repeated too.
+
 Masks are drawn before outlines and badges, so those stay visible. `screenshot` and `doc step` fail without saving anything when a
 mask is not found; masks given to `doc start` are applied to every screenshot of the document wherever they are shown.
 
@@ -223,7 +231,7 @@ mask is not found; masks given to `doc start` are applied to every screenshot of
   "timeouts": { "action": 5000, "launch": 20000, "unlock": 0 },
   "outputDir": ".flaui-cli",
   "autoSnapshot": true,
-  "snapshot": { "depth": 0, "includeOffscreen": false },
+  "snapshot": { "depth": 0, "includeOffscreen": false, "maxRows": 50 },
   "highlight": { "padding": 3, "outline": true, "badge": "auto" },
   "logLevel": "info",
   "daemonIdleMinutes": 30
@@ -239,6 +247,7 @@ mask is not found; masks given to `doc start` are applied to every screenshot of
 | `autoSnapshot` | `true` | Save a snapshot after every action command. Turn it off for large windows |
 | `snapshot.depth` | `0` | Default depth of `snapshot` and of the automatic snapshot; `0` is unlimited. `snapshot --depth` overrides it |
 | `snapshot.includeOffscreen` | `false` | Include off-screen elements in snapshots (like `snapshot --all`) |
+| `snapshot.maxRows` | `50` | Rows read from each table or list by `snapshot`, `find` and the automatic snapshot; the rest is printed as `… N more rows`. `0` reads all of them. `--max-rows` overrides it |
 | `highlight.padding` | `3` | Pixels between an element and its red outline: positive outside, `0` on the edge, negative inside |
 | `highlight.outline` | `true` | `false` draws only the number badges, without outlines |
 | `highlight.badge` | `auto` | Where number badges go: `auto` (chosen per element), `top`, `bottom`, `left`, `right`, `top-left`, `top-right`, `bottom-left`, `bottom-right` or `inside` (inside the outline's top-left corner) |
@@ -272,10 +281,21 @@ which is slow for windows with thousands of elements (especially .NET Framework 
 - Add `--verbose` to see where the time goes (`find` / `action` / `snapshot`); include it when reporting a slow command.
 - Raise `--timeout` (or `timeouts.action`) when lookups take longer than the default 5 seconds.
 
+Large tables (a DataGridView with thousands of rows) get special treatment, because UI Automation reads their rows one by one
+(about 20 ms per element on a .NET Framework 2.0 app) and a search through them fails with `UI Automation timed out (0x80131505)`:
+
+- `snapshot` and `find` read only the first 50 rows of each table or list (`snapshot.maxRows`, `--max-rows`).
+- Selectors skip the inside of tables, so the controls next to a grid are found however many rows it has. Only when nothing
+  outside the tables matches are the tables searched too. Selectors for table content (`type=dataitem`, `type=header`,
+  `type=headeritem`) and selectors scoped to a table (`id=dataGridView1 >> name="Row 5"`) search the table directly.
+- Every UI Automation call of a search is bounded by the time left of `--timeout`, and a command whose client is stopped
+  (Ctrl+C) is cancelled, so the session keeps working.
+- For a cell that still cannot be listed, click it by position: `click id=dataGridView1 --offset 120,45`.
+
 UIA3 descendant searches stop after visiting about 512 elements on some providers (seen with WinForms), without an error.
 flaui-cli keeps what UIA found and fills in the rest: windows by enumerating child and owned windows, other selectors by
-searching level by level within the command's `--timeout`, and `snapshot` by reading only the part that was cut (up to
-10 seconds). The snapshot saved after every action is not filled in, to keep actions fast. A selector that matches nothing
+searching level by level within the command's `--timeout`, and `snapshot` by reading the tree one node at a time (up to
+20 seconds, or `--timeout` when that is longer). The snapshot saved after every action stops after 5 seconds, to keep actions fast. A selector that matches nothing
 in such a window keeps searching until the timeout; scoping with `>>` from a container near the element keeps lookups small.
 Raise `--timeout` if an element deep in a large window is not found in time. All of this goes through UI Automation and
 window enumeration only: flaui-cli never reads or writes the memory of the application under test.

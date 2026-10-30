@@ -137,4 +137,32 @@ public class SnapshotTests
         Assert.DoesNotContain("\"Name\"", text);
         Assert.Contains("button \"OK\"", text);
     }
+
+    [Fact]
+    public void RowsPastTheLimitArePrintedAsOneLine()
+    {
+        var list = new FakeElement(ControlKind.List, "Items", "itemList");
+        for (var i = 0; i < 8; i++) list.Add(new FakeElement(ControlKind.ListItem, $"Item {i}"));
+        var root = new FakeElement(ControlKind.Window, "App").Add(list, new FakeElement(ControlKind.Button, "OK"));
+
+        var text = SnapshotFormatter.Format(root.CaptureTree(maxRows: 3), new RefRegistry(), new SnapshotOptions());
+        var expected = """
+            - window "App" [ref=e1]
+              - list "Items" [ref=e2] id=itemList
+                - listitem "Item 0" [ref=e3]
+                - listitem "Item 1" [ref=e4]
+                - listitem "Item 2" [ref=e5]
+                - … 5 more items
+              - button "OK" [ref=e6]
+            """;
+        Assert.Equal(expected.ReplaceLineEndings(), text.ReplaceLineEndings());
+
+        var node = root.CaptureTree();
+        node.Children[0].Children.Clear();
+        node.Children[0].OmittedChildren = ElementNode.UnknownCount;
+        node.Children[0].Children.Add(new ElementNode { Element = list, Kind = ControlKind.ListItem, Name = "Item 0" });
+        Assert.Contains("- … more items (not read)", SnapshotFormatter.Format(node, new RefRegistry(), new SnapshotOptions()));
+        // At the depth limit only the marker shows that there is more
+        Assert.Contains("id=itemList …", SnapshotFormatter.Format(node, new RefRegistry(), new SnapshotOptions(MaxDepth: 2)));
+    }
 }

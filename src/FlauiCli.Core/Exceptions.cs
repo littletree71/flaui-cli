@@ -14,3 +14,27 @@ public sealed class DesktopUnavailableException(string reason, string? detail = 
 
 /// <summary>An assertion failed (exit code 1).</summary>
 public sealed class AssertionFailedException(string message) : CliException(message);
+
+/// <summary>Recognises UI Automation errors that surface as plain COM exceptions.</summary>
+public static class UiaErrors
+{
+    /// <summary>
+    /// UIA_E_TIMEOUT (0x80131505, the same value as COR_E_TIMEOUT): the provider did not answer within the UI Automation
+    /// transaction timeout, typically while a search walked thousands of elements (the rows of a large table).
+    /// </summary>
+    public const int TimeoutHResult = unchecked((int)0x80131505);
+
+    public static bool IsTimeout(Exception ex)
+    {
+        for (var e = ex; e is not null; e = e.InnerException)
+        {
+            if (e.HResult == TimeoutHResult) return true;
+        }
+        return false;
+    }
+
+    public const string TimeoutMessage =
+        "UI Automation timed out (0x80131505): the window may have too many elements, for example a table with many rows. " +
+        "Scope the selector to the part of the window you need (for example id=panel >> id=textBox), try snapshot --depth N, " +
+        "or use click --offset / --at when the element cannot be listed";
+}

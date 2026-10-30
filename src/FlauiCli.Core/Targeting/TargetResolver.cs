@@ -17,6 +17,7 @@ internal sealed class TargetResolver(AutomationSession session)
         var sw = Stopwatch.StartNew();
         while (true)
         {
+            SearchBudget.ThrowIfCancelled();
             if (ElementFinder.FindFirst(selector, session.SearchRoots()) is { } found) return found;
             if (sw.ElapsedMilliseconds >= timeoutMs)
                 throw new ElementNotFoundException(raw, $"waited {timeoutMs}ms");

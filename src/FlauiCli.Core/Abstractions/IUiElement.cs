@@ -33,6 +33,26 @@ public sealed record CaptureDepth(int MaxDepth, Func<ElementNode, bool> IsTransp
 }
 
 /// <summary>
+/// Containers of data items (rows, list items). A grid can have thousands of rows, and reading them through UI Automation
+/// is slow (about 20 ms per element on a .NET Framework 2.0 WinForms app), so snapshots read only the first rows and
+/// searches that do not target table content skip the inside of tables.
+/// </summary>
+public static class DataContainers
+{
+    /// <summary>Default number of items a snapshot reads from a table or list (<c>snapshot.maxRows</c>).</summary>
+    public const int DefaultMaxRows = 50;
+
+    /// <summary>Tables, whose descendants element searches skip unless the query targets table content.</summary>
+    public static bool IsTable(ControlKind kind) => kind is ControlKind.DataGrid or ControlKind.Table;
+
+    /// <summary>Containers whose items a snapshot caps at the row limit.</summary>
+    public static bool IsCapped(ControlKind kind) => IsTable(kind) || kind == ControlKind.List;
+
+    /// <summary>Whether a query for this control type looks inside tables first (rows, cells, column headers).</summary>
+    public static bool IsTableContent(ControlKind? kind) => kind is ControlKind.DataItem or ControlKind.Header or ControlKind.HeaderItem;
+}
+
+/// <summary>
 /// Abstraction of a UI element. Properties are read live; when a read fails (element gone,
 /// property not supported) a default value is returned instead of throwing.
 /// Operations prefixed with Try return false when the element does not support the pattern.
@@ -93,9 +113,11 @@ public interface IUiElement : IEquatable<IUiElement>
     /// Fetches a property snapshot of the subtree (Control View); with <paramref name="depth"/>, only as deep as a
     /// snapshot limited to that depth prints, so large trees are not walked completely. With <paramref name="complete"/>
     /// false, a capture the UI Automation provider cut short is returned as is instead of being filled in (faster on
-    /// large trees; used for the snapshot saved after every action).
+    /// large trees; used for the snapshot saved after every action). With <paramref name="maxRows"/> above 0, only that many
+    /// items of a table or list (<see cref="DataContainers.IsCapped"/>) are read; the rest is counted in
+    /// <see cref="ElementNode.OmittedChildren"/>.
     /// </summary>
-    ElementNode CaptureTree(CaptureDepth? depth = null, bool complete = true);
+    ElementNode CaptureTree(CaptureDepth? depth = null, bool complete = true, int maxRows = 0);
 
     void Focus();
     void SetForeground();

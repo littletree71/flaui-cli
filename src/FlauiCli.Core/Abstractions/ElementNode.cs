@@ -21,6 +21,15 @@ public sealed class ElementNode
     public bool HasFocus { get; init; }
     public List<ElementNode> Children { get; } = [];
 
+    /// <summary>
+    /// Children that were not read (items of a table past the row limit, or a subtree left out when the capture ran out
+    /// of time): the number when it is known, <see cref="UnknownCount"/> when there are more but their number is not.
+    /// </summary>
+    public int OmittedChildren { get; set; }
+
+    /// <summary>Value of <see cref="OmittedChildren"/> when children were left out but their number is unknown.</summary>
+    public const int UnknownCount = -1;
+
     public IEnumerable<ElementNode> DescendantsAndSelf()
     {
         yield return this;

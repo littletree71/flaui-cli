@@ -108,15 +108,19 @@ public sealed class FakeElement : IUiElement
     /// <summary>Depth passed to the last CaptureTree call.</summary>
     public CaptureDepth? LastCaptureDepth { get; private set; }
 
-    public ElementNode CaptureTree(CaptureDepth? depth = null, bool complete = true)
+    /// <summary>Row limit passed to the last CaptureTree call.</summary>
+    public int LastMaxRows { get; private set; }
+
+    public ElementNode CaptureTree(CaptureDepth? depth = null, bool complete = true, int maxRows = 0)
     {
         CaptureTreeCalls++;
         LastCaptureDepth = depth;
-        return Capture(depth, level: 0, transparent: false, expand: true);
+        LastMaxRows = maxRows;
+        return Capture(depth, level: 0, transparent: false, expand: true, maxRows);
     }
 
     /// <summary>Builds the node; with a depth, leaves out what the driver would not fetch (see TreeCapture in the FlaUI driver).</summary>
-    private ElementNode Capture(CaptureDepth? depth, int level, bool transparent, bool expand)
+    private ElementNode Capture(CaptureDepth? depth, int level, bool transparent, bool expand, int maxRows = 0)
     {
         var node = new ElementNode
         {
@@ -138,11 +142,17 @@ public sealed class FakeElement : IUiElement
         if (!expand) return node;
         var expandChildren = depth?.ExpandsChildren(level, transparent) ?? true;
         var childLevel = CaptureDepth.ChildLevel(level, transparent);
-        foreach (var c in Children.Where(c => c.Alive))
+        var children = Children.Where(c => c.Alive).ToList();
+        if (maxRows > 0 && DataContainers.IsCapped(Kind) && children.Count > maxRows)
+        {
+            node.OmittedChildren = children.Count - maxRows;
+            children = children[..maxRows];
+        }
+        foreach (var c in children)
         {
             var childNode = c.Capture(null, 0, false, expand: false);
             var childTransparent = depth?.IsTransparent(childNode) ?? false;
-            node.Children.Add(c.Capture(depth, childLevel, childTransparent, expandChildren));
+            node.Children.Add(c.Capture(depth, childLevel, childTransparent, expandChildren, maxRows));
         }
         return node;
     }

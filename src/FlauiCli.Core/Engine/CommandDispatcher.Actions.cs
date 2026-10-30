@@ -1,3 +1,4 @@
+using System.Drawing;
 using FlauiCli.Core.Abstractions;
 using FlauiCli.Core.Protocol;
 
@@ -39,10 +40,27 @@ public sealed partial class CommandDispatcher
 
     private string Click(CommandContext ctx)
     {
+        if (ctx.Call.Get("at") is { } at) return ClickAt(ctx, at);
+
         var el = ResolveArg(ctx);
         var button = ParseButton(ctx.Call.Get("button"));
         var dbl = ctx.Call.GetBool("double");
         var label = Label(el);
+
+        if (ctx.Call.Get("offset") is { } offset)
+        {
+            if (ctx.Call.GetBool("invoke")) throw new CliException("--offset clicks with the mouse and cannot be combined with --invoke");
+            var bounds = el.Bounds;
+            var o = ParsePoint(offset, "--offset");
+            if (bounds.IsEmpty) throw new CliException($"{label} has no bounds (it may be hidden or minimized), so --offset cannot be used");
+            if (o.X >= bounds.Width || o.Y >= bounds.Height)
+                throw new CliException($"--offset {o.X},{o.Y} is outside {label}, which is {bounds.Width}x{bounds.Height} pixels");
+            var where = $"{o.X},{o.Y} in {label}";
+            BeforeAction(ctx, el, $"Click {Friendly(el)} at {o.X},{o.Y}");
+            EnsureInteractable(ctx, el);
+            ClickPoint(new Point(bounds.X + o.X, bounds.Y + o.Y), button, dbl);
+            return $"### Result\n{(dbl ? "Double-clicked" : button == MouseButtonKind.Right ? "Right-clicked" : "Clicked")} at {where}";
+        }
 
         BeforeAction(ctx, el, dbl ? $"Double-click {Friendly(el)}"
             : button == MouseButtonKind.Right ? $"Right-click {Friendly(el)}"
@@ -63,6 +81,57 @@ public sealed partial class CommandDispatcher
 
         Input.WaitUntilIdle();
         return $"### Result\n{(dbl ? "Double-clicked" : button == MouseButtonKind.Right ? "Right-clicked" : "Clicked")} {label}";
+    }
+
+    /// <summary>
+    /// <c>click --at x,y</c>: a point relative to the window (the area a window screenshot shows), for controls that UI
+    /// Automation cannot list. Coordinates are physical pixels, as in screenshots (the daemon is DPI aware).
+    /// </summary>
+    private string ClickAt(CommandContext ctx, string at)
+    {
+        if (ctx.Call.Get("target") is not null) throw new CliException("click --at is relative to the window and takes no target; use --offset for a point inside an element");
+        if (ctx.Call.Get("offset") is not null) throw new CliException("Use either --at or --offset, not both");
+        if (ctx.Call.GetBool("invoke")) throw new CliException("--at clicks with the mouse and cannot be combined with --invoke");
+        var button = ParseButton(ctx.Call.Get("button"));
+        var dbl = ctx.Call.GetBool("double");
+        var window = _s.RequireWindow();
+        var bounds = WindowBounds(window);
+        var p = ParsePoint(at, "--at");
+        if (p.X >= bounds.Width || p.Y >= bounds.Height)
+            throw new CliException($"--at {p.X},{p.Y} is outside the window, which is {bounds.Width}x{bounds.Height} pixels");
+
+        BeforeAction(ctx, null, $"Click at {p.X},{p.Y} in the window");
+        TryForeground(window);
+        ClickPoint(new Point(bounds.X + p.X, bounds.Y + p.Y), button, dbl);
+        return $"### Result\n{(dbl ? "Double-clicked" : button == MouseButtonKind.Right ? "Right-clicked" : "Clicked")} at {p.X},{p.Y} in the window \"{window.Name}\"";
+    }
+
+    private void ClickPoint(Point point, MouseButtonKind button, bool dbl)
+    {
+        if (dbl) Input.DoubleClick(point, button);
+        else Input.Click(point, button);
+        Input.WaitUntilIdle();
+    }
+
+    /// <summary>Parses <c>x,y</c> (non-negative pixels).</summary>
+    internal static Point ParsePoint(string value, string option)
+    {
+        var parts = value.Split(',', StringSplitOptions.TrimEntries);
+        if (parts.Length == 2 && int.TryParse(parts[0], out var x) && int.TryParse(parts[1], out var y) && x >= 0 && y >= 0)
+            return new Point(x, y);
+        throw new CliException($"{option} must be x,y in pixels (non-negative integers), for example 120,40: {value}");
+    }
+
+    /// <summary>Parses <c>x,y,w,h</c> (non-negative position, positive size).</summary>
+    internal static Rectangle ParseRect(string value, string option)
+    {
+        var parts = value.Split(',', StringSplitOptions.TrimEntries);
+        if (parts.Length == 4 && parts.All(p => int.TryParse(p, out _)))
+        {
+            var n = parts.Select(int.Parse).ToArray();
+            if (n[0] >= 0 && n[1] >= 0 && n[2] > 0 && n[3] > 0) return new Rectangle(n[0], n[1], n[2], n[3]);
+        }
+        throw new CliException($"{option} must be x,y,w,h in pixels, for example 10,80,300,200: {value}");
     }
 
     private string DoubleClick(CommandContext ctx)

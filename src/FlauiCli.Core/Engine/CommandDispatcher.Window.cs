@@ -185,7 +185,8 @@ public sealed partial class CommandDispatcher
         var options = new SnapshotOptions(
             ctx.Call.GetInt("depth") ?? ctx.Config.Snapshot.Depth,
             ctx.Call.GetBool("boxes"),
-            ctx.Call.GetBool("all") || ctx.Config.Snapshot.IncludeOffscreen);
+            ctx.Call.GetBool("all") || ctx.Config.Snapshot.IncludeOffscreen,
+            MaxRows(ctx));
         var text = BuildSnapshot(root, options, includePopups: root.Equals(window));
         // Some minimized windows (UWP) expose no content; WinForms ones keep it, and then there is nothing to say
         if (root.Equals(window) && IsMinimized(window) && window.FindFirst(ElementQuery.Any) is null)
@@ -203,6 +204,13 @@ public sealed partial class CommandDispatcher
         return $"{WindowSection()}### Snapshot\n```yaml\n{text}\n```";
     }
 
+    /// <summary>Items read from each table or list: <c>--max-rows</c>, else <c>snapshot.maxRows</c> in the config file (0 = all).</summary>
+    private static int MaxRows(CommandContext ctx)
+    {
+        var rows = ctx.Call.GetInt("max-rows") ?? ctx.Config.Snapshot.MaxRows;
+        return rows >= 0 ? rows : throw new CliException($"--max-rows must be 0 (all rows) or more: {rows}");
+    }
+
     private string Find(CommandContext ctx)
     {
         const int limit = 50;
@@ -217,7 +225,7 @@ public sealed partial class CommandDispatcher
         bool Match(string? s) => !string.IsNullOrEmpty(s) && (re?.IsMatch(s) ?? s.Contains(text, StringComparison.OrdinalIgnoreCase));
 
         var matches = _s.SearchRoots()
-            .SelectMany(root => root.CaptureTree().DescendantsAndSelf())
+            .SelectMany(root => root.CaptureTree(maxRows: MaxRows(ctx)).DescendantsAndSelf())
             .Where(n => Match(n.Name) || Match(n.AutomationId) || Match(n.Value))
             .ToList();
 
