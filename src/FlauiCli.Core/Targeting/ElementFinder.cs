@@ -67,8 +67,8 @@ internal static class ElementFinder
             {
                 var found = root.FindFirst(query);
                 if (found is null) continue;
-                // Rows that were asked for are usually off-screen: looking for a visible match would read every row after them
-                if (SearchBudget.Rows != default || !found.IsOffscreen) return found;
+                // Cells that were asked for are usually off-screen: looking for a visible match would read every row after them
+                if (SearchBudget.AsksForCells || !found.IsOffscreen) return found;
                 anyMatch = true;
                 break;
             }
@@ -98,11 +98,11 @@ internal static class ElementFinder
 
     /// <summary>
     /// Visible elements first, otherwise in tree order. Reading the state is a cross-process call per element, so this
-    /// stays in tree order when specific rows were asked for or the search did not finish, and stops at the deadline.
+    /// stays in tree order when specific cells were asked for or the search did not finish, and stops at the deadline.
     /// </summary>
     private static List<IUiElement> VisibleFirst(List<IUiElement> elements)
     {
-        if (SearchBudget.Rows != default || SearchBudget.Incomplete is not null) return elements;
+        if (SearchBudget.AsksForCells || SearchBudget.Incomplete is not null) return elements;
 
         var visible = new List<IUiElement>();
         var offscreen = new List<IUiElement>();

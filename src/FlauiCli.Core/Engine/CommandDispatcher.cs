@@ -136,6 +136,7 @@ public sealed partial class CommandDispatcher
                 try
                 {
                     SearchBudget.LimitRows(RowOption(ctx, "skip-rows") ?? 0, RowOption(ctx, "max-rows") ?? 0);
+                    SearchBudget.Column = ctx.Call.Get("column");
                     text = handler(ctx);
                 }
                 finally { handlerTime = total.Elapsed; }

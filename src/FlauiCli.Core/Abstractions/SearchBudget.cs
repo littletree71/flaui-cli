@@ -34,6 +34,19 @@ public static class SearchBudget
     /// <summary>Sets <see cref="Rows"/> for the current command.</summary>
     public static void LimitRows(int skip, int take) => _rows = (skip, take);
 
+    [ThreadStatic]
+    private static string? _column;
+
+    /// <summary>The header of the column a search inside a table reads (<c>--column</c>), or null for every column. Reset by <see cref="Begin"/>.</summary>
+    public static string? Column
+    {
+        get => _column;
+        set => _column = value;
+    }
+
+    /// <summary>Whether the command asked for specific rows or a column, which are usually off-screen.</summary>
+    public static bool AsksForCells => _rows != default || _column is not null;
+
     /// <summary>
     /// Why the last search did not cover everything it should have, or null when it did. A search that stops early returns
     /// what it found, so callers that need every match, or that report "not found", check this.
@@ -52,9 +65,10 @@ public static class SearchBudget
     /// </summary>
     public static IDisposable Begin(int timeoutMs, CancellationToken cancel = default)
     {
-        var previous = (_deadline, _cancel, _rows);
+        var previous = (_deadline, _cancel, _rows, _column);
         _incomplete = null;
         _rows = default;
+        _column = null;
         _deadline = DateTime.UtcNow.AddMilliseconds(Math.Max(0, timeoutMs));
         if (cancel.CanBeCanceled) _cancel = cancel;
         return new Scope(previous);
@@ -80,8 +94,8 @@ public static class SearchBudget
         if (IsCancelled) throw new OperationCanceledException("The command was cancelled because the client disconnected", _cancel);
     }
 
-    private sealed class Scope((DateTime? Deadline, CancellationToken Cancel, (int Skip, int Take) Rows) previous) : IDisposable
+    private sealed class Scope((DateTime? Deadline, CancellationToken Cancel, (int Skip, int Take) Rows, string? Column) previous) : IDisposable
     {
-        public void Dispose() => (_deadline, _cancel, _rows) = previous;
+        public void Dispose() => (_deadline, _cancel, _rows, _column) = previous;
     }
 }

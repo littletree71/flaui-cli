@@ -249,6 +249,8 @@ Scripts can produce documents directly: `flaui-cli run flow.yaml --doc docs/flow
   the refs it prints, or `get value "id=grid >> type=dataitem" --skip-rows 5000`.
   Why: a table with GridPattern jumps to that row directly. Without it (a DataGridView on .NET Framework 2.0, for example),
   the rows before it are walked, so a row far down may need a longer `--timeout`.
+- To read one column of a row, you can add `--column <header>`: `get value "id=grid >> type=dataitem" --skip-rows 5000 --column Amount`.
+  Why: cell names follow the system language (`Amount Row 5000`, `Amount 資料列 5000`), and the header text does not.
 - If a selector waits out `--timeout` in a large window, you can scope it from a nearby container.
   Why: past about 512 elements UIA3 truncates searches silently, and flaui-cli fills in the rest level by level within
   `--timeout`.

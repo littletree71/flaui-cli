@@ -60,6 +60,13 @@ public class TargetingTests
             Assert.Equal([hidden, shown], ElementFinder.FindAll(selector, [root]));
         }
 
+        // The same for a column asked for
+        using (SearchBudget.Begin(5000))
+        {
+            SearchBudget.Column = "Amount";
+            Assert.Same(hidden, ElementFinder.FindFirst(selector, [root]));
+        }
+
         // The search did not finish, or the time is up: no more cross-process reads to sort the result
         using (SearchBudget.Begin(5000))
         {

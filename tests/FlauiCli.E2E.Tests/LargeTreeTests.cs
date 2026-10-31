@@ -140,6 +140,27 @@ public sealed class LargeGridCliTests : IDisposable
 
         Ok("close");
     }
+
+    [Fact]
+    public void AColumnIsReadByItsHeader()
+    {
+        // 33 columns, most of them off the right edge, and Amount moved to the front
+        Ok("open", TestEnvironment.WinFormsLargeTreeExe, "grid", "7000", "wide");
+        const string cell = "id=dataGridView1 >> type=dataitem";
+
+        Assert.Contains("C200", Ok("get", "value", cell, "--skip-rows", "200", "--column", "Code", "--timeout", "5000").StdOut);
+        Assert.Contains("Item 200", Ok("get", "value", cell, "--skip-rows", "200", "--column", "Name", "--timeout", "5000").StdOut);
+        Assert.Contains("2000", Ok("get", "value", cell, "--skip-rows", "200", "--column", "Amount", "--timeout", "5000").StdOut);
+        Assert.Contains("E30R200", Ok("get", "value", cell, "--skip-rows", "200", "--column", "Extra30", "--timeout", "5000").StdOut);
+        Assert.Contains("C0", Ok("get", "value", cell, "--column", "Code", "--timeout", "5000").StdOut);
+
+        var missing = _cli.Run("get", "value", cell, "--column", "NoSuchColumn", "--timeout", "2000");
+        Assert.NotEqual(0, missing.ExitCode);
+        Assert.Contains("no column \"NoSuchColumn\"", missing.All);
+        Assert.Contains("\"Extra30\"", missing.All);
+
+        Ok("close");
+    }
 }
 
 /// <summary>

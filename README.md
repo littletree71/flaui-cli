@@ -297,6 +297,8 @@ Large tables (a DataGridView with thousands of rows) get special treatment, beca
   (`get value "id=grid >> type=dataitem" --skip-rows 5000`); `snapshot.maxRows` does not apply there. A table with GridPattern
   jumps to the row directly. Without it (a DataGridView on .NET Framework 2.0, for example), the rows before it are walked,
   so a row far down may need a longer `--timeout`.
+- `--column <header>` reads one column by its header text, in any system language, with a selector that searches inside a
+  table: `get value "id=grid >> type=dataitem" --skip-rows 5000 --column Amount`. An unknown header fails and lists the headers.
 - Every UI Automation call of a search is bounded by the time left of `--timeout`, and a command whose client is stopped
   (Ctrl+C) is cancelled, so the session keeps working.
 - For a cell that still cannot be listed, click it by position: `click id=dataGridView1 --offset 120,45`.

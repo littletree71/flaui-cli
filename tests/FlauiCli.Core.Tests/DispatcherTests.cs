@@ -1173,6 +1173,11 @@ public sealed class DispatcherTests : IDisposable
         Assert.Equal((0, 0), grid.LastSearchRows);
 
         Assert.Contains("--max-rows must be 0 or more", _app.Run("get", ("kind", "name"), ("target", "id=dataGridView1"), ("max-rows", "-1")).Error);
+
+        Ok(_app.Run("get", ("kind", "name"), ("target", "id=dataGridView1 >> name=\"Row 1\""), ("column", "Amount")));
+        Assert.Equal("Amount", grid.LastSearchColumn);
+        Ok(_app.Run("get", ("kind", "name"), ("target", "id=dataGridView1 >> name=\"Row 1\"")));
+        Assert.Null(grid.LastSearchColumn);
     }
 
     [Fact]

@@ -194,6 +194,7 @@ internal static class UiaSearch
         var elapsed = Stopwatch.StartNew();
         var walker = root.Automation.TreeWalkerFactory.GetRawViewWalker();
         var (skip, take) = SearchBudget.Rows;
+        var column = SearchBudget.Column;
         var read = 0;
         var stop = false;
         var rootIsTable = IsTable(root);   // before the cache scope: the root's properties are not cached
@@ -213,6 +214,7 @@ internal static class UiaSearch
         void Visit(AutomationElement el, bool isTable)
         {
             var rows = 0;
+            int? fromEnd = isTable && column is not null ? ColumnFromEnd(el, column, walker) : null;
             var child = Step(() => isTable && skip > 0 ? FirstRow(el, skip, walker, () => stop = stop || OutOfTime()) : walker.GetFirstChild(el));
             while (child is not null && !stop)
             {
@@ -226,22 +228,42 @@ internal static class UiaSearch
                     SearchBudget.ReportIncomplete($"only {take} rows of the table were searched (--max-rows), starting after {skip} rows (--skip-rows)");
                     return;
                 }
-                read++;
-                if (match(child))
+                var isDataRow = isTable && IsRow(child) && !(rows == 0 && skip == 0 && IsColumnHeaderRow(child, walker));
+                if (fromEnd is int k)
                 {
-                    result.Add(child);
-                    if (firstOnly)
-                    {
-                        stop = true;
-                        return;
-                    }
+                    // Only the cell of the column: nothing else in the row is read or matched
+                    if (isDataRow && CellFromEnd(child, k) is { } cell) Accept(cell);
                 }
-                Visit(child, IsTable(child));
+                else
+                {
+                    Accept(child);
+                    if (!stop) Visit(child, IsTable(child));
+                }
                 if (stop) return;
-                if (isTable && IsRow(child) && !(rows == 0 && skip == 0 && IsColumnHeaderRow(child, walker))) rows++;
+                if (isDataRow) rows++;
                 var current = child;
                 child = Step(() => walker.GetNextSibling(current));
             }
+        }
+
+        void Accept(AutomationElement el)
+        {
+            read++;
+            if (!match(el)) return;
+            result.Add(el);
+            if (firstOnly) stop = true;
+        }
+
+        AutomationElement? CellFromEnd(AutomationElement row, int fromEnd)
+        {
+            var cells = new List<AutomationElement>();
+            for (var cell = Step(() => walker.GetFirstChild(row)); cell is not null && !stop; )
+            {
+                cells.Add(cell);
+                var current = cell;
+                cell = Step(() => walker.GetNextSibling(current));
+            }
+            return fromEnd < cells.Count ? cells[cells.Count - 1 - fromEnd] : null;
         }
 
         AutomationElement? Step(Func<AutomationElement?> next)
@@ -297,6 +319,28 @@ internal static class UiaSearch
             index++;
         }
         return null;
+    }
+
+    /// <summary>
+    /// The position of a column counted from the end of a row. A header row and a data row may start differently (a
+    /// DataGridView has a corner cell and a row header in front, a WPF DataGrid neither), but they end with the same columns.
+    /// </summary>
+    private static int ColumnFromEnd(AutomationElement table, string column, ITreeWalker walker)
+    {
+        for (var child = walker.GetFirstChild(table); child is not null; child = walker.GetNextSibling(child))
+        {
+            var kind = Props.Val<ControlType>(child, child.Automation.PropertyLibrary.Element.ControlType);
+            if (kind == ControlType.ScrollBar) continue;
+            if (kind != ControlType.Header && !IsColumnHeaderRow(child, walker)) break;
+
+            var headers = new List<string>();
+            for (var header = walker.GetFirstChild(child); header is not null; header = walker.GetNextSibling(header))
+                headers.Add(Props.Ref<string>(header, header.Automation.PropertyLibrary.Element.Name) ?? "");
+            var index = headers.IndexOf(column);
+            if (index < 0) throw new CliException($"The table has no column \"{column}\". Its headers: {string.Join(", ", headers.Select(h => $"\"{h}\""))}");
+            return headers.Count - 1 - index;
+        }
+        throw new CliException($"--column needs column headers, and this table does not list any: use a selector for the cell instead of --column \"{column}\"");
     }
 
     /// <summary>Whether a child of a table is one of its rows, not a scroll bar or column header.</summary>

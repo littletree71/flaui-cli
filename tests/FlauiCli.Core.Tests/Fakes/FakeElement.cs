@@ -97,12 +97,16 @@ public sealed class FakeElement : IUiElement
     {
         FindFirstCalls++;
         LastSearchRows = SearchBudget.Rows;
+        LastSearchColumn = SearchBudget.Column;
         if (IncompleteSearch is { } why) SearchBudget.ReportIncomplete(why);
         return Descendants().FirstOrDefault(e => e.Alive && Matches(e, query));
     }
 
     /// <summary>The value of <see cref="SearchBudget.Rows"/> during the last FindFirst call on this element.</summary>
     public (int Skip, int Take) LastSearchRows { get; private set; }
+
+    /// <summary>The value of <see cref="SearchBudget.Column"/> during the last FindFirst call on this element.</summary>
+    public string? LastSearchColumn { get; private set; }
 
     /// <summary>Number of FindFirst calls on this element.</summary>
     public int FindFirstCalls { get; private set; }
