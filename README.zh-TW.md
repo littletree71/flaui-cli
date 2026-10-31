@@ -100,6 +100,7 @@ snapshot 輸出範例：
 selector 會自動等待元素出現，斷言會自動重試直到逾時（預設 5 秒，可用 `--timeout` 或設定檔調整）。
 值沒加引號時會去掉前後空白：名稱前後有空白的元素（例如沒有標題文字的 DataGridView 勾選欄，儲存格名稱是 `" Row 0"`）要寫成
 `name=" Row 0"`，或改用 `text=` / `regex=`。snapshot 會把這類名稱連同空白一起放在引號裡。
+儲存格在表格內部，所以要加上 `type=dataitem&&` 或限定在表格內：`type=dataitem&&name=" Row 0"`。
 
 ## 指令一覽
 
@@ -270,9 +271,9 @@ WinForms 程式）會比較慢。加快的方法：
 在其中搜尋會以 `UI Automation timed out (0x80131505)` 失敗：
 
 - `snapshot` 與 `find` 只讀每個表格或清單的前 50 列（`snapshot.maxRows`、`--max-rows`）。
-- selector 會略過表格內部，所以不論表格有多少列，都找得到表格旁的控制項；只有表格外沒有任何符合的元素時才會搜尋表格內部。
-  找表格內容的 selector（`type=dataitem`、`type=header`、`type=headeritem`）與限定在表格內的 selector
-  （`id=dataGridView1 >> name="Row 5"`）會直接搜尋表格。
+- selector 會略過表格內部，所以不論表格有多少列，都找得到表格旁的控制項。不分表格大小都是如此：只有找表格內容的 selector
+  （`type=dataitem`、`type=header`、`type=headeritem`）與限定在表格內的 selector（`id=dataGridView1 >> name="Row 5"`）
+  才會搜尋表格內部。
 - 搜尋中的每個 UI Automation 呼叫都限制在 `--timeout` 剩餘的時間內；client 被中止（Ctrl+C）時會取消該指令，session 可以繼續使用。
 - 仍然列不出來的儲存格，可以用位置點擊：`click id=dataGridView1 --offset 120,45`。
 

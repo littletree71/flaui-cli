@@ -128,7 +128,8 @@ public sealed class LargeGridTests : IDisposable
         {
             Assert.NotNull(_window.FindFirst(new ElementQuery(AutomationId: "filterTextBox")));
             Assert.Single(_window.FindAll(new ElementQuery(Kind: ControlKind.ToolBar)));
-            Assert.Single(_window.FindAll(new ElementQuery(AutomationId: "btnQuery")));
+            // ToolStrip items expose no AutomationId: the button is found by its name
+            Assert.Single(_window.FindAll(new ElementQuery(Name: "Query")));
         }
         Assert.True(sw.Elapsed < TimeSpan.FromSeconds(10), $"took {sw.Elapsed}");
     }
@@ -141,6 +142,29 @@ public sealed class LargeGridTests : IDisposable
             // Cells are data items: a query for table content searches the table
             Assert.NotNull(_window.FindFirst(new ElementQuery(Kind: ControlKind.DataItem)));
             Assert.Null(_window.FindFirst(new ElementQuery(AutomationId: "noSuchElement")));
+        }
+    }
+
+    [Fact]
+    public void ASelectorThatFindsNothingDoesNotEnterTheGrid()
+    {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        using (SearchBudget.Begin(5000))
+        {
+            Assert.Null(_window.FindFirst(new ElementQuery(AutomationId: "noSuchElement")));
+            Assert.Empty(_window.FindAll(new ElementQuery(AutomationId: "noSuchElement")));
+            // The name of a column header: only found when the query is scoped to the table
+            Assert.Null(_window.FindFirst(new ElementQuery(Name: "Code")));
+            // A search inside the grid would keep the application busy, and this would wait behind it
+            Assert.NotNull(_window.FindFirst(new ElementQuery(AutomationId: "filterTextBox")));
+        }
+        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(2), $"took {sw.Elapsed}");
+
+        using (SearchBudget.Begin(5000))
+        {
+            var grid = _window.FindFirst(new ElementQuery(AutomationId: "dataGridView1"));
+            Assert.NotNull(grid);
+            Assert.NotNull(grid.FindFirst(new ElementQuery(Name: "Code")));
         }
     }
 

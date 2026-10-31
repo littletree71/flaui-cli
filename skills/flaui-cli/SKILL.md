@@ -55,6 +55,7 @@ Action commands print a `### Snapshot` link to a file (`.flaui-cli/snapshot-*.ym
 
 Unquoted values are trimmed: for names with leading / trailing spaces (snapshot shows `dataitem " Row 0"`, typical of DataGridView
 check box cells without header text) use `name=" Row 0"`, `text=` or `regex=` instead of parsing snapshot text for a ref.
+Cells are inside a table, so add `type=dataitem&&` or scope from the table: `type=dataitem&&name=" Row 0"`, `id=grid >> name=" Row 0"`.
 Selectors wait for the element to appear (5 s by default, change with `--timeout`); assertions retry until the timeout too.
 
 ## Common commands
@@ -225,7 +226,7 @@ Scripts can produce documents directly: `flaui-cli run flow.yaml --doc docs/flow
   Why: in details view only the first column selects a row. Clicking the text of another column clears the selection.
 - DataGridView check box cells: you can set them with `fill <cell> True` / `False` and check them with `assert value <cell> True`.
   Why: they have no TogglePattern, so `check`, `uncheck` and `assert checked` fail. Cell refs change between commands, so
-  use a selector; cell names follow the system language (`" Row 0"`, `" 資料列 0"`).
+  use a selector such as `type=dataitem&&name=" Row 0"`; cell names follow the system language (`" Row 0"`, `" 資料列 0"`).
 
 ### Large windows
 
@@ -235,11 +236,12 @@ Scripts can produce documents directly: `flaui-cli run flow.yaml --doc docs/flow
   - prefer `id=` / `name=` / `type=` selectors, which stop at the first match, and scope them with `>>`
   - close unused windows and raise `--timeout`
 - To see whether the time goes into finding the element, the action or the automatic snapshot, you can add `--verbose`.
-- In a window with a large table (thousands of rows), selectors skip the inside of tables unless they target table content
-  (`type=dataitem` / `header` / `headeritem`) or are scoped from the table (`id=grid >> name="Row 5"`); the controls next to
-  the grid are found directly. Click a cell that cannot be listed by position: `click id=grid --offset x,y`, or
-  `click --at x,y` relative to the window (pixels as in a window screenshot).
-  Why: UIA reads table rows one by one; a search through thousands of them fails with `UI Automation timed out (0x80131505)`.
+- Selectors skip the inside of tables unless they target table content (`type=dataitem` / `header` / `headeritem`) or are
+  scoped from the table (`id=grid >> name="Row 5"`), so if a selector for something inside a table finds nothing, you can add
+  one of those. Click a cell that cannot be listed by position: `click id=grid --offset x,y`, or `click --at x,y` relative to
+  the window (pixels as in a window screenshot).
+  Why: UIA reads table rows one by one, and the application keeps working through thousands of them after the search times
+  out, so later commands fail too. The controls next to the grid are found directly.
 - If a selector waits out `--timeout` in a large window, you can scope it from a nearby container.
   Why: past about 512 elements UIA3 truncates searches silently, and flaui-cli fills in the rest level by level within
   `--timeout`.

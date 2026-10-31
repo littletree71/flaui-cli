@@ -33,9 +33,10 @@ namespace FlauiCli.Drivers;
 /// descendant search walks all of them before it reaches the controls after the grid, until it fails with
 /// UIA_E_TIMEOUT. Queries that do not target table content (<see cref="DataContainers.IsTableContent"/>) therefore skip
 /// the inside of tables: a UIA search that stops at the first table (UIA does not enter a table that matches), then a
-/// walk that does not enter tables, and only when nothing is found outside, a search inside the tables. A query scoped
-/// to a table (<c>id=grid &gt;&gt; ...</c>) searches it directly. Every UIA call is bounded by the time the command has
-/// left (<see cref="UiaTimeout"/>).
+/// walk that does not enter tables. They never fall back to a search inside the tables: the application keeps serving
+/// such a search after the call times out, and every later request waits behind it. A query scoped to a table
+/// (<c>id=grid &gt;&gt; ...</c>) searches it directly. Every UIA call is bounded by the time the command has left
+/// (<see cref="UiaTimeout"/>).
 /// </para>
 /// </summary>
 internal static class UiaSearch
@@ -46,8 +47,8 @@ internal static class UiaSearch
     /// <summary>
     /// The descendants of <paramref name="root"/> matching <paramref name="match"/> (the client-side form of
     /// <paramref name="query"/>). Complete when the tree is small; on a truncated tree, the matches UIA found in tree
-    /// order, or when it found none, those of a level-by-level search. Matches inside tables only come back when there
-    /// are none outside them (see the class remarks).
+    /// order, or when it found none, those of a level-by-level search. The inside of tables is left out unless the query
+    /// targets it (see the class remarks).
     /// </summary>
     public static List<AutomationElement> FindAllDescendants(AutomationElement root, ElementQuery query, Func<AutomationElement, bool> match)
     {
@@ -57,21 +58,14 @@ internal static class UiaSearch
         if (!SkipsTables(root, query)) return FindAllNative(root, match);
 
         var result = new List<AutomationElement>();
-        var tables = new List<AutomationElement>();
-        Walk(root, match, result, tables, firstOnly: false);
-        // Nothing outside the tables: the element may be inside one (a cell found by its name)
-        for (var i = 0; i < tables.Count && result.Count == 0 && !SearchBudget.IsCancelled; i++)
-        {
-            try { result.AddRange(FindAllNative(tables[i], match)); }
-            catch { /* the table did not answer in time, or it has gone */ }
-        }
+        Walk(root, match, result, firstOnly: false);
         return result;
     }
 
     /// <summary>
     /// The first descendant matching <paramref name="condition"/> (UIA FindFirst) or, when UIA finds none, one found by
-    /// a level-by-level search with <paramref name="match"/> (the same test, client-side). Elements outside tables come
-    /// first (see the class remarks).
+    /// a level-by-level search with <paramref name="match"/> (the same test, client-side). The inside of tables is left
+    /// out unless the query targets it (see the class remarks).
     /// </summary>
     public static AutomationElement? FindFirstDescendant(AutomationElement root, ConditionBase condition, ElementQuery query, Func<AutomationElement, bool> match)
     {
@@ -102,25 +96,8 @@ internal static class UiaSearch
         }
         if (first is not null && match(first)) return first;
 
-        var tables = new List<AutomationElement>();
-        Walk(root, match, result, tables, firstOnly: true);
-        if (result.Count > 0) return result[0];
-        foreach (var table in tables)
-        {
-            if (SearchBudget.IsCancelled) break;
-            try
-            {
-                using (UiaTimeout.Limit(table.Automation, SearchBudget.Remaining))
-                {
-                    if (table.FindFirstDescendant(condition) is { } inTable) return inTable;
-                }
-            }
-            catch
-            {
-                // The table did not answer in time, or it has gone
-            }
-        }
-        return null;
+        Walk(root, match, result, firstOnly: true);
+        return result.FirstOrDefault();
     }
 
     /// <summary>Whether a search under <paramref name="root"/> skips the inside of tables (the root itself is searched when it is one).</summary>
@@ -173,11 +150,10 @@ internal static class UiaSearch
 
     /// <summary>
     /// Adds the matching descendants of <paramref name="root"/> to <paramref name="result"/> in tree order, one request
-    /// per node, without entering tables (added to <paramref name="tables"/> instead), until the first match
-    /// (<paramref name="firstOnly"/>), the end of the tree or the end of <see cref="SearchBudget.Remaining"/>.
+    /// per node, without entering tables, until the first match (<paramref name="firstOnly"/>), the end of the tree or the
+    /// end of <see cref="SearchBudget.Remaining"/>.
     /// </summary>
-    private static void Walk(AutomationElement root, Func<AutomationElement, bool> match, List<AutomationElement> result,
-        List<AutomationElement> tables, bool firstOnly)
+    private static void Walk(AutomationElement root, Func<AutomationElement, bool> match, List<AutomationElement> result, bool firstOnly)
     {
         var budget = SearchBudget.Remaining;
         var elapsed = Stopwatch.StartNew();
@@ -204,8 +180,7 @@ internal static class UiaSearch
                     result.Add(child.Element);
                     if (firstOnly) return true;
                 }
-                if (child.IsTable) tables.Add(child.Element);
-                else if (Visit(child.Element)) return true;
+                if (!child.IsTable && Visit(child.Element)) return true;
             }
             return false;
         }

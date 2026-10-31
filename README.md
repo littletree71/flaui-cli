@@ -102,6 +102,7 @@ never taken for the app.
 Selectors wait for elements to appear and assertions retry until the timeout (5 s by default; change it with `--timeout` or the config file).
 Values are trimmed unless quoted: a name with leading or trailing spaces (a DataGridView check box cell without header text is
 named `" Row 0"`) needs `name=" Row 0"`, or `text=` / `regex=`. Snapshots show such names in quotes, spaces included.
+Cells are inside a table, so add `type=dataitem&&` or scope from the table: `type=dataitem&&name=" Row 0"`.
 
 ## Commands
 
@@ -285,9 +286,9 @@ Large tables (a DataGridView with thousands of rows) get special treatment, beca
 (about 20 ms per element on a .NET Framework 2.0 app) and a search through them fails with `UI Automation timed out (0x80131505)`:
 
 - `snapshot` and `find` read only the first 50 rows of each table or list (`snapshot.maxRows`, `--max-rows`).
-- Selectors skip the inside of tables, so the controls next to a grid are found however many rows it has. Only when nothing
-  outside the tables matches are the tables searched too. Selectors for table content (`type=dataitem`, `type=header`,
-  `type=headeritem`) and selectors scoped to a table (`id=dataGridView1 >> name="Row 5"`) search the table directly.
+- Selectors skip the inside of tables, so the controls next to a grid are found however many rows it has. This applies to
+  every table, large or small: only selectors for table content (`type=dataitem`, `type=header`, `type=headeritem`) and
+  selectors scoped to a table (`id=dataGridView1 >> name="Row 5"`) search inside it.
 - Every UI Automation call of a search is bounded by the time left of `--timeout`, and a command whose client is stopped
   (Ctrl+C) is cancelled, so the session keeps working.
 - For a cell that still cannot be listed, click it by position: `click id=dataGridView1 --offset 120,45`.

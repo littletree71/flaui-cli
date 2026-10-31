@@ -48,7 +48,7 @@ public static class DataContainers
     /// <summary>Containers whose items a snapshot caps at the row limit.</summary>
     public static bool IsCapped(ControlKind kind) => IsTable(kind) || kind == ControlKind.List;
 
-    /// <summary>Whether a query for this control type looks inside tables first (rows, cells, column headers).</summary>
+    /// <summary>Whether a query for this control type searches inside tables (rows, cells, column headers); other queries need a scope.</summary>
     public static bool IsTableContent(ControlKind? kind) => kind is ControlKind.DataItem or ControlKind.Header or ControlKind.HeaderItem;
 }
 
