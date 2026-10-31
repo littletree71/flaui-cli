@@ -111,7 +111,8 @@ public sealed partial class CommandDispatcher
     /// <summary>Applied to the config file's settings for every command (a script's own settings).</summary>
     public Action<CliConfig>? ConfigOverride { get; set; }
 
-    public CommandResult Execute(CommandCall call)
+    /// <param name="cancel">Cancelled when the client goes away: searches and waits stop, so later commands do not queue behind it.</param>
+    public CommandResult Execute(CommandCall call, CancellationToken cancel = default)
     {
         var total = Stopwatch.StartNew();
         CommandContext? ctx = null;
@@ -130,7 +131,7 @@ public sealed partial class CommandDispatcher
             ThrowIfInvokePending(call);
             string text;
             // Fallback searches on large trees share the command's timeout
-            using (SearchBudget.Begin(ctx.Timeout))
+            using (SearchBudget.Begin(ctx.Timeout, cancel))
             {
                 try { text = handler(ctx); }
                 finally { handlerTime = total.Elapsed; }
@@ -162,6 +163,15 @@ public sealed partial class CommandDispatcher
         catch (CliException ex)
         {
             return CommandResult.Failure(ex.Message, text: FailureTiming(ctx, handlerTime, total.Elapsed));
+        }
+        catch (OperationCanceledException ex) when (cancel.IsCancellationRequested)
+        {
+            return CommandResult.Failure(ex.Message, text: FailureTiming(ctx, handlerTime, total.Elapsed));
+        }
+        catch (Exception ex) when (UiaErrors.IsTimeout(ex))
+        {
+            return CommandResult.Failure($"{UiaErrors.TimeoutMessage} ({ex.GetType().Name}: {ex.Message})",
+                text: FailureTiming(ctx, handlerTime, total.Elapsed));
         }
         catch (Exception ex)
         {
@@ -371,6 +381,7 @@ public sealed partial class CommandDispatcher
         var sw = Stopwatch.StartNew();
         while (true)
         {
+            SearchBudget.ThrowIfCancelled();
             if (condition()) return true;
             if (sw.ElapsedMilliseconds >= timeoutMs) return false;
             Thread.Sleep(intervalMs);
@@ -398,7 +409,7 @@ public sealed partial class CommandDispatcher
             foreach (var w in _s.GetTopLevelWindows())
             {
                 if (w.Equals(root) || w.IsOffscreen) continue;
-                var tree = w.CaptureTree(depth, complete);
+                var tree = w.CaptureTree(depth, complete, options.MaxRows);
                 // A window inside another top-level window (an MDI child) is already part of that window's tree:
                 // reuse it instead of walking it a second time (only when the whole tree was captured)
                 if (rootNode is null && depth is null && rootId is not null)
@@ -407,7 +418,7 @@ public sealed partial class CommandDispatcher
             }
         }
 
-        var sb = new StringBuilder(SnapshotFormatter.Format(rootNode ?? root.CaptureTree(depth, complete), _s.Refs, options));
+        var sb = new StringBuilder(SnapshotFormatter.Format(rootNode ?? root.CaptureTree(depth, complete, options.MaxRows), _s.Refs, options));
         foreach (var tree in others)
         {
             sb.AppendLine();
@@ -422,7 +433,7 @@ public sealed partial class CommandDispatcher
         try
         {
             var window = _s.RequireWindow();
-            var options = new SnapshotOptions(ctx.Config.Snapshot.Depth, false, ctx.Config.Snapshot.IncludeOffscreen);
+            var options = new SnapshotOptions(ctx.Config.Snapshot.Depth, false, ctx.Config.Snapshot.IncludeOffscreen, MaxRows(ctx));
             // Not completed when UIA cuts a large tree: this runs after every action and is only a record
             var text = BuildSnapshot(window, options, includePopups: true, complete: false);
             var path = Path.Combine(ctx.OutputDir, $"snapshot-{Stamp()}.yml");

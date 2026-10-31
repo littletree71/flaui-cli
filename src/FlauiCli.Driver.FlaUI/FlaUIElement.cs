@@ -67,7 +67,10 @@ public sealed class FlaUIElement : IUiElement
     public Rectangle Bounds => Props.Bounds(Inner);
     public string? RuntimeId => Props.RuntimeId(Inner);
     public int ProcessId => Props.Val<int>(Inner, Lib.Element.ProcessId) ?? 0;
-    public nint WindowHandle => Props.Val<nint>(Inner, Lib.Element.NativeWindowHandle) ?? 0;
+    /// <summary>Read once: the handle of an element never changes, and it is needed when UIA no longer answers (see <see cref="IsAlive"/>).</summary>
+    public nint WindowHandle => _windowHandle != 0 ? _windowHandle : _windowHandle = Props.Val<nint>(Inner, Lib.Element.NativeWindowHandle) ?? 0;
+
+    private nint _windowHandle;
     public bool IsPassword => Props.Val<bool>(Inner, Lib.Element.IsPassword) ?? false;
 
     public bool IsAlive
@@ -76,11 +79,18 @@ public sealed class FlaUIElement : IUiElement
         {
             try
             {
-                if (!Inner.IsAvailable) return false;
+                // Not Inner.IsAvailable: it reports every failure as gone, including a provider that is only busy
+                _ = Inner.Properties.ProcessId.Value;
                 // UIA keeps reporting some closed windows as available (a WinForms MessageBox): a window whose handle
                 // no longer exists is gone
                 var hwnd = WindowHandle;
                 return hwnd == 0 || NativeWindows.Exists(hwnd);
+            }
+            catch (Exception ex) when (UiaErrors.IsTimeout(ex))
+            {
+                // The application did not answer in time (it may still be serving a search through a large table): the
+                // element has not gone, unless its window has
+                return _windowHandle == 0 || NativeWindows.Exists(_windowHandle);
             }
             catch { return false; }
         }
@@ -244,7 +254,8 @@ public sealed class FlaUIElement : IUiElement
         }
     }
 
-    public ElementNode CaptureTree(CaptureDepth? depth = null, bool complete = true) => TreeCapture.Capture(Inner, depth, complete);
+    public ElementNode CaptureTree(CaptureDepth? depth = null, bool complete = true, int maxRows = 0) =>
+        TreeCapture.Capture(Inner, depth, complete, maxRows);
 
     public void Focus() => Inner.Focus();
 

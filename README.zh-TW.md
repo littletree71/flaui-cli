@@ -73,7 +73,8 @@ snapshot 輸出範例：
 
 狀態標記：`[disabled]` `[checked]` `[mixed]` `[expanded]` `[collapsed]` `[selected]` `[focused]`。
 未命名的容器與畫面外的元素預設不列出；`snapshot --all` 列出完整樹，`--depth N` 限制深度，`--root <目標>` 只列子樹，
-`--boxes` 附上元素座標，`--filename f.yml` 存成檔案。每個動作指令執行後都會自動存一份 snapshot（`.flaui-cli/snapshot-*.yml`，可用 `autoSnapshot` 關閉）。
+`--boxes` 附上元素座標，`--filename f.yml` 存成檔案。表格與清單只列前 50 列，後面接一行 `- … 6950 more rows`；
+`--max-rows N`（或 `snapshot.maxRows`）可調整，`--max-rows 0` 讀取全部的列。每個動作指令執行後都會自動存一份 snapshot（`.flaui-cli/snapshot-*.yml`，可用 `autoSnapshot` 關閉）。
 
 `open` 也接受 Store App 的 AUMID（含 `!` 的值，例如 `Microsoft.WindowsCalculator_8wekyb3d8bbwe!App`）；
 `attach` 可指定 PID 或程序名稱、`--title <視窗標題>`，或兩者併用。
@@ -99,6 +100,7 @@ snapshot 輸出範例：
 selector 會自動等待元素出現，斷言會自動重試直到逾時（預設 5 秒，可用 `--timeout` 或設定檔調整）。
 值沒加引號時會去掉前後空白：名稱前後有空白的元素（例如沒有標題文字的 DataGridView 勾選欄，儲存格名稱是 `" Row 0"`）要寫成
 `name=" Row 0"`，或改用 `text=` / `regex=`。snapshot 會把這類名稱連同空白一起放在引號裡。
+儲存格在表格內部，所以要加上 `type=dataitem&&` 或限定在表格內：`type=dataitem&&name=" Row 0"`。
 
 ## 指令一覽
 
@@ -127,6 +129,8 @@ session 會繼續；關掉的是目前視窗時，會切回在它之前的目前
 不會列出 tooltip 與沒有名稱的 popup。
 `wait-window <標題>` 依序比對完全相同、以該文字開頭、包含該文字的標題；`--exact` 只接受完全相同的標題，
 `--regex` 把標題當成正規表示式（適合 MDI 子視窗，因為 MDI 主視窗的標題也會包含子視窗標題）。
+`click <目標> --offset x,y` 點在距離目標左上角 x,y 像素的位置，`click --at x,y` 點在距離目前視窗左上角 x,y 像素的位置（實體像素，
+與視窗截圖相同）：用於 UI Automation 列不出來的部分，例如超大表格的儲存格。
 結束碼：`0` 成功、`1` 斷言失敗、`2` 錯誤、`3` session 未啟動、`4` 工作站已鎖定（無法模擬輸入與截圖，解鎖後重試）。
 
 ## YAML 測試腳本
@@ -204,6 +208,8 @@ flaui-cli screenshot --mask id=customerName --mask-column "id=dataGridView1 >> n
 flaui-cli doc start --title "訂單" --mask-column "id=dataGridView1 >> name=Partner"   # 套用到文件的每一張截圖
 ```
 
+找不到元素時，`screenshot --mask-rect x,y,w,h` 以距離視窗左上角的像素（與視窗截圖相同）指定要蓋住的區域，同樣可以重複。
+
 遮蔽會先畫，紅框與編號後畫，所以不會被蓋住。`screenshot` 與 `doc step` 找不到遮蔽的目標時會失敗，不會存出未遮蔽的圖；
 `doc start` 給的遮蔽會套用到文件的每一張截圖，畫面上有出現的地方才遮。
 
@@ -216,7 +222,7 @@ flaui-cli doc start --title "訂單" --mask-column "id=dataGridView1 >> name=Par
   "timeouts": { "action": 5000, "launch": 20000, "unlock": 0 },
   "outputDir": ".flaui-cli",
   "autoSnapshot": true,
-  "snapshot": { "depth": 0, "includeOffscreen": false },
+  "snapshot": { "depth": 0, "includeOffscreen": false, "maxRows": 50 },
   "highlight": { "padding": 3, "outline": true, "badge": "auto" },
   "logLevel": "info",
   "daemonIdleMinutes": 30
@@ -232,6 +238,7 @@ flaui-cli doc start --title "訂單" --mask-column "id=dataGridView1 >> name=Par
 | `autoSnapshot` | `true` | 每個動作指令後自動存一份 snapshot。大型視窗建議關閉 |
 | `snapshot.depth` | `0` | `snapshot` 與自動 snapshot 的預設深度，`0` 為不限。`snapshot --depth` 可覆寫 |
 | `snapshot.includeOffscreen` | `false` | snapshot 是否包含畫面外的元素（同 `snapshot --all`） |
+| `snapshot.maxRows` | `50` | `snapshot`、`find` 與自動 snapshot 從每個表格或清單讀取的列數，其餘印成 `… N more rows`。`0` 為全部讀取。`--max-rows` 可覆寫 |
 | `highlight.padding` | `3` | 元素與紅框之間的像素：正數在元素外、`0` 貼齊邊緣、負數在元素內 |
 | `highlight.outline` | `true` | 設為 `false` 時不畫紅框，只畫編號 |
 | `highlight.badge` | `auto` | 編號的位置：`auto`（逐一自動決定）、`top`、`bottom`、`left`、`right`、`top-left`、`top-right`、`bottom-left`、`bottom-right` 或 `inside`（紅框內左上角） |
@@ -260,9 +267,19 @@ WinForms 程式）會比較慢。加快的方法：
 - 尋找元素超過預設 5 秒時，調高 `--timeout`（或 `timeouts.action`）。
 - 加上 `--verbose` 可以看到時間花在哪裡（`find` / `action` / `snapshot`）；回報指令太慢時請附上它的輸出。
 
+大型表格（有數千列的 DataGridView）會特別處理，因為 UI Automation 要逐列讀取（.NET Framework 2.0 程式每個元素約 20 ms），
+在其中搜尋會以 `UI Automation timed out (0x80131505)` 失敗：
+
+- `snapshot` 與 `find` 只讀每個表格或清單的前 50 列（`snapshot.maxRows`、`--max-rows`）。
+- selector 會略過表格內部，所以不論表格有多少列，都找得到表格旁的控制項。不分表格大小都是如此：只有找表格內容的 selector
+  （`type=dataitem`、`type=header`、`type=headeritem`）與限定在表格內的 selector（`id=dataGridView1 >> name="Row 5"`）
+  才會搜尋表格內部。
+- 搜尋中的每個 UI Automation 呼叫都限制在 `--timeout` 剩餘的時間內；client 被中止（Ctrl+C）時會取消該指令，session 可以繼續使用。
+- 仍然列不出來的儲存格，可以用位置點擊：`click id=dataGridView1 --offset 120,45`。
+
 UIA3 的子孫搜尋在某些 provider（例如 WinForms）走訪約 512 個元素後就會停止，而且不會回報錯誤。flaui-cli 會保留 UIA 找到的
-結果並補上其餘部分：視窗透過列舉子視窗與擁有的視窗取得，其他 selector 在命令的 `--timeout` 內逐層往下找，`snapshot` 只重讀被
-截斷的部分（最多 10 秒）。每個動作後自動存的 snapshot 不會補完，以維持動作速度。在這種視窗中找不到任何符合的 selector 時，會一直
+結果並補上其餘部分：視窗透過列舉子視窗與擁有的視窗取得，其他 selector 在命令的 `--timeout` 內逐層往下找，`snapshot` 逐個節點讀取
+樹（最多 20 秒，`--timeout` 較長時以它為準）。每個動作後自動存的 snapshot 最多讀 5 秒，以維持動作速度。在這種視窗中找不到任何符合的 selector 時，會一直
 找到逾時為止；用 `>>` 從靠近目標的容器開始找，可以讓搜尋維持在小範圍。大型視窗深處的元素來不及找到時，請調高 `--timeout`。
 以上都只透過 UI Automation 與視窗列舉，flaui-cli 不會讀寫受測程式的記憶體。
 

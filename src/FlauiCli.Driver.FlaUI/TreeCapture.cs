@@ -3,23 +3,42 @@ using FlaUI.Core;
 using FlaUI.Core.AutomationElements;
 using FlaUI.Core.Conditions;
 using FlaUI.Core.Definitions;
+using FlauiCli.Core;
 using FlauiCli.Core.Abstractions;
 
 namespace FlauiCli.Drivers;
 
-/// <summary>Fetches a whole subtree (Control View) with one UIA CacheRequest, drastically reducing cross-process calls.</summary>
+/// <summary>
+/// Fetches a subtree (Control View) with one UIA CacheRequest per node: each request returns the node together with
+/// the properties of its children, which keeps cross-process calls low.
+/// <para>
+/// The tree is read one node at a time rather than with one Subtree request: UIA3 silently cuts a Subtree request
+/// after about 512 elements (see <see cref="UiaSearch"/>), and on a window with a large table such a request walks every
+/// row (about 20 ms per element on a .NET Framework 2.0 WinForms app) until it fails with UIA_E_TIMEOUT, so nothing
+/// after the table is captured. Tables and lists (<see cref="DataContainers.IsCapped"/>) are read item by item up to the
+/// row limit, and the rest is counted (<see cref="ElementNode.OmittedChildren"/>) instead of read.
+/// </para>
+/// </summary>
 internal static class TreeCapture
 {
-    /// <summary>Node limit so that huge data grids do not blow up the output.</summary>
+    /// <summary>Node limit so that huge trees do not blow up the output.</summary>
     public const int MaxNodes = 5000;
 
-    /// <summary>How long filling in a capture UIA cut short may take (a snapshot is not bound to the command timeout).</summary>
-    private static readonly TimeSpan RepairBudget = TimeSpan.FromSeconds(10);
+    /// <summary>How long a snapshot may read the tree (longer when the command's --timeout allows more).</summary>
+    private static readonly TimeSpan FullBudget = TimeSpan.FromSeconds(20);
 
-    /// <param name="complete">Fill in a capture UIA cut short (see <see cref="Repair"/>); false keeps it as is.</param>
-    public static ElementNode Capture(AutomationElement root, CaptureDepth? depth = null, bool complete = true)
+    /// <summary>The same for a capture that does not need to be complete (the snapshot saved after every action).</summary>
+    private static readonly TimeSpan QuickBudget = TimeSpan.FromSeconds(5);
+
+    /// <param name="complete">Whether the capture may take <see cref="FullBudget"/>; false stops after <see cref="QuickBudget"/>.</param>
+    /// <param name="maxRows">Items read from each table or list; 0 reads all of them.</param>
+    public static ElementNode Capture(AutomationElement root, CaptureDepth? depth = null, bool complete = true, int maxRows = 0)
     {
-        var tree = (depth is { MaxDepth: > 0 } ? CaptureLimited(root, depth) : null) ?? CaptureRaw(root, complete);
+        var budget = complete ? FullBudget : QuickBudget;
+        if (complete && SearchBudget.Remaining > budget) budget = SearchBudget.Remaining;
+        var walker = new Walker(depth is { MaxDepth: > 0 } ? depth : null, maxRows, budget);
+        // Some providers do not support caching; fall back to reading element by element
+        var tree = walker.Capture(root) ?? walker.ElementByElement(root);
         // SelectionPattern is not cached: fill in the selected value of non-editable ComboBoxes (usually only a few)
         foreach (var n in tree.DescendantsAndSelf().Where(n => n.Kind == ControlKind.ComboBox && n.Value is null))
             n.Value = FlaUIElement.SelectedItemName(((FlaUIElement)n.Element).Inner);
@@ -50,176 +69,204 @@ internal static class TreeCapture
         cr.Add(lib.Value.Value);
         cr.Add(lib.ExpandCollapse.ExpandCollapseState);
         cr.Add(lib.SelectionItem.IsSelected);
+        cr.Add(lib.Grid.RowCount);
         return cr;
     }
 
-    private static ElementNode CaptureRaw(AutomationElement root, bool complete)
+    /// <summary>One capture: the node count, the time budget and the limits.</summary>
+    private sealed class Walker(CaptureDepth? depth, int maxRows, TimeSpan budget)
     {
-        var count = 0;
-        // Some providers do not support caching; fall back to reading element by element
-        return CaptureSubtree(root, ref count, repairTime: null, complete) ?? Build(root, cachedMode: false, ref count);
+        private readonly Stopwatch _elapsed = Stopwatch.StartNew();
+        private int _count;
+
+        private TimeSpan Left => budget - _elapsed.Elapsed;
+
+        private bool Stopped => _count >= MaxNodes || Left <= TimeSpan.Zero || SearchBudget.IsCancelled;
+
+        private bool Caps(ElementNode node) => maxRows > 0 && DataContainers.IsCapped(node.Kind);
+
+        /// <summary>The capture of <paramref name="root"/>, or null when the provider does not support caching.</summary>
+        public ElementNode? Capture(AutomationElement root)
+        {
+            try
+            {
+                using (NewCacheRequest(root.Automation, TreeScope.Element | TreeScope.Children).Activate())
+                {
+                    // The root alone first: when it is a table, its rows are read one by one instead of all at once
+                    AutomationElement? self;
+                    using (UiaTimeout.Limit(root.Automation, Left))
+                    using (NewCacheRequest(root.Automation, TreeScope.Element).Activate())
+                        self = root.FindFirst(TreeScope.Element, TrueCondition.Default);
+                    if (self is null) return null;
+                    _count = 1;
+                    var node = CreateNode(self);
+                    if (Caps(node))
+                    {
+                        AddChildren(node, self, ReadItems(node, self, expand: true), level: 0, transparent: false);
+                        return node;
+                    }
+
+                    AutomationElement? withChildren;
+                    using (UiaTimeout.Limit(root.Automation, Left)) withChildren = root.FindFirst(TreeScope.Element, TrueCondition.Default);
+                    if (withChildren is not null) AddChildren(node, withChildren, level: 0, transparent: false);
+                    return node;
+                }
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Adds the children of <paramref name="el"/> to <paramref name="node"/>; their own children are fetched while
+        /// the depth allows. <paramref name="level"/> is the printed depth of the node; a transparent node is not
+        /// printed, so its children stay on the same level. Runs inside a CacheRequest with Element and Children scope.
+        /// </summary>
+        private void AddChildren(ElementNode node, AutomationElement el, int level, bool transparent) =>
+            AddChildren(node, el, Children(node, el, depth?.ExpandsChildren(level, transparent) ?? true), level, transparent);
+
+        private void AddChildren(ElementNode node, AutomationElement el, Items children, int level, bool transparent)
+        {
+            var expand = depth?.ExpandsChildren(level, transparent) ?? true;
+            var childLevel = CaptureDepth.ChildLevel(level, transparent);
+            for (var i = 0; i < children.Elements.Count; i++)
+            {
+                if (Stopped)
+                {
+                    node.OmittedChildren = ElementNode.UnknownCount;
+                    break;
+                }
+                var child = children.Elements[i];
+                _count++;
+                var childNode = CreateNode(child);
+                node.Children.Add(childNode);
+                if (!expand) continue;
+
+                var childTransparent = depth?.IsTransparent(childNode) ?? false;
+                if (Caps(childNode))
+                {
+                    // Never request all children of a table at once: read its first rows one by one
+                    AddChildren(childNode, child, ReadItems(childNode, child, depth?.ExpandsChildren(childLevel, childTransparent) ?? true), childLevel, childTransparent);
+                    continue;
+                }
+                if (children.WithChildren)
+                {
+                    AddChildren(childNode, child, childLevel, childTransparent);
+                    continue;
+                }
+
+                AutomationElement? withChildren;
+                try
+                {
+                    using (UiaTimeout.Limit(child.Automation, Left)) withChildren = child.FindFirst(TreeScope.Element, TrueCondition.Default);
+                }
+                catch (Exception ex) when (UiaErrors.IsTimeout(ex) && !Stopped)
+                {
+                    // The children did not arrive in time all at once (one of them may be a large table): read them one by one
+                    AddChildren(childNode, child, ReadItems(childNode, child, expand: true, limit: int.MaxValue), childLevel, childTransparent);
+                    continue;
+                }
+                catch
+                {
+                    withChildren = null;   // the element went away
+                }
+                if (withChildren is not null) AddChildren(childNode, withChildren, childLevel, childTransparent);
+            }
+        }
+
+        /// <summary>The cached children of <paramref name="el"/>; a capped container's first items instead.</summary>
+        private Items Children(ElementNode node, AutomationElement el, bool expand)
+        {
+            if (Caps(node)) return ReadItems(node, el, expand);
+            try { return new Items(el.CachedChildren, WithChildren: false); }
+            catch { return new Items([], WithChildren: false); }
+        }
+
+        /// <summary>
+        /// The first children of <paramref name="el"/>, read one by one with a TreeWalker (each with its own children
+        /// cached), up to the row limit, or only the first one when <paramref name="expand"/> is false (the snapshot then
+        /// only shows that there are children). Children that are not read are counted in <see cref="ElementNode.OmittedChildren"/>:
+        /// from the table's row count when it has one, else as an unknown number.
+        /// </summary>
+        private Items ReadItems(ElementNode node, AutomationElement el, bool expand, int? limit = null)
+        {
+            var max = limit ?? (expand ? maxRows : 1);
+            var result = new List<AutomationElement>();
+            var walker = el.Automation.TreeWalkerFactory.GetControlViewWalker();
+            try
+            {
+                using (UiaTimeout.Limit(el.Automation, Left))
+                {
+                    var child = walker.GetFirstChild(el);
+                    while (child is not null && result.Count < max && !Stopped)
+                    {
+                        result.Add(child);
+                        child = walker.GetNextSibling(child);
+                    }
+                    if (child is not null && expand) node.OmittedChildren = Omitted(el, result);
+                }
+            }
+            catch
+            {
+                // The element went away, or it did not answer in time: keep what was read
+                if (expand) node.OmittedChildren = ElementNode.UnknownCount;
+            }
+            return new Items(result, WithChildren: true);
+        }
+
+        /// <summary>
+        /// The number of rows that were not read, from the GridPattern row count (rows only: header rows and scroll bars
+        /// read among the children are not counted), or <see cref="ElementNode.UnknownCount"/>.
+        /// </summary>
+        private static int Omitted(AutomationElement table, List<AutomationElement> read)
+        {
+            var rows = Props.Val<int>(table, table.Automation.PropertyLibrary.Grid.RowCount);
+            var readRows = read.Count(e => Props.Val<ControlType>(e, e.Automation.PropertyLibrary.Element.ControlType) is not
+                (ControlType.Header or ControlType.HeaderItem or ControlType.ScrollBar));
+            return rows is int total && total > readRows ? total - readRows : ElementNode.UnknownCount;
+        }
+
+        /// <summary>
+        /// Reads the tree without caching (for providers that do not support it), within the same limits; the items of a
+        /// table past the row limit are not read.
+        /// </summary>
+        public ElementNode ElementByElement(AutomationElement el)
+        {
+            _count++;
+            var node = CreateNode(el);
+            if (Stopped) return node;
+
+            try
+            {
+                using (UiaTimeout.Limit(el.Automation, Left))
+                {
+                    var walker = el.Automation.TreeWalkerFactory.GetControlViewWalker();
+                    var max = Caps(node) ? maxRows : int.MaxValue;
+                    var child = walker.GetFirstChild(el);
+                    for (var read = 0; child is not null; read++)
+                    {
+                        if (read >= max || Stopped)
+                        {
+                            node.OmittedChildren = ElementNode.UnknownCount;
+                            break;
+                        }
+                        node.Children.Add(ElementByElement(child));
+                        child = walker.GetNextSibling(child);
+                    }
+                }
+            }
+            catch
+            {
+                // The element went away, or it did not answer in time
+            }
+
+            return node;
+        }
     }
 
-    /// <summary>
-    /// Captures the subtree of <paramref name="root"/> with one Subtree CacheRequest. UIA3 silently cuts such a request
-    /// after about 512 elements (see <see cref="UiaSearch"/>); when the capture is that large, the missing part is filled
-    /// in by <see cref="Repair"/> for at most <see cref="RepairBudget"/>. Null when caching is not supported.
-    /// </summary>
-    private static ElementNode? CaptureSubtree(AutomationElement root, ref int count, Stopwatch? repairTime, bool complete = true)
-    {
-        var start = count;
-        ElementNode whole;
-        try
-        {
-            using (NewCacheRequest(root.Automation, TreeScope.Subtree).Activate())
-            {
-                var cached = root.FindFirst(TreeScope.Element, TrueCondition.Default);
-                if (cached is null) return null;
-                whole = Build(cached, cachedMode: true, ref count);
-            }
-        }
-        catch
-        {
-            return null;
-        }
-
-        if (!complete || count - start < UiaSearch.TruncationThreshold || count >= MaxNodes) return whole;
-        repairTime ??= Stopwatch.StartNew();
-        Repair(root, whole, ref count, repairTime);
-        return whole;
-    }
-
-    /// <summary>
-    /// Completes <paramref name="cut"/>, a capture of <paramref name="el"/> that UIA may have cut. The cut keeps a prefix
-    /// of the tree in pre-order, so among the children of a node, those before the last child that has children of its
-    /// own are complete, that child may be cut further down (repaired recursively), and the children after it were not
-    /// expanded (captured now). Only the missing part is read again. Stops filling in after the time budget.
-    /// </summary>
-    private static void Repair(AutomationElement el, ElementNode cut, ref int count, Stopwatch elapsed)
-    {
-        if (elapsed.Elapsed > RepairBudget || count >= MaxNodes) return;
-
-        // The real children of el, with their properties (one request)
-        List<(AutomationElement Element, ElementNode Node)> children;
-        try
-        {
-            using (NewCacheRequest(el.Automation, TreeScope.Element | TreeScope.Children).Activate())
-            {
-                var cached = el.FindFirst(TreeScope.Element, TrueCondition.Default);
-                if (cached is null) return;
-                children = [.. cached.CachedChildren.Select(c => (c, CreateNode(c)))];
-            }
-        }
-        catch
-        {
-            return;
-        }
-
-        var lastExpanded = cut.Children.FindLastIndex(c => c.Children.Count > 0);
-        var position = new Dictionary<string, int>();
-        for (var i = 0; i < cut.Children.Count; i++)
-        {
-            if (cut.Children[i].RuntimeId is { } id) position.TryAdd(id, i);
-        }
-
-        var repaired = new List<ElementNode>();
-        foreach (var (child, fresh) in children)
-        {
-            var i = fresh.RuntimeId is { } id && position.TryGetValue(id, out var p) ? p : -1;
-            if (i >= 0 && i < lastExpanded)
-            {
-                repaired.Add(cut.Children[i]);   // entirely before the cut: complete
-            }
-            else if (i >= 0 && i == lastExpanded)
-            {
-                Repair(child, cut.Children[i], ref count, elapsed);   // the cut runs through this subtree
-                repaired.Add(cut.Children[i]);
-            }
-            else if (elapsed.Elapsed <= RepairBudget && count < MaxNodes)
-            {
-                repaired.Add(CaptureSubtree(child, ref count, elapsed) ?? fresh);   // after the cut: not read yet
-            }
-            else
-            {
-                repaired.Add(i >= 0 ? cut.Children[i] : fresh);
-            }
-        }
-
-        cut.Children.Clear();
-        cut.Children.AddRange(repaired);
-    }
-
-    /// <summary>
-    /// Depth-limited capture: fetches one level at a time (each node together with its children in one CacheRequest)
-    /// and stops below the last printed level, so a shallow snapshot of a huge window does not walk the whole tree.
-    /// Returns null when the provider does not support caching (the caller then captures the whole tree).
-    /// </summary>
-    private static ElementNode? CaptureLimited(AutomationElement root, CaptureDepth depth)
-    {
-        try
-        {
-            using (NewCacheRequest(root.Automation, TreeScope.Element | TreeScope.Children).Activate())
-            {
-                var cached = root.FindFirst(TreeScope.Element, TrueCondition.Default);
-                if (cached is null) return null;
-                var count = 1;
-                var node = CreateNode(cached);
-                AddLimitedChildren(node, cached, level: 0, transparent: false, depth, ref count);
-                return node;
-            }
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
-    /// <summary>
-    /// Adds the children of <paramref name="el"/> (whose children are cached). <paramref name="level"/> is the
-    /// printed depth of the node; a transparent node is not printed, so its children stay on the same level.
-    /// </summary>
-    private static void AddLimitedChildren(ElementNode node, AutomationElement el, int level, bool transparent, CaptureDepth depth, ref int count)
-    {
-        AutomationElement[] children;
-        try { children = el.CachedChildren; }
-        catch { children = []; }
-
-        var expand = depth.ExpandsChildren(level, transparent);
-        var childLevel = CaptureDepth.ChildLevel(level, transparent);
-        foreach (var child in children)
-        {
-            if (count >= MaxNodes) break;
-            count++;
-            var childNode = CreateNode(child);
-            node.Children.Add(childNode);
-            if (!expand) continue;
-
-            AutomationElement? withChildren;
-            try { withChildren = child.FindFirst(TreeScope.Element, TrueCondition.Default); }
-            catch { withChildren = null; }
-            if (withChildren is not null)
-                AddLimitedChildren(childNode, withChildren, childLevel, depth.IsTransparent(childNode), depth, ref count);
-        }
-    }
-
-    private static ElementNode Build(AutomationElement el, bool cachedMode, ref int count)
-    {
-        count++;
-        var node = CreateNode(el);
-        if (count >= MaxNodes) return node;
-
-        AutomationElement[] children;
-        try { children = cachedMode ? el.CachedChildren : el.FindAllChildren(); }
-        catch { children = []; }
-
-        foreach (var child in children)
-        {
-            if (count >= MaxNodes) break;
-            node.Children.Add(Build(child, cachedMode, ref count));
-        }
-
-        return node;
-    }
+    /// <param name="WithChildren">Whether each element was fetched together with its own children.</param>
+    private sealed record Items(IReadOnlyList<AutomationElement> Elements, bool WithChildren);
 
     /// <summary>Reads the properties of one element (from the cache while a CacheRequest is active).</summary>
     private static ElementNode CreateNode(AutomationElement el)

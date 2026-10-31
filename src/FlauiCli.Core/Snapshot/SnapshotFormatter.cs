@@ -4,7 +4,8 @@ using FlauiCli.Core.Targeting;
 
 namespace FlauiCli.Core.Snapshot;
 
-public sealed record SnapshotOptions(int MaxDepth = 0, bool Boxes = false, bool All = false);
+/// <param name="MaxRows">Items read from each table or list (0 = all); the rest is printed as one "… N more rows" line.</param>
+public sealed record SnapshotOptions(int MaxDepth = 0, bool Boxes = false, bool All = false, int MaxRows = DataContainers.DefaultMaxRows);
 
 /// <summary>
 /// Formats a UI tree as YAML-like text modelled on Playwright's aria snapshots:
@@ -73,6 +74,7 @@ internal static class SnapshotFormatter
             {
                 // Unnamed pure containers are not printed; their children move up one level
                 foreach (var c in n.Children) Emit(sb, c, refs, o, collapse, indent, depth, isRoot: false);
+                EmitOmitted(sb, n, indent);
                 return;
             }
         }
@@ -88,13 +90,23 @@ internal static class SnapshotFormatter
 
         if (o.MaxDepth > 0 && depth + 1 >= o.MaxDepth)
         {
-            if (n.Children.Count > 0) sb.Append(" …");
+            if (n.Children.Count > 0 || n.OmittedChildren != 0) sb.Append(" …");
             sb.AppendLine();
             return;
         }
 
         sb.AppendLine();
         foreach (var c in n.Children) Emit(sb, c, refs, o, collapse, indent + 1, depth + 1, isRoot: false);
+        EmitOmitted(sb, n, indent + 1);
+    }
+
+    /// <summary>The line for the children that were not read, for example <c>- … 6950 more rows</c>.</summary>
+    private static void EmitOmitted(StringBuilder sb, ElementNode n, int indent)
+    {
+        if (n.OmittedChildren == 0) return;
+        var what = DataContainers.IsTable(n.Kind) ? "rows" : n.Kind == ControlKind.List ? "items" : "elements";
+        sb.Append(' ', indent * 2).Append("- … ");
+        sb.AppendLine(n.OmittedChildren > 0 ? $"{n.OmittedChildren} more {what}" : $"more {what} (not read)");
     }
 
     internal static bool IsPureContainer(ElementNode n) =>

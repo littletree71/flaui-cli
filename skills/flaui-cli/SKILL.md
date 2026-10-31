@@ -36,6 +36,7 @@ Action commands print a `### Snapshot` link to a file (`.flaui-cli/snapshot-*.ym
 - State markers: `[disabled]` `[checked]` `[mixed]` `[expanded]` `[collapsed]` `[selected]` `[focused]`.
 - Unnamed containers and off-screen elements are omitted; use `snapshot --all` for the full tree, `--depth N` to limit depth,
   `--root e5` for a subtree, `--boxes` to add bounds (`[box=x,y,w,h]`) and `--filename f.yml` to save to a file.
+- Tables and lists show their first 50 rows and then `- … N more rows`; `--max-rows N` changes that (`0` = all rows).
 
 ## Targeting elements
 
@@ -54,6 +55,7 @@ Action commands print a `### Snapshot` link to a file (`.flaui-cli/snapshot-*.ym
 
 Unquoted values are trimmed: for names with leading / trailing spaces (snapshot shows `dataitem " Row 0"`, typical of DataGridView
 check box cells without header text) use `name=" Row 0"`, `text=` or `regex=` instead of parsing snapshot text for a ref.
+Cells are inside a table, so add `type=dataitem&&` or scope from the table: `type=dataitem&&name=" Row 0"`, `id=grid >> name=" Row 0"`.
 Selectors wait for the element to appear (5 s by default, change with `--timeout`); assertions retry until the timeout too.
 
 ## Common commands
@@ -63,10 +65,10 @@ Selectors wait for the element to appear (5 s by default, change with `--timeout
 | Application | `open <exe\|AUMID> [args] [--window title]`, `attach [pid\|name] [--title title]`, `close [--keep-app]`, `status`, `list`, `close-all`, `kill-all`, `lock-status` |
 | Windows | `windows`, `window <index\|ref\|title>`, `focus [t]`, `wait-window <title> [--exact\|--regex] [--no-switch]`, `close-window [index\|ref\|title]`, `maximize`, `minimize`, `restore`, `resize W H`, `move X Y` |
 | Inspection | `snapshot`, `find <text> [--regex]`, `inspect <target>` (all properties, patterns and a suggested selector) |
-| Actions | `click <t> [--button right] [--double] [--invoke]`, `dblclick`, `hover`, `fill <t> <text> [--keyboard]`, `type <text>`, `press <keys> [--target t] [--repeat n]` (`Enter`, `Ctrl+S`), `select <t> <item or #index> [--keyboard] [--click]`, `check`, `uncheck`, `expand`, `collapse`, `invoke`, `scroll <t> [--dir down] [--amount 3]`, `drag <src> <dst>` |
+| Actions | `click <t> [--button right] [--double] [--invoke] [--offset x,y]`, `click --at x,y`, `dblclick`, `hover`, `fill <t> <text> [--keyboard]`, `type <text>`, `press <keys> [--target t] [--repeat n]` (`Enter`, `Ctrl+S`), `select <t> <item or #index> [--keyboard] [--click]`, `check`, `uncheck`, `expand`, `collapse`, `invoke`, `scroll <t> [--dir down] [--amount 3]`, `drag <src> <dst>` |
 | Reading | `get text\|value\|name\|state\|rect <t>`, `get prop <t> HelpText` |
 | Waiting / asserting | `wait <t> --state visible\|hidden\|exists\|gone\|enabled\|disabled`, `assert exists\|not-exists\|visible\|hidden\|enabled\|disabled\|checked\|unchecked <t>`, `assert text\|contains\|matches\|value <t> <expected>`, `sleep <ms>` |
-| Screenshots | `screenshot [t] [--filename f.png] [--highlight t ...] [--highlight-padding px] [--no-outline] [--badge-position p] [--mask t ...] [--mask-column header ...] [--screen]` |
+| Screenshots | `screenshot [t] [--filename f.png] [--highlight t ...] [--highlight-padding px] [--no-outline] [--badge-position p] [--mask t ...] [--mask-column header ...] [--mask-rect x,y,w,h ...] [--screen]` |
 
 Element commands take `--timeout <ms>`; action commands take `--note <text>` (the step description in documents).
 `close` closes the window and stops the session's daemon; `close --keep-app` ends the session and leaves the app running.
@@ -134,7 +136,8 @@ captured after they run, so the screenshot shows the entered value. Tooltips lef
 
 To hide names or other private data, add `--mask <t>` (an element) or `--mask-column <column header>` (every visible cell of a
 table column, for example `--mask-column "id=dataGridView1 >> name=Partner"`) to `screenshot` / `doc step`, or to `doc start` to
-cover them in every screenshot of the document. A solid box is drawn before outlines and badges. `screenshot` / `doc step` fail
+cover them in every screenshot of the document. When the element cannot be found, `screenshot --mask-rect x,y,w,h` covers an
+area in pixels from the window's top-left corner (as in a window screenshot). A solid box is drawn before outlines and badges. `screenshot` / `doc step` fail
 without saving when a mask is not found; do not post-process images to hide data.
 
 Scripts can produce documents directly: `flaui-cli run flow.yaml --doc docs/flow`.
@@ -148,7 +151,7 @@ Scripts can produce documents directly: `flaui-cli run flow.yaml --doc docs/flow
   "timeouts": { "action": 5000, "launch": 20000, "unlock": 0 },
   "outputDir": ".flaui-cli",
   "autoSnapshot": true,
-  "snapshot": { "depth": 0, "includeOffscreen": false },
+  "snapshot": { "depth": 0, "includeOffscreen": false, "maxRows": 50 },
   "highlight": { "padding": 3, "outline": true, "badge": "auto" },
   "logLevel": "info",
   "daemonIdleMinutes": 30
@@ -158,7 +161,8 @@ Scripts can produce documents directly: `flaui-cli run flow.yaml --doc docs/flow
 - `timeouts.action`: element wait in ms (`--timeout` per command). `timeouts.launch`: how long `open` waits for the window.
   `timeouts.unlock`: how long input / screenshot commands wait for a locked workstation to be unlocked (0 = fail with exit 4).
 - `outputDir`: where automatic snapshots and unnamed screenshots go. `autoSnapshot: false` speeds up large windows.
-- `snapshot.depth` / `snapshot.includeOffscreen`: defaults for `snapshot` and the automatic snapshot.
+- `snapshot.depth` / `snapshot.includeOffscreen`: defaults for `snapshot` and the automatic snapshot. `snapshot.maxRows`:
+  rows read from each table or list by `snapshot` / `find` (default 50, `0` = all).
 - `highlight.padding`: px between element and outline (negative = inside, keeps touching elements' outlines apart);
   `highlight.outline: false` draws only number badges. `highlight.badge`: `auto` (per element, avoids neighbours) or a fixed
   side for every badge: `top|bottom|left|right|top-left|top-right|bottom-left|bottom-right|inside`. Overridden by a script's
@@ -222,7 +226,7 @@ Scripts can produce documents directly: `flaui-cli run flow.yaml --doc docs/flow
   Why: in details view only the first column selects a row. Clicking the text of another column clears the selection.
 - DataGridView check box cells: you can set them with `fill <cell> True` / `False` and check them with `assert value <cell> True`.
   Why: they have no TogglePattern, so `check`, `uncheck` and `assert checked` fail. Cell refs change between commands, so
-  use a selector; cell names follow the system language (`" Row 0"`, `" 資料列 0"`).
+  use a selector such as `type=dataitem&&name=" Row 0"`; cell names follow the system language (`" Row 0"`, `" 資料列 0"`).
 
 ### Large windows
 
@@ -232,6 +236,12 @@ Scripts can produce documents directly: `flaui-cli run flow.yaml --doc docs/flow
   - prefer `id=` / `name=` / `type=` selectors, which stop at the first match, and scope them with `>>`
   - close unused windows and raise `--timeout`
 - To see whether the time goes into finding the element, the action or the automatic snapshot, you can add `--verbose`.
+- Selectors skip the inside of tables unless they target table content (`type=dataitem` / `header` / `headeritem`) or are
+  scoped from the table (`id=grid >> name="Row 5"`), so if a selector for something inside a table finds nothing, you can add
+  one of those. Click a cell that cannot be listed by position: `click id=grid --offset x,y`, or `click --at x,y` relative to
+  the window (pixels as in a window screenshot).
+  Why: UIA reads table rows one by one, and the application keeps working through thousands of them after the search times
+  out, so later commands fail too. The controls next to the grid are found directly.
 - If a selector waits out `--timeout` in a large window, you can scope it from a nearby container.
   Why: past about 512 elements UIA3 truncates searches silently, and flaui-cli fills in the rest level by level within
   `--timeout`.

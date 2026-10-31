@@ -48,6 +48,10 @@ public static class CommandCatalog
         "Element to cover with a solid box, for names and other data that must not be published; can be repeated. The command fails when it is not found", Multiple: true);
     private static readonly OptSpec MaskColumn = new("mask-column",
         "Column header of a table: covers every visible cell of that column; can be repeated", Multiple: true);
+    private static readonly OptSpec MaskRect = new("mask-rect",
+        "Area x,y,w,h to cover with a solid box, in pixels from the top-left corner of the current window (as in a screenshot of the window), for data whose element cannot be found; can be repeated", Multiple: true);
+    private static readonly OptSpec MaxRows = new("max-rows",
+        "Items read from each table or list (0 = all; defaults to snapshot.maxRows in the config file, 50); the rest is shown as \"… N more rows\"");
     private static readonly ArgSpec Target = new("target", "Element: snapshot ref (e12) or selector (id=..., name=..., type=...&&name=..., xpath=...)");
 
     private static CommandSpec Element(string name, string description, params OptSpec[] extra) =>
@@ -87,15 +91,20 @@ public static class CommandCatalog
         new("snapshot", "Inspection", "Print the UI tree of the current window with element refs",
             [],
             [new("depth", "Maximum depth (0 = unlimited)"), new("boxes", "Include element bounds [x,y,w,h]", Flag: true),
-             new("filename", "Save to a file instead of printing"), new("root", "Only print the subtree under this element"), new("all", "Include off-screen elements and unnamed containers", Flag: true)]),
+             new("filename", "Save to a file instead of printing"), new("root", "Only print the subtree under this element"), new("all", "Include off-screen elements and unnamed containers", Flag: true),
+             MaxRows]),
         new("find", "Inspection", "Search elements by text (matches Name / AutomationId / Value)",
-            [new("text", "Text to search for")], [new("regex", "Treat the text as a regular expression", Flag: true)]),
+            [new("text", "Text to search for")], [new("regex", "Treat the text as a regular expression", Flag: true), MaxRows]),
         new("inspect", "Inspection", "Show every property, supported pattern and a suggested selector for an element", [Target], [Timeout]),
 
         // ── Actions ──
-        Element("click", "Click an element",
-            new("button", "Mouse button: left|right|middle"), new("double", "Double-click", Flag: true),
-            new("invoke", "Use InvokePattern instead of moving the mouse (fails after --timeout if the element opens a modal dialog; use a plain click there)", Flag: true)),
+        new("click", "Actions", "Click an element, or a point given with --offset / --at",
+            [new("target", Target.Description + "; omit with --at", Required: false)],
+            [new("button", "Mouse button: left|right|middle"), new("double", "Double-click", Flag: true),
+             new("invoke", "Use InvokePattern instead of moving the mouse (fails after --timeout if the element opens a modal dialog; use a plain click there)", Flag: true),
+             new("offset", "Click at x,y pixels from the top-left corner of the target instead of its centre, for parts of an element that UI Automation cannot list (a cell of a very large table)"),
+             new("at", "Click at x,y pixels from the top-left corner of the current window (physical pixels, as in a screenshot of the window), without a target"),
+             Timeout, Note]),
         Element("dblclick", "Double-click an element"),
         Element("hover", "Move the mouse over an element"),
         new("fill", "Actions", "Clear an input and type text (uses ValuePattern when available)",
@@ -139,7 +148,7 @@ public static class CommandCatalog
         new("screenshot", "Screenshots", "Capture the current window or an element",
             [new("target", "Only capture this element", Required: false)],
             [new("filename", "Output file name (defaults to the output directory)"), new("highlight", "Element to outline in red; can be repeated", Multiple: true),
-             HighlightPadding, NoOutline, BadgePosition, Mask, MaskColumn, new("screen", "Capture the whole screen", Flag: true), Timeout]),
+             HighlightPadding, NoOutline, BadgePosition, Mask, MaskColumn, MaskRect, new("screen", "Capture the whole screen", Flag: true), Timeout]),
 
         // ── Recording ──
         new("record", "Recording", "Record actions and export them as a YAML script",

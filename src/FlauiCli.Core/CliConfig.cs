@@ -51,6 +51,12 @@ public sealed class CliConfig
 
         /// <summary>Whether off-screen (IsOffscreen) elements are included.</summary>
         public bool IncludeOffscreen { get; set; }
+
+        /// <summary>
+        /// Items read from each table or list by snapshot and find (0 = all). The rest is printed as one
+        /// "… N more rows" line: reading thousands of rows through UI Automation can take minutes.
+        /// </summary>
+        public int MaxRows { get; set; } = Abstractions.DataContainers.DefaultMaxRows;
     }
 
     public sealed class HighlightConfig

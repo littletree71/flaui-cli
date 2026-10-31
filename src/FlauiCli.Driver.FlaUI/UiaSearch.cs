@@ -28,6 +28,16 @@ namespace FlauiCli.Drivers;
 /// </list>
 /// Both stay within UI Automation and window enumeration: nothing opens, reads or writes the target process.
 /// </para>
+/// <para>
+/// Tables: a grid can have thousands of rows (about 20 ms per element on a .NET Framework 2.0 WinForms app), and a UIA
+/// descendant search walks all of them before it reaches the controls after the grid, until it fails with
+/// UIA_E_TIMEOUT. Queries that do not target table content (<see cref="DataContainers.IsTableContent"/>) therefore skip
+/// the inside of tables: a UIA search that stops at the first table (UIA does not enter a table that matches), then a
+/// walk that does not enter tables. They never fall back to a search inside the tables: the application keeps serving
+/// such a search after the call times out, and every later request waits behind it. A query scoped to a table
+/// (<c>id=grid &gt;&gt; ...</c>) searches it directly. Every UIA call is bounded by the time the command has left
+/// (<see cref="UiaTimeout"/>).
+/// </para>
 /// </summary>
 internal static class UiaSearch
 {
@@ -37,31 +47,78 @@ internal static class UiaSearch
     /// <summary>
     /// The descendants of <paramref name="root"/> matching <paramref name="match"/> (the client-side form of
     /// <paramref name="query"/>). Complete when the tree is small; on a truncated tree, the matches UIA found in tree
-    /// order, or when it found none, those of a level-by-level search.
+    /// order, or when it found none, those of a level-by-level search. The inside of tables is left out unless the query
+    /// targets it (see the class remarks).
     /// </summary>
     public static List<AutomationElement> FindAllDescendants(AutomationElement root, ElementQuery query, Func<AutomationElement, bool> match)
     {
         // Windows are always HWNDs (child windows, or owned windows UIA shows under their owner): under a window that has
         // one, Win32 gives the complete answer without reading the UIA tree (which can take seconds on a large form)
         if (query.Kind == ControlKind.Window && HasWindowHandle(root)) return [.. FromWindows(root, match)];
+        if (!SkipsTables(root, query)) return FindAllNative(root, match);
 
-        var all = Search(root, TreeScope.Descendants, match);
-        var result = all.Where(x => x.Matched).Select(x => x.Element).ToList();
-        if (all.Count >= TruncationThreshold && result.Count == 0) Collect(root, match, result, firstOnly: false);   // breadth-first order
+        var result = new List<AutomationElement>();
+        Walk(root, match, result, firstOnly: false);
         return result;
     }
 
     /// <summary>
     /// The first descendant matching <paramref name="condition"/> (UIA FindFirst) or, when UIA finds none, one found by
-    /// a level-by-level search with <paramref name="match"/> (the same test, client-side).
+    /// a level-by-level search with <paramref name="match"/> (the same test, client-side). The inside of tables is left
+    /// out unless the query targets it (see the class remarks).
     /// </summary>
     public static AutomationElement? FindFirstDescendant(AutomationElement root, ConditionBase condition, ElementQuery query, Func<AutomationElement, bool> match)
     {
         if (query.Kind == ControlKind.Window && HasWindowHandle(root)) return FromWindows(root, match).FirstOrDefault();
-        if (root.FindFirstDescendant(condition) is { } found) return found;
+
         var result = new List<AutomationElement>();
-        Collect(root, match, result, firstOnly: true);
+        if (!SkipsTables(root, query))
+        {
+            using (UiaTimeout.Limit(root.Automation, SearchBudget.Remaining))
+            {
+                if (root.FindFirstDescendant(condition) is { } found) return found;
+            }
+            Collect(root, match, result, firstOnly: true);
+            return result.FirstOrDefault();
+        }
+
+        // One UIA search up to the first table in tree order: UIA does not enter a table that matches the condition, so
+        // this is fast however many rows the table has, and it answers whenever the element comes before every table
+        AutomationElement? first = null;
+        try
+        {
+            using (UiaTimeout.Limit(root.Automation, SearchBudget.Remaining))
+                first = root.FindFirstDescendant(new OrCondition(condition, TableCondition(root.Automation)));
+        }
+        catch
+        {
+            // Timed out or cut short: the walk below covers it
+        }
+        if (first is not null && match(first)) return first;
+
+        Walk(root, match, result, firstOnly: true);
         return result.FirstOrDefault();
+    }
+
+    /// <summary>Whether a search under <paramref name="root"/> skips the inside of tables (the root itself is searched when it is one).</summary>
+    private static bool SkipsTables(AutomationElement root, ElementQuery query) =>
+        !DataContainers.IsTableContent(query.Kind)
+        && !(Props.Val<ControlType>(root, root.Automation.PropertyLibrary.Element.ControlType) is { } t && DataContainers.IsTable(Mapping.ToKind(t)));
+
+    private static OrCondition TableCondition(AutomationBase automation)
+    {
+        var cf = automation.ConditionFactory;
+        return new OrCondition(cf.ByControlType(ControlType.DataGrid), cf.ByControlType(ControlType.Table));
+    }
+
+    /// <summary>One UIA descendant search, completed level by level when UIA may have cut it and found nothing.</summary>
+    private static List<AutomationElement> FindAllNative(AutomationElement root, Func<AutomationElement, bool> match)
+    {
+        List<Found> all;
+        using (UiaTimeout.Limit(root.Automation, SearchBudget.Remaining)) all = Search(root, TreeScope.Descendants, match);
+        var result = all.Where(x => x.Matched).Select(x => x.Element).ToList();
+        if (all.Count >= TruncationThreshold && result.Count == 0) Collect(root, match, result, firstOnly: false);   // breadth-first order
+        return result;
     }
 
     /// <summary>
@@ -92,6 +149,44 @@ internal static class UiaSearch
     private static bool HasWindowHandle(AutomationElement el) => WindowHandle(el) != 0;
 
     /// <summary>
+    /// Adds the matching descendants of <paramref name="root"/> to <paramref name="result"/> in tree order, one request
+    /// per node, without entering tables, until the first match (<paramref name="firstOnly"/>), the end of the tree or the
+    /// end of <see cref="SearchBudget.Remaining"/>.
+    /// </summary>
+    private static void Walk(AutomationElement root, Func<AutomationElement, bool> match, List<AutomationElement> result, bool firstOnly)
+    {
+        var budget = SearchBudget.Remaining;
+        var elapsed = Stopwatch.StartNew();
+        Visit(root);
+
+        // True when the walk is over
+        bool Visit(AutomationElement el)
+        {
+            var left = budget - elapsed.Elapsed;
+            if (left <= TimeSpan.Zero || SearchBudget.IsCancelled) return true;
+            List<Found> children;
+            try
+            {
+                using (UiaTimeout.Limit(el.Automation, left)) children = Search(el, TreeScope.Children, match);
+            }
+            catch
+            {
+                return false;   // the element may have gone, or it did not answer in time
+            }
+            foreach (var child in children)
+            {
+                if (child.Matched)
+                {
+                    result.Add(child.Element);
+                    if (firstOnly) return true;
+                }
+                if (!child.IsTable && Visit(child.Element)) return true;
+            }
+            return false;
+        }
+    }
+
+    /// <summary>
     /// Adds the matching descendants of <paramref name="root"/> to <paramref name="result"/>, searching one level at a
     /// time (breadth first, one request per node) until the first match (<paramref name="firstOnly"/>), the end of the
     /// tree or the end of <see cref="SearchBudget.Remaining"/>.
@@ -102,12 +197,15 @@ internal static class UiaSearch
         var elapsed = Stopwatch.StartNew();
         var queue = new Queue<AutomationElement>();
         queue.Enqueue(root);
-        while (queue.Count > 0 && elapsed.Elapsed <= budget)
+        while (queue.Count > 0 && elapsed.Elapsed <= budget && !SearchBudget.IsCancelled)
         {
-            List<(AutomationElement Element, bool Matched)> children;
-            try { children = Search(queue.Dequeue(), TreeScope.Children, match); }
+            List<Found> children;
+            try
+            {
+                using (UiaTimeout.Limit(root.Automation, budget - elapsed.Elapsed)) children = Search(queue.Dequeue(), TreeScope.Children, match);
+            }
             catch { continue; }   // the element may have gone
-            foreach (var (child, matched) in children)
+            foreach (var (child, matched, _) in children)
             {
                 if (matched)
                 {
@@ -119,11 +217,13 @@ internal static class UiaSearch
         }
     }
 
+    private readonly record struct Found(AutomationElement Element, bool Matched, bool IsTable);
+
     /// <summary>
     /// FindAll with TrueCondition, testing each element while the properties used by selectors are cached (the test
     /// must run inside the CacheRequest scope, otherwise every property read is a cross-process call).
     /// </summary>
-    private static List<(AutomationElement Element, bool Matched)> Search(AutomationElement el, TreeScope scope, Func<AutomationElement, bool> match)
+    private static List<Found> Search(AutomationElement el, TreeScope scope, Func<AutomationElement, bool> match)
     {
         var lib = el.Automation.PropertyLibrary;
         // Full: the elements are returned to callers and searched again (FlaUI's default None leaves them unusable)
@@ -135,7 +235,10 @@ internal static class UiaSearch
         cr.Add(lib.Element.ProcessId);
         using (cr.Activate())
         {
-            return [.. el.FindAll(scope, TrueCondition.Default).Select(e => (e, match(e)))];
+            return [.. el.FindAll(scope, TrueCondition.Default).Select(e => new Found(e, match(e), IsTable(e)))];
         }
     }
+
+    private static bool IsTable(AutomationElement e) =>
+        Props.Val<ControlType>(e, e.Automation.PropertyLibrary.Element.ControlType) is { } t && DataContainers.IsTable(Mapping.ToKind(t));
 }

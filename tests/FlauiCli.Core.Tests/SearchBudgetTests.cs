@@ -20,4 +20,23 @@ public class SearchBudgetTests
 
         Assert.Equal(SearchBudget.Default, SearchBudget.Remaining);
     }
+
+    [Fact]
+    public void CancellationEndsTheBudget()
+    {
+        using var cancel = new CancellationTokenSource();
+        using (SearchBudget.Begin(30_000, cancel.Token))
+        {
+            SearchBudget.ThrowIfCancelled();
+            Assert.False(SearchBudget.IsCancelled);
+            cancel.Cancel();
+            Assert.True(SearchBudget.IsCancelled);
+            Assert.Equal(TimeSpan.Zero, SearchBudget.Remaining);
+            Assert.Throws<OperationCanceledException>(SearchBudget.ThrowIfCancelled);
+
+            // A nested scope without a token keeps the outer one
+            using (SearchBudget.Begin(1_000)) Assert.True(SearchBudget.IsCancelled);
+        }
+        Assert.False(SearchBudget.IsCancelled);
+    }
 }

@@ -1062,4 +1062,109 @@ public sealed class DispatcherTests : IDisposable
         Ok(_app.Run("click", ("target", r)));
         Assert.Contains("click:Left", replacement.Actions);
     }
+
+    private FakeElement AddLargeGrid(int rows)
+    {
+        var grid = new FakeElement(ControlKind.DataGrid, "DataGridView", "dataGridView1") { Bounds = new System.Drawing.Rectangle(10, 460, 380, 120) };
+        for (var i = 0; i < rows; i++) grid.Add(new FakeElement(ControlKind.Custom, $"Row {i}") { Bounds = new System.Drawing.Rectangle(10, 460, 380, 20) });
+        _app.Window.Add(grid);
+        return grid;
+    }
+
+    [Fact]
+    public void SnapshotAndFindReadOnlyTheFirstRowsOfATable()
+    {
+        Ok(_app.Open());
+        AddLargeGrid(120);
+
+        var text = _app.Run("snapshot").Text;
+        Assert.Contains("\"Row 49\"", text);
+        Assert.DoesNotContain("\"Row 50\"", text);
+        Assert.Contains("- … 70 more rows", text);
+        // The elements after the table are still listed
+        Assert.Contains("\"Dup\"", text);
+
+        text = _app.Run("snapshot", ("max-rows", "5")).Text;
+        Assert.Contains("\"Row 4\"", text);
+        Assert.Contains("- … 115 more rows", text);
+        Assert.DoesNotContain("more rows", _app.Run("snapshot", ("max-rows", "0")).Text);
+        Assert.False(_app.Run("snapshot", ("max-rows", "-1")).Ok);
+
+        Assert.Contains("No element matches", _app.Run("find", ("text", "Row 60")).Text);
+        Assert.Contains("Found 1", _app.Run("find", ("text", "Row 60"), ("max-rows", "0")).Text);
+
+        Directory.CreateDirectory(Path.Combine(_app.Cwd, CliConfig.DefaultDirName));
+        File.WriteAllText(Path.Combine(_app.Cwd, CliConfig.DefaultDirName, "config.json"), """{ "snapshot": { "maxRows": 10 } }""");
+        Assert.Contains("- … 110 more rows", _app.Run("snapshot").Text);
+    }
+
+    [Fact]
+    public void ClickAtAPointOfTheWindowOrOfAnElement()
+    {
+        Ok(_app.Open());
+        // The window starts at 0,0; One is at 10,100 and Two at 110,100
+        Ok(_app.Run("click", ("at", "15,105")));
+        Assert.Contains("click 15,105 Left", _app.Driver.Input.Log);
+        Assert.Equal("Display is 1", _app.Display.Name);
+
+        var r = _app.Run("click", ("target", "id=num2Button"), ("offset", "5, 6"));
+        Ok(r);
+        Assert.Contains("click 115,106 Left", _app.Driver.Input.Log);
+        Assert.Contains("at 5,6 in button \"Two\"", r.Text);
+        Ok(_app.Run("click", ("at", "15,105"), ("double", "true")));
+        Assert.Contains("dblclick 15,105 Left", _app.Driver.Input.Log);
+
+        Assert.Contains("outside the window", _app.Run("click", ("at", "400,10")).Error);
+        Assert.Contains("outside", _app.Run("click", ("target", "id=num2Button"), ("offset", "90,0")).Error);
+        Assert.Contains("x,y", _app.Run("click", ("at", "a,b")).Error);
+        Assert.Contains("x,y", _app.Run("click", ("at", "-1,5")).Error);
+        Assert.Contains("takes no target", _app.Run("click", ("target", "id=num2Button"), ("at", "1,1")).Error);
+        Assert.Contains("--invoke", _app.Run("click", ("target", "id=num2Button"), ("offset", "1,1"), ("invoke", "true")).Error);
+    }
+
+    [Fact]
+    public void ScreenshotMasksRectanglesOfTheWindow()
+    {
+        Ok(_app.Open());
+        var path = Path.Combine(_app.Cwd, "rect.png");
+        Ok(_app.Run("screenshot", ("filename", path), ("mask-rect", "90,190,20,20")));
+
+        using (var bmp = new System.Drawing.Bitmap(path))
+        {
+            Assert.True(Masked(bmp, 100, 200), "the rectangle is not masked");
+            Assert.False(Masked(bmp, 100, 180), "outside the rectangle was masked");
+        }
+        Assert.Contains("x,y,w,h", _app.Run("screenshot", ("mask-rect", "1,2,0,4")).Error);
+    }
+
+    [Fact]
+    public void UiAutomationTimeoutsGetAClearMessage()
+    {
+        Ok(_app.Open());
+        _app.Driver.Input.OnPress = () => throw new System.Runtime.InteropServices.COMException("Operation timed out.", UiaErrors.TimeoutHResult);
+        var r = _app.Run("press", ("keys", "Enter"));
+        Assert.False(r.Ok);
+        Assert.StartsWith("UI Automation timed out (0x80131505)", r.Error);
+        Assert.Contains("snapshot --depth", r.Error);
+
+        // FlaUI turns UIA_E_TIMEOUT into a TimeoutException
+        _app.Driver.Input.OnPress = () => throw new TimeoutException("UIA Timeout");
+        Assert.StartsWith("UI Automation timed out", _app.Run("press", ("keys", "Enter")).Error);
+    }
+
+    [Fact]
+    public void ACancelledCommandStopsWaiting()
+    {
+        Ok(_app.Open());
+        using var cancel = new CancellationTokenSource();
+        cancel.Cancel();
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var r = _app.Dispatcher.Execute(new CommandCall("wait") { Cwd = _app.Cwd }.Set("target", "id=nope").Set("timeout", "10000"), cancel.Token);
+        Assert.False(r.Ok);
+        Assert.Contains("client disconnected", r.Error);
+        Assert.True(sw.ElapsedMilliseconds < 5000, $"took {sw.ElapsedMilliseconds}ms");
+
+        // The next command runs normally
+        Ok(_app.Run("click", ("target", "id=num1Button")));
+    }
 }

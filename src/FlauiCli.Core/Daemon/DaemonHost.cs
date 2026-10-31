@@ -116,6 +116,11 @@ public static class DaemonHost
             if (line is null) return;
 
             CommandResult result;
+            // The client sends nothing after its request: a read that completes means it went away (it was stopped).
+            // The command is then cancelled, so it does not keep the session thread busy for the commands after it.
+            using var clientGone = new CancellationTokenSource();
+            using var stopWatching = new CancellationTokenSource();
+            var watcher = WatchDisconnectAsync(reader, clientGone, stopWatching.Token);
             state.Begin();
             try
             {
@@ -123,7 +128,9 @@ public static class DaemonHost
                 log($"> {call.Redacted()}"); // never persist typed text: it may be a password
                 result = call.Command == "ping"
                     ? CommandResult.Success("pong")
-                    : await worker.InvokeAsync(() => dispatcher.Execute(call));
+                    : await worker.InvokeAsync(() => clientGone.IsCancellationRequested
+                        ? CommandResult.Failure("The client disconnected before the command started")
+                        : dispatcher.Execute(call, clientGone.Token));
                 log($"< {(result.Ok ? "ok" : $"failed({result.ExitCode}): {result.Error}")}");
             }
             catch (Exception ex)
@@ -134,14 +141,42 @@ public static class DaemonHost
             finally
             {
                 state.End();
+                await stopWatching.CancelAsync();
+                // Never wait long for the read to be cancelled; the pipe is duplex, so writing while it is pending is fine
+                await Task.WhenAny(watcher, Task.Delay(TimeSpan.FromSeconds(1)));
             }
 
+            if (clientGone.IsCancellationRequested)
+            {
+                log("< client disconnected; result discarded");
+                return;
+            }
             await writer.WriteLineAsync(ProtocolJson.Serialize(result));
             if (result.Data?.GetValueOrDefault("shutdown") == "true") shutdown.Cancel();
         }
         catch (IOException)
         {
             // The client disconnected early
+        }
+    }
+
+    /// <summary>Cancels <paramref name="clientGone"/> when the client closes the pipe, until <paramref name="stop"/>.</summary>
+    private static async Task WatchDisconnectAsync(StreamReader reader, CancellationTokenSource clientGone, CancellationToken stop)
+    {
+        try
+        {
+            await reader.ReadLineAsync(stop);
+            // End of stream (or unexpected data): the client is gone or no longer waits for this command
+            await clientGone.CancelAsync();
+        }
+        catch (OperationCanceledException)
+        {
+            // The command finished first
+        }
+        catch (Exception)
+        {
+            // A broken pipe: the client is gone
+            if (!stop.IsCancellationRequested) await clientGone.CancelAsync();
         }
     }
 

@@ -35,6 +35,14 @@ public sealed partial class CommandDispatcher
         }
 
         var masks = MaskAreas(ctx, required: true);
+        // --mask-rect: relative to the window as a window screenshot shows it, for data whose element cannot be found
+        var origin = WindowBounds(window).Location;
+        foreach (var r in ctx.Call.GetList("mask-rect"))
+        {
+            var rect = ParseRect(r, "--mask-rect");
+            rect.Offset(origin);
+            masks.Add(rect);
+        }
         using var bmp = Capture(region, out var captured);
         Screenshotter.Mask(bmp, captured.Location, masks);
         // Without outlines a single highlight still needs its badge
