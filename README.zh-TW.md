@@ -274,6 +274,14 @@ WinForms 程式）會比較慢。加快的方法：
 - selector 會略過表格內部，所以不論表格有多少列，都找得到表格旁的控制項。不分表格大小都是如此：只有找表格內容的 selector
   （`type=dataitem`、`type=header`、`type=headeritem`）與限定在表格內的 selector（`id=dataGridView1 >> name="Row 5"`）
   才會搜尋表格內部。
+- 搜尋表格內部時會逐列讀取，到 `--timeout` 就停，所以大型表格可能讀不到最後面的列。
+  這時錯誤訊息會說明，加長 `--timeout` 可以讀得更多；`--mask-column` 則會改成遮住整欄。
+- `--skip-rows N` 與 `--max-rows N` 用來選擇要讀的列，類似 skip 與 take。用於 `snapshot`、`find` 時套用到每個表格或清單
+  （`snapshot --root id=grid --skip-rows 5000 --max-rows 20`，再用它列出的 ref 操作）；用於帶 selector 的指令時，套用到表格內部的搜尋
+  （`get value "id=grid >> type=dataitem" --skip-rows 5000`），這時 `snapshot.maxRows` 不適用。支援 GridPattern 的表格會直接跳到該列；
+  不支援時（例如 .NET Framework 2.0 的 DataGridView）要逐列走過前面的列，所以很後面的列可能需要加長 `--timeout`。
+- `--column <欄標題>` 依欄標題文字讀取某一欄，不受系統語言影響，要搭配搜尋表格內部的 selector：
+  `get value "id=grid >> type=dataitem" --skip-rows 5000 --column Amount`。找不到該標題時會失敗並列出所有標題。
 - 搜尋中的每個 UI Automation 呼叫都限制在 `--timeout` 剩餘的時間內；client 被中止（Ctrl+C）時會取消該指令，session 可以繼續使用。
 - 仍然列不出來的儲存格，可以用位置點擊：`click id=dataGridView1 --offset 120,45`。
 

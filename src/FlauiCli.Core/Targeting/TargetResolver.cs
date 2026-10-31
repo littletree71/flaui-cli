@@ -18,9 +18,10 @@ internal sealed class TargetResolver(AutomationSession session)
         while (true)
         {
             SearchBudget.ThrowIfCancelled();
+            SearchBudget.ClearIncomplete();
             if (ElementFinder.FindFirst(selector, session.SearchRoots()) is { } found) return found;
             if (sw.ElapsedMilliseconds >= timeoutMs)
-                throw new ElementNotFoundException(raw, $"waited {timeoutMs}ms");
+                throw new ElementNotFoundException(raw, $"waited {timeoutMs}ms" + (SearchBudget.Incomplete is { } why ? $"; {why}" : ""));
             Thread.Sleep(PollIntervalMs);
         }
     }

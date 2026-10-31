@@ -211,6 +211,37 @@ public sealed class DispatcherTests : IDisposable
     }
 
     [Fact]
+    public void MaskColumnCoversTheWholeColumnWhenTheTableWasNotReadToItsEnd()
+    {
+        Ok(_app.Open());
+        var grid = AddGrid();
+        var complete = Path.Combine(_app.Cwd, "complete.png");
+        Ok(_app.Run("screenshot", ("filename", complete), ("mask-column", "id=grid >> name=Name")));
+        using (var bmp = new System.Drawing.Bitmap(complete))
+            Assert.False(Masked(bmp, 100, 570), "below the last cell was masked although every row was read");
+
+        grid.IncompleteSearch = "stopped at the time limit";
+        var incomplete = Path.Combine(_app.Cwd, "incomplete.png");
+        Ok(_app.Run("screenshot", ("filename", incomplete), ("mask-column", "id=grid >> name=Name")));
+        using (var bmp = new System.Drawing.Bitmap(incomplete))
+        {
+            Assert.True(Masked(bmp, 100, 505) && Masked(bmp, 100, 570), "the column is not covered down to the bottom of the table");
+            Assert.False(Masked(bmp, 200, 570), "the Amount column was masked");
+        }
+    }
+
+    [Fact]
+    public void NotFoundSaysWhenTheSearchWasIncomplete()
+    {
+        Ok(_app.Open());
+        _app.Window.IncompleteSearch = "the search stopped at the time limit";
+        var r = _app.Run("click", ("target", "id=nope"), ("timeout", "200"));
+        Assert.False(r.Ok);
+        Assert.Contains("Element not found: id=nope", r.Error);
+        Assert.Contains("the search stopped at the time limit", r.Error);
+    }
+
+    [Fact]
     public void ScreenshotFailsWithoutSavingWhenAMaskIsMissing()
     {
         Ok(_app.Open());
@@ -1096,6 +1127,57 @@ public sealed class DispatcherTests : IDisposable
         Directory.CreateDirectory(Path.Combine(_app.Cwd, CliConfig.DefaultDirName));
         File.WriteAllText(Path.Combine(_app.Cwd, CliConfig.DefaultDirName, "config.json"), """{ "snapshot": { "maxRows": 10 } }""");
         Assert.Contains("- … 110 more rows", _app.Run("snapshot").Text);
+    }
+
+    [Fact]
+    public void SnapshotAndFindSkipRowsOfATable()
+    {
+        Ok(_app.Open());
+        AddLargeGrid(120);
+
+        var text = _app.Run("snapshot", ("skip-rows", "60"), ("max-rows", "5")).Text;
+        Assert.Contains("- … 60 rows skipped", text);
+        Assert.DoesNotContain("\"Row 59\"", text);
+        Assert.Contains("\"Row 60\"", text);
+        Assert.Contains("\"Row 64\"", text);
+        Assert.DoesNotContain("\"Row 65\"", text);
+        Assert.Contains("- … 55 more rows", text);
+
+        // Rows skipped to are shown even though they are off-screen, unlike the rows of a plain snapshot
+        var grid = _app.Window.Children.Single(c => c.AutomationId == "dataGridView1");
+        foreach (var row in grid.Children) row.IsOffscreen = true;
+        Assert.Contains("\"Row 60\"", _app.Run("snapshot", ("skip-rows", "60"), ("max-rows", "5")).Text);
+        Assert.DoesNotContain("\"Row 60\"", _app.Run("snapshot", ("max-rows", "0")).Text);
+        foreach (var row in grid.Children) row.IsOffscreen = false;
+
+        // Without --max-rows the configured limit applies; past the end nothing is left to read
+        Assert.Contains("- … 10 more rows", _app.Run("snapshot", ("skip-rows", "60")).Text);
+        Assert.DoesNotContain("\"Row", _app.Run("snapshot", ("skip-rows", "500")).Text);
+        Assert.False(_app.Run("snapshot", ("skip-rows", "-1")).Ok);
+
+        Assert.Contains("Found 1", _app.Run("find", ("text", "Row 100"), ("skip-rows", "95")).Text);
+        Assert.Contains("No element matches", _app.Run("find", ("text", "Row 90"), ("skip-rows", "95")).Text);
+    }
+
+    [Fact]
+    public void RowOptionsReachSearchesInsideATable()
+    {
+        Ok(_app.Open());
+        var grid = AddLargeGrid(3);
+
+        Ok(_app.Run("get", ("kind", "name"), ("target", "id=dataGridView1 >> name=\"Row 1\""), ("skip-rows", "5000"), ("max-rows", "10")));
+        Assert.Equal((5000, 10), grid.LastSearchRows);
+
+        // Without the options the search is only bounded by --timeout: snapshot.maxRows does not apply to it
+        Ok(_app.Run("get", ("kind", "name"), ("target", "id=dataGridView1 >> name=\"Row 1\"")));
+        Assert.Equal((0, 0), grid.LastSearchRows);
+
+        Assert.Contains("--max-rows must be 0 or more", _app.Run("get", ("kind", "name"), ("target", "id=dataGridView1"), ("max-rows", "-1")).Error);
+
+        Ok(_app.Run("get", ("kind", "name"), ("target", "id=dataGridView1 >> name=\"Row 1\""), ("column", "Amount")));
+        Assert.Equal("Amount", grid.LastSearchColumn);
+        Ok(_app.Run("get", ("kind", "name"), ("target", "id=dataGridView1 >> name=\"Row 1\"")));
+        Assert.Null(grid.LastSearchColumn);
     }
 
     [Fact]

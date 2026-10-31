@@ -133,7 +133,12 @@ public sealed partial class CommandDispatcher
             // Fallback searches on large trees share the command's timeout
             using (SearchBudget.Begin(ctx.Timeout, cancel))
             {
-                try { text = handler(ctx); }
+                try
+                {
+                    SearchBudget.LimitRows(RowOption(ctx, "skip-rows") ?? 0, RowOption(ctx, "max-rows") ?? 0);
+                    SearchBudget.Column = ctx.Call.Get("column");
+                    text = handler(ctx);
+                }
                 finally { handlerTime = total.Elapsed; }
             }
             RecordIfNeeded(ctx);
@@ -409,7 +414,7 @@ public sealed partial class CommandDispatcher
             foreach (var w in _s.GetTopLevelWindows())
             {
                 if (w.Equals(root) || w.IsOffscreen) continue;
-                var tree = w.CaptureTree(depth, complete, options.MaxRows);
+                var tree = w.CaptureTree(depth, complete, options.MaxRows, options.SkipRows);
                 // A window inside another top-level window (an MDI child) is already part of that window's tree:
                 // reuse it instead of walking it a second time (only when the whole tree was captured)
                 if (rootNode is null && depth is null && rootId is not null)
@@ -418,7 +423,7 @@ public sealed partial class CommandDispatcher
             }
         }
 
-        var sb = new StringBuilder(SnapshotFormatter.Format(rootNode ?? root.CaptureTree(depth, complete, options.MaxRows), _s.Refs, options));
+        var sb = new StringBuilder(SnapshotFormatter.Format(rootNode ?? root.CaptureTree(depth, complete, options.MaxRows, options.SkipRows), _s.Refs, options));
         foreach (var tree in others)
         {
             sb.AppendLine();

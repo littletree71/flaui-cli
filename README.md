@@ -289,6 +289,16 @@ Large tables (a DataGridView with thousands of rows) get special treatment, beca
 - Selectors skip the inside of tables, so the controls next to a grid are found however many rows it has. This applies to
   every table, large or small: only selectors for table content (`type=dataitem`, `type=header`, `type=headeritem`) and
   selectors scoped to a table (`id=dataGridView1 >> name="Row 5"`) search inside it.
+- A search inside a table reads it row by row and stops at `--timeout`, so on a large table it may not reach the last rows.
+  The error then says so; a longer `--timeout` reads more. `--mask-column` covers the whole column in that case.
+- `--skip-rows N` and `--max-rows N` choose the rows to read, like skip and take. With `snapshot` and `find` they apply to
+  each table or list (`snapshot --root id=grid --skip-rows 5000 --max-rows 20`, then act on the refs it prints). With a
+  command that takes a selector they apply to a search inside a table
+  (`get value "id=grid >> type=dataitem" --skip-rows 5000`); `snapshot.maxRows` does not apply there. A table with GridPattern
+  jumps to the row directly. Without it (a DataGridView on .NET Framework 2.0, for example), the rows before it are walked,
+  so a row far down may need a longer `--timeout`.
+- `--column <header>` reads one column by its header text, in any system language, with a selector that searches inside a
+  table: `get value "id=grid >> type=dataitem" --skip-rows 5000 --column Amount`. An unknown header fails and lists the headers.
 - Every UI Automation call of a search is bounded by the time left of `--timeout`, and a command whose client is stopped
   (Ctrl+C) is cancelled, so the session keeps working.
 - For a cell that still cannot be listed, click it by position: `click id=dataGridView1 --offset 120,45`.

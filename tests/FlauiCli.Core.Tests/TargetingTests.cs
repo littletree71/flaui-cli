@@ -42,6 +42,41 @@ public class TargetingTests
     }
 
     [Fact]
+    public void AVisibleMatchComesFirstUnlessThereIsNoTimeOrRowsWereAskedFor()
+    {
+        var hidden = new FakeElement(ControlKind.DataItem, "Cell") { IsOffscreen = true };
+        var shown = new FakeElement(ControlKind.DataItem, "Cell");
+        var root = new FakeElement(ControlKind.Window, "W").Add(hidden, shown);
+        var selector = Selector.Parse("type=dataitem");
+
+        using (SearchBudget.Begin(5000))
+        {
+            Assert.Same(shown, ElementFinder.FindFirst(selector, [root]));
+            Assert.Equal([shown, hidden], ElementFinder.FindAll(selector, [root]));
+
+            // Rows asked for: the first match is the answer, whether it is visible or not
+            SearchBudget.LimitRows(5000, 0);
+            Assert.Same(hidden, ElementFinder.FindFirst(selector, [root]));
+            Assert.Equal([hidden, shown], ElementFinder.FindAll(selector, [root]));
+        }
+
+        // The same for a column asked for
+        using (SearchBudget.Begin(5000))
+        {
+            SearchBudget.Column = "Amount";
+            Assert.Same(hidden, ElementFinder.FindFirst(selector, [root]));
+        }
+
+        // The search did not finish, or the time is up: no more cross-process reads to sort the result
+        using (SearchBudget.Begin(5000))
+        {
+            SearchBudget.ReportIncomplete("stopped");
+            Assert.Equal([hidden, shown], ElementFinder.FindAll(selector, [root]));
+        }
+        using (SearchBudget.Begin(0)) Assert.Equal([hidden, shown], ElementFinder.FindAll(selector, [root]));
+    }
+
+    [Fact]
     public void NestingLimitsTheScope()
     {
         var t = Tree();

@@ -95,6 +95,74 @@ public sealed class LargeTreeCliTests : IDisposable
     }
 }
 
+/// <summary>The rows of a large grid through the CLI: every step of a lookup has to stay within --timeout.</summary>
+[Trait("Category", "E2E")]
+public sealed class LargeGridCliTests : IDisposable
+{
+    private readonly string _work = TestEnvironment.NewTempDir();
+    private readonly CliSession _cli;
+
+    public LargeGridCliTests() => _cli = new CliSession(_work);
+
+    public void Dispose()
+    {
+        _cli.Dispose();
+        try { Directory.Delete(_work, recursive: true); } catch { /* ignore */ }
+    }
+
+    private CliRun Ok(params string[] args)
+    {
+        var r = _cli.Run(args);
+        Assert.True(r.ExitCode == 0, $"flaui-cli {string.Join(' ', args)} failed ({r.ExitCode}): {r.All}");
+        return r;
+    }
+
+    [Fact]
+    public void RowsFarDownTheGridAreReadWithinTheTimeout()
+    {
+        Ok("open", TestEnvironment.WinFormsLargeTreeExe, "grid", "7000");
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        Assert.Contains("C5000", Ok("get", "value", "id=dataGridView1 >> type=dataitem", "--skip-rows", "5000", "--timeout", "5000").StdOut);
+        // The first match is off-screen once the grid is scrolled: sorting and comparing all matches must not outlast the timeout
+        Assert.Contains("C200", Ok("get", "value", "id=dataGridView1 >> type=dataitem", "--skip-rows", "200", "--timeout", "5000").StdOut);
+        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(10), $"took {sw.Elapsed}");
+
+        var snapshot = Ok("snapshot", "--root", "id=dataGridView1", "--skip-rows", "5000", "--max-rows", "2").StdOut;
+        Assert.Contains("5000 rows skipped", snapshot);
+        Assert.Contains("dataitem", snapshot);
+
+        sw.Restart();
+        var noRow = _cli.Run("get", "value", "id=dataGridView1 >> id=noSuchElement", "--max-rows", "3", "--timeout", "2000");
+        Assert.NotEqual(0, noRow.ExitCode);
+        Assert.Contains("--max-rows", noRow.All);
+        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(4), $"took {sw.Elapsed}");
+
+        Ok("close");
+    }
+
+    [Fact]
+    public void AColumnIsReadByItsHeader()
+    {
+        // 33 columns, most of them off the right edge, and Amount moved to the front
+        Ok("open", TestEnvironment.WinFormsLargeTreeExe, "grid", "7000", "wide");
+        const string cell = "id=dataGridView1 >> type=dataitem";
+
+        Assert.Contains("C200", Ok("get", "value", cell, "--skip-rows", "200", "--column", "Code", "--timeout", "5000").StdOut);
+        Assert.Contains("Item 200", Ok("get", "value", cell, "--skip-rows", "200", "--column", "Name", "--timeout", "5000").StdOut);
+        Assert.Contains("2000", Ok("get", "value", cell, "--skip-rows", "200", "--column", "Amount", "--timeout", "5000").StdOut);
+        Assert.Contains("E30R200", Ok("get", "value", cell, "--skip-rows", "200", "--column", "Extra30", "--timeout", "5000").StdOut);
+        Assert.Contains("C0", Ok("get", "value", cell, "--column", "Code", "--timeout", "5000").StdOut);
+
+        var missing = _cli.Run("get", "value", cell, "--column", "NoSuchColumn", "--timeout", "2000");
+        Assert.NotEqual(0, missing.ExitCode);
+        Assert.Contains("no column \"NoSuchColumn\"", missing.All);
+        Assert.Contains("\"Extra30\"", missing.All);
+
+        Ok("close");
+    }
+}
+
 /// <summary>
 /// WinFormsLargeTree in grid mode: a DataGridView with thousands of rows comes before a filter text box and a tool strip.
 /// A UIA descendant search walks every row first, so these tests fail (or time out) when a lookup or a snapshot enters it.
@@ -166,6 +234,81 @@ public sealed class LargeGridTests : IDisposable
             Assert.NotNull(grid);
             Assert.NotNull(grid.FindFirst(new ElementQuery(Name: "Code")));
         }
+    }
+
+    [Fact]
+    public void ASearchInsideTheGridStopsAtTheDeadlineAndLeavesTheApplicationFree()
+    {
+        var grid = _window.FindFirst(new ElementQuery(AutomationId: "dataGridView1"));
+        Assert.NotNull(grid);
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        using (SearchBudget.Begin(2000))
+        {
+            Assert.Null(grid.FindFirst(new ElementQuery(AutomationId: "noSuchElement")));
+            Assert.Contains("time limit", SearchBudget.Incomplete);
+        }
+        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(5), $"the search took {sw.Elapsed}");
+
+        // One descendant search would keep the application busy for minutes, and this would wait behind it
+        sw.Restart();
+        using (SearchBudget.Begin(2000))
+        {
+            Assert.NotNull(_window.FindFirst(new ElementQuery(AutomationId: "filterTextBox")));
+            Assert.Null(SearchBudget.Incomplete);
+        }
+        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(1), $"the next search took {sw.Elapsed}");
+    }
+
+    [Fact]
+    public void SkipRowsJumpsToARowFarDownTheGrid()
+    {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        ElementNode tree;
+        using (SearchBudget.Begin(5000)) tree = _window.CaptureTree(maxRows: 5, skipRows: 5000);
+        var grid = tree.DescendantsAndSelf().Single(n => n.AutomationId == "dataGridView1");
+        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(3), $"took {sw.Elapsed}");
+
+        Assert.Equal(5000, grid.SkippedChildren);
+        Assert.Equal(5, grid.Children.Count);
+        Assert.Equal(1995, grid.OmittedChildren);
+        var values = grid.DescendantsAndSelf().Select(n => n.Value).ToList();
+        Assert.Contains("C5000", values);
+        Assert.Contains("C5004", values);
+        Assert.DoesNotContain("C4999", values);
+        Assert.DoesNotContain("C5005", values);
+
+        // Past the last row there is nothing to read
+        var past = _window.CaptureTree(maxRows: 5, skipRows: 8000).DescendantsAndSelf().Single(n => n.AutomationId == "dataGridView1");
+        Assert.Empty(past.Children);
+    }
+
+    [Fact]
+    public void RowOptionsLimitASearchInsideTheGrid()
+    {
+        var grid = _window.FindFirst(new ElementQuery(AutomationId: "dataGridView1"));
+        Assert.NotNull(grid);
+
+        // --skip-rows: the first cell found is in the row skipped to, far beyond what can be walked in the time given
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        using (SearchBudget.Begin(3000))
+        {
+            SearchBudget.LimitRows(5000, 3);
+            var cell = grid.FindFirst(new ElementQuery(Kind: ControlKind.DataItem));
+            Assert.NotNull(cell);
+            Assert.Equal("C5000", cell.Value);
+        }
+        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(3), $"took {sw.Elapsed}");
+
+        // --max-rows: the search ends after those rows, not at the deadline, and says why it found nothing
+        sw.Restart();
+        using (SearchBudget.Begin(5000))
+        {
+            SearchBudget.LimitRows(0, 3);
+            Assert.Null(grid.FindFirst(new ElementQuery(AutomationId: "noSuchElement")));
+            Assert.Contains("--max-rows", SearchBudget.Incomplete);
+        }
+        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(2), $"took {sw.Elapsed}");
     }
 
     [Fact]

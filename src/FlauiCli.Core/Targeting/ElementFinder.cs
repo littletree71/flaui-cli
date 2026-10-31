@@ -67,7 +67,8 @@ internal static class ElementFinder
             {
                 var found = root.FindFirst(query);
                 if (found is null) continue;
-                if (!found.IsOffscreen) return found;
+                // Cells that were asked for are usually off-screen: looking for a visible match would read every row after them
+                if (SearchBudget.AsksForCells || !found.IsOffscreen) return found;
                 anyMatch = true;
                 break;
             }
@@ -85,14 +86,36 @@ internal static class ElementFinder
         {
             foreach (var found in FindPart(root, part))
             {
-                if (!next.Any(e => e.Equals(found))) next.Add(found);
+                // Comparing is a cross-process call, and a search inside a table can return thousands of elements
+                if (roots.Count == 1 || !next.Any(e => e.Equals(found))) next.Add(found);
             }
         }
 
-        // Visible elements first (stable sort keeps tree order)
-        next = [.. next.OrderBy(e => e.IsOffscreen)];
+        next = VisibleFirst(next);
         if (part.Nth is int nth) next = nth < next.Count ? [next[nth]] : [];
         return next;
+    }
+
+    /// <summary>
+    /// Visible elements first, otherwise in tree order. Reading the state is a cross-process call per element, so this
+    /// stays in tree order when specific cells were asked for or the search did not finish, and stops at the deadline.
+    /// </summary>
+    private static List<IUiElement> VisibleFirst(List<IUiElement> elements)
+    {
+        if (SearchBudget.AsksForCells || SearchBudget.Incomplete is not null) return elements;
+
+        var visible = new List<IUiElement>();
+        var offscreen = new List<IUiElement>();
+        for (var i = 0; i < elements.Count; i++)
+        {
+            if (SearchBudget.IsExpired)
+            {
+                offscreen.AddRange(elements.Skip(i));
+                break;
+            }
+            (elements[i].IsOffscreen ? offscreen : visible).Add(elements[i]);
+        }
+        return [.. visible, .. offscreen];
     }
 
     /// <summary>The UIA query of a part, or null when the part needs client-side filtering (xpath, text=, regex=, nth).</summary>

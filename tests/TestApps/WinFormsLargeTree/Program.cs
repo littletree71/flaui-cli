@@ -5,7 +5,7 @@ namespace WinFormsLargeTree;
 /// buttons sits in front of the toolbar in many line-of-business apps. UIA3 descendant searches (FindAll /
 /// FindFirst / a Subtree CacheRequest) stop after about 512 elements on this tree, so the tool strip at the end
 /// is only reachable by walking the tree. The month count can be passed as the first argument (default 12).
-/// With <c>grid [rows]</c> it shows <see cref="LargeGridForm"/> instead.
+/// With <c>grid [rows] [wide]</c> it shows <see cref="LargeGridForm"/> instead.
 /// </summary>
 internal static class Program
 {
@@ -15,7 +15,7 @@ internal static class Program
         ApplicationConfiguration.Initialize();
         if (args.Length > 0 && args[0] == "grid")
         {
-            Application.Run(new LargeGridForm(args.Length > 1 && int.TryParse(args[1], out var rows) ? rows : 7000));
+            Application.Run(new LargeGridForm(args.Length > 1 && int.TryParse(args[1], out var rows) ? rows : 7000, args.Length > 2 && args[2] == "wide"));
             return;
         }
         Application.Run(new LargeTreeForm(args.Length > 0 && int.TryParse(args[0], out var m) ? m : 12));
@@ -25,10 +25,11 @@ internal static class Program
 /// <summary>
 /// A virtual-mode DataGridView with thousands of rows in front of a filter text box and a tool strip, as in many
 /// line-of-business forms: a UIA descendant search walks every row before it reaches the controls after the grid.
+/// With <paramref name="wide"/>, 30 more columns run off the right edge, and the Amount column is moved to the front.
 /// </summary>
 internal sealed class LargeGridForm : Form
 {
-    public LargeGridForm(int rows)
+    public LargeGridForm(int rows, bool wide)
     {
         Text = "WinForms Large Grid";
         ClientSize = new Size(800, 600);
@@ -37,7 +38,12 @@ internal sealed class LargeGridForm : Form
         grid.Columns.Add("Code", "Code");
         grid.Columns.Add("Name", "Name");
         grid.Columns.Add("Amount", "Amount");
-        grid.CellValueNeeded += (_, e) => e.Value = e.ColumnIndex switch { 0 => $"C{e.RowIndex}", 1 => $"Item {e.RowIndex}", _ => e.RowIndex * 10 };
+        if (wide)
+        {
+            for (var c = 1; c <= 30; c++) grid.Columns.Add($"Extra{c}", $"Extra{c}");
+            grid.Columns["Amount"]!.DisplayIndex = 0;
+        }
+        grid.CellValueNeeded += (_, e) => e.Value = e.ColumnIndex switch { 0 => $"C{e.RowIndex}", 1 => $"Item {e.RowIndex}", 2 => e.RowIndex * 10, _ => $"E{e.ColumnIndex - 2}R{e.RowIndex}" };
         grid.RowCount = rows;
 
         var filter = new Panel { Name = "filterPanel", Dock = DockStyle.Top, Height = 30 };

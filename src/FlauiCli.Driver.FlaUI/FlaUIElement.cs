@@ -254,8 +254,8 @@ public sealed class FlaUIElement : IUiElement
         }
     }
 
-    public ElementNode CaptureTree(CaptureDepth? depth = null, bool complete = true, int maxRows = 0) =>
-        TreeCapture.Capture(Inner, depth, complete, maxRows);
+    public ElementNode CaptureTree(CaptureDepth? depth = null, bool complete = true, int maxRows = 0, int skipRows = 0) =>
+        TreeCapture.Capture(Inner, depth, complete, maxRows, skipRows);
 
     public void Focus() => Inner.Focus();
 

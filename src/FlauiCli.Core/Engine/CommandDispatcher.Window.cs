@@ -186,7 +186,8 @@ public sealed partial class CommandDispatcher
             ctx.Call.GetInt("depth") ?? ctx.Config.Snapshot.Depth,
             ctx.Call.GetBool("boxes"),
             ctx.Call.GetBool("all") || ctx.Config.Snapshot.IncludeOffscreen,
-            MaxRows(ctx));
+            MaxRows(ctx),
+            RowOption(ctx, "skip-rows") ?? 0);
         var text = BuildSnapshot(root, options, includePopups: root.Equals(window));
         // Some minimized windows (UWP) expose no content; WinForms ones keep it, and then there is nothing to say
         if (root.Equals(window) && IsMinimized(window) && window.FindFirst(ElementQuery.Any) is null)
@@ -205,10 +206,16 @@ public sealed partial class CommandDispatcher
     }
 
     /// <summary>Items read from each table or list: <c>--max-rows</c>, else <c>snapshot.maxRows</c> in the config file (0 = all).</summary>
-    private static int MaxRows(CommandContext ctx)
+    private static int MaxRows(CommandContext ctx) =>
+        RowOption(ctx, "max-rows") ?? (ctx.Config.Snapshot.MaxRows >= 0
+            ? ctx.Config.Snapshot.MaxRows
+            : throw new CliException($"snapshot.maxRows must be 0 (all rows) or more: {ctx.Config.Snapshot.MaxRows}"));
+
+    /// <summary>The value of <c>--skip-rows</c> or <c>--max-rows</c>, or null when it was not given.</summary>
+    private static int? RowOption(CommandContext ctx, string option)
     {
-        var rows = ctx.Call.GetInt("max-rows") ?? ctx.Config.Snapshot.MaxRows;
-        return rows >= 0 ? rows : throw new CliException($"--max-rows must be 0 (all rows) or more: {rows}");
+        var rows = ctx.Call.GetInt(option);
+        return rows is null or >= 0 ? rows : throw new CliException($"--{option} must be 0 or more: {rows}");
     }
 
     private string Find(CommandContext ctx)
@@ -225,7 +232,7 @@ public sealed partial class CommandDispatcher
         bool Match(string? s) => !string.IsNullOrEmpty(s) && (re?.IsMatch(s) ?? s.Contains(text, StringComparison.OrdinalIgnoreCase));
 
         var matches = _s.SearchRoots()
-            .SelectMany(root => root.CaptureTree(maxRows: MaxRows(ctx)).DescendantsAndSelf())
+            .SelectMany(root => root.CaptureTree(maxRows: MaxRows(ctx), skipRows: RowOption(ctx, "skip-rows") ?? 0).DescendantsAndSelf())
             .Where(n => Match(n.Name) || Match(n.AutomationId) || Match(n.Value))
             .ToList();
 

@@ -118,7 +118,8 @@ public sealed partial class CommandDispatcher
 
     /// <summary>
     /// The visible cells below a column header: data items of the enclosing table that span the same columns as the
-    /// header. When the table exposes no such cells, the area from the header down to the bottom of the table.
+    /// header. When the table exposes no such cells or is too large to read in time, the area from the header down to
+    /// the bottom of the table.
     /// </summary>
     private static List<Rectangle> ColumnCells(IUiElement header)
     {
@@ -129,11 +130,13 @@ public sealed partial class CommandDispatcher
         if (table is null) throw new CliException($"{Friendly(header)} is not inside a table; use --mask for single elements");
 
         static bool Near(int a, int b) => Math.Abs(a - b) <= 2;
+        SearchBudget.ClearIncomplete();
         var cells = table.FindAll(new ElementQuery(Kind: ControlKind.DataItem))
             .Where(e => !e.IsOffscreen && Near(e.Bounds.Left, h.Left) && Near(e.Bounds.Right, h.Right) && e.Bounds.Top >= h.Top)
             .Select(e => e.Bounds)
             .ToList();
-        if (cells.Count > 0) return cells;
+        // When not every row could be read, visible cells may be missing from the list: cover the whole column instead
+        if (cells.Count > 0 && SearchBudget.Incomplete is null) return cells;
 
         var t = table.Bounds;
         return t.Bottom > h.Bottom ? [Rectangle.FromLTRB(h.Left, h.Bottom, h.Right, t.Bottom)] : [];

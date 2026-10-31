@@ -52,10 +52,18 @@ public static class CommandCatalog
         "Area x,y,w,h to cover with a solid box, in pixels from the top-left corner of the current window (as in a screenshot of the window), for data whose element cannot be found; can be repeated", Multiple: true);
     private static readonly OptSpec MaxRows = new("max-rows",
         "Items read from each table or list (0 = all; defaults to snapshot.maxRows in the config file, 50); the rest is shown as \"… N more rows\"");
+    private static readonly OptSpec SkipRows = new("skip-rows",
+        "Rows of each table or list to skip before reading (0-based; a table with GridPattern jumps there directly, otherwise the rows are walked)");
+    private static readonly OptSpec SearchSkipRows = new("skip-rows",
+        "When the selector searches inside a table: rows to skip first (0-based; a table with GridPattern jumps there directly, otherwise the rows are walked)");
+    private static readonly OptSpec SearchMaxRows = new("max-rows",
+        "When the selector searches inside a table: rows to read (default: until --timeout)");
+    private static readonly OptSpec SearchColumn = new("column",
+        "When the selector searches inside a table: only the cells under this column header (exact text)");
     private static readonly ArgSpec Target = new("target", "Element: snapshot ref (e12) or selector (id=..., name=..., type=...&&name=..., xpath=...)");
 
     private static CommandSpec Element(string name, string description, params OptSpec[] extra) =>
-        new(name, "Actions", description, [Target], [.. extra, Timeout, Note]);
+        new(name, "Actions", description, [Target], [.. extra, SearchSkipRows, SearchMaxRows, SearchColumn, Timeout, Note]);
 
     public static readonly IReadOnlyList<CommandSpec> All =
     [
@@ -92,10 +100,10 @@ public static class CommandCatalog
             [],
             [new("depth", "Maximum depth (0 = unlimited)"), new("boxes", "Include element bounds [x,y,w,h]", Flag: true),
              new("filename", "Save to a file instead of printing"), new("root", "Only print the subtree under this element"), new("all", "Include off-screen elements and unnamed containers", Flag: true),
-             MaxRows]),
+             MaxRows, SkipRows, Timeout]),
         new("find", "Inspection", "Search elements by text (matches Name / AutomationId / Value)",
-            [new("text", "Text to search for")], [new("regex", "Treat the text as a regular expression", Flag: true), MaxRows]),
-        new("inspect", "Inspection", "Show every property, supported pattern and a suggested selector for an element", [Target], [Timeout]),
+            [new("text", "Text to search for")], [new("regex", "Treat the text as a regular expression", Flag: true), MaxRows, SkipRows, Timeout]),
+        new("inspect", "Inspection", "Show every property, supported pattern and a suggested selector for an element", [Target], [SearchSkipRows, SearchMaxRows, SearchColumn, Timeout]),
 
         // ── Actions ──
         new("click", "Actions", "Click an element, or a point given with --offset / --at",
@@ -104,11 +112,11 @@ public static class CommandCatalog
              new("invoke", "Use InvokePattern instead of moving the mouse (fails after --timeout if the element opens a modal dialog; use a plain click there)", Flag: true),
              new("offset", "Click at x,y pixels from the top-left corner of the target instead of its centre, for parts of an element that UI Automation cannot list (a cell of a very large table)"),
              new("at", "Click at x,y pixels from the top-left corner of the current window (physical pixels, as in a screenshot of the window), without a target"),
-             Timeout, Note]),
+             SearchSkipRows, SearchMaxRows, SearchColumn, Timeout, Note]),
         Element("dblclick", "Double-click an element"),
         Element("hover", "Move the mouse over an element"),
         new("fill", "Actions", "Clear an input and type text (uses ValuePattern when available)",
-            [Target, new("text", "Text to enter")], [new("keyboard", "Always simulate keyboard input", Flag: true), Timeout, Note]),
+            [Target, new("text", "Text to enter")], [new("keyboard", "Always simulate keyboard input", Flag: true), SearchSkipRows, SearchMaxRows, SearchColumn, Timeout, Note]),
         new("type", "Actions", "Type text into the focused element", [new("text", "Text")], [Note]),
         new("press", "Actions", "Press a key or key combination, for example Enter, Ctrl+A, Alt+F4", [new("keys", "Keys")],
             [new("target", "Focus this element before every press (use it when the application moves the focus, for example to step through a drop-down)"),
@@ -130,9 +138,9 @@ public static class CommandCatalog
         // ── Read / wait / assert ──
         new("get", "Read", "Read information from an element",
             [new("kind", "text|value|name|state|rect|prop"), Target, new("prop", "Property name when kind=prop, for example HelpText", Required: false)],
-            [Timeout]),
+            [SearchSkipRows, SearchMaxRows, SearchColumn, Timeout]),
         new("wait", "Wait", "Wait until an element reaches a state",
-            [Target], [new("state", "visible|hidden|enabled|disabled|exists|gone (default visible)"), Timeout]),
+            [Target], [new("state", "visible|hidden|enabled|disabled|exists|gone (default visible)"), SearchSkipRows, SearchMaxRows, SearchColumn, Timeout]),
         new("wait-window", "Wait", "Wait for a window whose title matches and switch to it",
             [new("title", "Window title: an exact title wins, then one that starts with it, then one that contains it")],
             [new("exact", "Only accept an exact title (case-insensitive)", Flag: true),
@@ -141,7 +149,7 @@ public static class CommandCatalog
         new("assert", "Assert", "Assert an element state; exits with code 1 on failure",
             [new("kind", "exists|not-exists|visible|hidden|enabled|disabled|checked|unchecked|text|contains|matches|value"),
              Target, new("expected", "Expected value (required for text/contains/matches/value)", Required: false)],
-            [Timeout]),
+            [SearchSkipRows, SearchMaxRows, SearchColumn, Timeout]),
         new("sleep", "Wait", "Pause for a number of milliseconds", [new("ms", "Milliseconds")], []),
 
         // ── Screenshots ──

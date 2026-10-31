@@ -22,6 +22,18 @@ public class SearchBudgetTests
     }
 
     [Fact]
+    public void ANewCommandForgetsAnIncompleteSearch()
+    {
+        SearchBudget.ReportIncomplete("stopped");
+        Assert.Equal("stopped", SearchBudget.Incomplete);
+        using (SearchBudget.Begin(1_000)) Assert.Null(SearchBudget.Incomplete);
+
+        SearchBudget.ReportIncomplete("stopped");
+        SearchBudget.ClearIncomplete();
+        Assert.Null(SearchBudget.Incomplete);
+    }
+
+    [Fact]
     public void CancellationEndsTheBudget()
     {
         using var cancel = new CancellationTokenSource();
