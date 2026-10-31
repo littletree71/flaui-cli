@@ -19,7 +19,7 @@
     Bump VersionPrefix manually when releasing.
   -->
   <PropertyGroup>
-    <VersionPrefix>0.4.2</VersionPrefix>
+    <VersionPrefix>0.4.3</VersionPrefix>
     <Authors>littletree71</Authors>
     <Company>littletree71</Company>
     <Product>flaui-cli</Product>
