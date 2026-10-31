@@ -5,7 +5,8 @@ using FlauiCli.Core.Targeting;
 namespace FlauiCli.Core.Snapshot;
 
 /// <param name="MaxRows">Items read from each table or list (0 = all); the rest is printed as one "… N more rows" line.</param>
-public sealed record SnapshotOptions(int MaxDepth = 0, bool Boxes = false, bool All = false, int MaxRows = DataContainers.DefaultMaxRows);
+/// <param name="SkipRows">Rows of each table or list skipped before reading; printed as one "… N rows skipped" line.</param>
+public sealed record SnapshotOptions(int MaxDepth = 0, bool Boxes = false, bool All = false, int MaxRows = DataContainers.DefaultMaxRows, int SkipRows = 0);
 
 /// <summary>
 /// Formats a UI tree as YAML-like text modelled on Playwright's aria snapshots:
@@ -96,7 +97,11 @@ internal static class SnapshotFormatter
         }
 
         sb.AppendLine();
-        foreach (var c in n.Children) Emit(sb, c, refs, o, collapse, indent + 1, depth + 1, isRoot: false);
+        if (n.SkippedChildren > 0)
+            sb.Append(' ', (indent + 1) * 2).AppendLine($"- … {n.SkippedChildren} {ItemWord(n)} skipped");
+        // Rows skipped to are usually off-screen, and they were asked for
+        var childOptions = n.SkippedChildren > 0 ? o with { All = true } : o;
+        foreach (var c in n.Children) Emit(sb, c, refs, childOptions, collapse, indent + 1, depth + 1, isRoot: false);
         EmitOmitted(sb, n, indent + 1);
     }
 
@@ -104,10 +109,13 @@ internal static class SnapshotFormatter
     private static void EmitOmitted(StringBuilder sb, ElementNode n, int indent)
     {
         if (n.OmittedChildren == 0) return;
-        var what = DataContainers.IsTable(n.Kind) ? "rows" : n.Kind == ControlKind.List ? "items" : "elements";
+        var what = ItemWord(n);
         sb.Append(' ', indent * 2).Append("- … ");
         sb.AppendLine(n.OmittedChildren > 0 ? $"{n.OmittedChildren} more {what}" : $"more {what} (not read)");
     }
+
+    private static string ItemWord(ElementNode n) =>
+        DataContainers.IsTable(n.Kind) ? "rows" : n.Kind == ControlKind.List ? "items" : "elements";
 
     internal static bool IsPureContainer(ElementNode n) =>
         ContainerKinds.Contains(n.Kind) && n.Name.Length == 0 && n.AutomationId.Length == 0;

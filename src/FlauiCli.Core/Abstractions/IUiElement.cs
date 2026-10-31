@@ -115,9 +115,10 @@ public interface IUiElement : IEquatable<IUiElement>
     /// false, a capture the UI Automation provider cut short is returned as is instead of being filled in (faster on
     /// large trees; used for the snapshot saved after every action). With <paramref name="maxRows"/> above 0, only that many
     /// items of a table or list (<see cref="DataContainers.IsCapped"/>) are read; the rest is counted in
-    /// <see cref="ElementNode.OmittedChildren"/>.
+    /// <see cref="ElementNode.OmittedChildren"/>. With <paramref name="skipRows"/> above 0, reading starts after that many
+    /// rows of each such container (counted in <see cref="ElementNode.SkippedChildren"/>).
     /// </summary>
-    ElementNode CaptureTree(CaptureDepth? depth = null, bool complete = true, int maxRows = 0);
+    ElementNode CaptureTree(CaptureDepth? depth = null, bool complete = true, int maxRows = 0, int skipRows = 0);
 
     void Focus();
     void SetForeground();

@@ -76,8 +76,12 @@ public sealed class FakeElement : IUiElement
 
     public Point? TryGetClickablePoint() => Bounds.IsEmpty ? null : Bounds.Center();
 
+    /// <summary>Reported to <see cref="SearchBudget"/> by searches under this element, as a driver does when it stops early.</summary>
+    public string? IncompleteSearch { get; set; }
+
     public IReadOnlyList<IUiElement> FindAll(ElementQuery query, SearchScope scope = SearchScope.Descendants)
     {
+        if (IncompleteSearch is { } why) SearchBudget.ReportIncomplete(why);
         var source = scope == SearchScope.Children ? Children : Descendants();
         return [.. source.Where(e => e.Alive && Matches(e, query))];
     }
@@ -92,8 +96,13 @@ public sealed class FakeElement : IUiElement
     public IUiElement? FindFirst(ElementQuery query)
     {
         FindFirstCalls++;
+        LastSearchRows = SearchBudget.Rows;
+        if (IncompleteSearch is { } why) SearchBudget.ReportIncomplete(why);
         return Descendants().FirstOrDefault(e => e.Alive && Matches(e, query));
     }
+
+    /// <summary>The value of <see cref="SearchBudget.Rows"/> during the last FindFirst call on this element.</summary>
+    public (int Skip, int Take) LastSearchRows { get; private set; }
 
     /// <summary>Number of FindFirst calls on this element.</summary>
     public int FindFirstCalls { get; private set; }
@@ -111,16 +120,16 @@ public sealed class FakeElement : IUiElement
     /// <summary>Row limit passed to the last CaptureTree call.</summary>
     public int LastMaxRows { get; private set; }
 
-    public ElementNode CaptureTree(CaptureDepth? depth = null, bool complete = true, int maxRows = 0)
+    public ElementNode CaptureTree(CaptureDepth? depth = null, bool complete = true, int maxRows = 0, int skipRows = 0)
     {
         CaptureTreeCalls++;
         LastCaptureDepth = depth;
         LastMaxRows = maxRows;
-        return Capture(depth, level: 0, transparent: false, expand: true, maxRows);
+        return Capture(depth, level: 0, transparent: false, expand: true, maxRows, skipRows);
     }
 
     /// <summary>Builds the node; with a depth, leaves out what the driver would not fetch (see TreeCapture in the FlaUI driver).</summary>
-    private ElementNode Capture(CaptureDepth? depth, int level, bool transparent, bool expand, int maxRows = 0)
+    private ElementNode Capture(CaptureDepth? depth, int level, bool transparent, bool expand, int maxRows = 0, int skipRows = 0)
     {
         var node = new ElementNode
         {
@@ -143,6 +152,11 @@ public sealed class FakeElement : IUiElement
         var expandChildren = depth?.ExpandsChildren(level, transparent) ?? true;
         var childLevel = CaptureDepth.ChildLevel(level, transparent);
         var children = Children.Where(c => c.Alive).ToList();
+        if (skipRows > 0 && DataContainers.IsCapped(Kind))
+        {
+            node.SkippedChildren = skipRows;
+            children = [.. children.Skip(skipRows)];
+        }
         if (maxRows > 0 && DataContainers.IsCapped(Kind) && children.Count > maxRows)
         {
             node.OmittedChildren = children.Count - maxRows;
@@ -152,7 +166,7 @@ public sealed class FakeElement : IUiElement
         {
             var childNode = c.Capture(null, 0, false, expand: false);
             var childTransparent = depth?.IsTransparent(childNode) ?? false;
-            node.Children.Add(c.Capture(depth, childLevel, childTransparent, expandChildren, maxRows));
+            node.Children.Add(c.Capture(depth, childLevel, childTransparent, expandChildren, maxRows, skipRows));
         }
         return node;
     }

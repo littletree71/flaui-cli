@@ -32,11 +32,12 @@ internal static class TreeCapture
 
     /// <param name="complete">Whether the capture may take <see cref="FullBudget"/>; false stops after <see cref="QuickBudget"/>.</param>
     /// <param name="maxRows">Items read from each table or list; 0 reads all of them.</param>
-    public static ElementNode Capture(AutomationElement root, CaptureDepth? depth = null, bool complete = true, int maxRows = 0)
+    /// <param name="skipRows">Rows of each table or list skipped before reading.</param>
+    public static ElementNode Capture(AutomationElement root, CaptureDepth? depth = null, bool complete = true, int maxRows = 0, int skipRows = 0)
     {
         var budget = complete ? FullBudget : QuickBudget;
         if (complete && SearchBudget.Remaining > budget) budget = SearchBudget.Remaining;
-        var walker = new Walker(depth is { MaxDepth: > 0 } ? depth : null, maxRows, budget);
+        var walker = new Walker(depth is { MaxDepth: > 0 } ? depth : null, maxRows, skipRows, budget);
         // Some providers do not support caching; fall back to reading element by element
         var tree = walker.Capture(root) ?? walker.ElementByElement(root);
         // SelectionPattern is not cached: fill in the selected value of non-editable ComboBoxes (usually only a few)
@@ -74,7 +75,7 @@ internal static class TreeCapture
     }
 
     /// <summary>One capture: the node count, the time budget and the limits.</summary>
-    private sealed class Walker(CaptureDepth? depth, int maxRows, TimeSpan budget)
+    private sealed class Walker(CaptureDepth? depth, int maxRows, int skipRows, TimeSpan budget)
     {
         private readonly Stopwatch _elapsed = Stopwatch.StartNew();
         private int _count;
@@ -83,7 +84,9 @@ internal static class TreeCapture
 
         private bool Stopped => _count >= MaxNodes || Left <= TimeSpan.Zero || SearchBudget.IsCancelled;
 
-        private bool Caps(ElementNode node) => maxRows > 0 && DataContainers.IsCapped(node.Kind);
+        private bool Caps(ElementNode node) => (maxRows > 0 || skipRows > 0) && DataContainers.IsCapped(node.Kind);
+
+        private int RowLimit => maxRows > 0 ? maxRows : int.MaxValue;
 
         /// <summary>The capture of <paramref name="root"/>, or null when the provider does not support caching.</summary>
         public ElementNode? Capture(AutomationElement root)
@@ -184,27 +187,29 @@ internal static class TreeCapture
         }
 
         /// <summary>
-        /// The first children of <paramref name="el"/>, read one by one with a TreeWalker (each with its own children
-        /// cached), up to the row limit, or only the first one when <paramref name="expand"/> is false (the snapshot then
-        /// only shows that there are children). Children that are not read are counted in <see cref="ElementNode.OmittedChildren"/>:
-        /// from the table's row count when it has one, else as an unknown number.
+        /// The first children of <paramref name="el"/> after the skipped rows, read one by one with a TreeWalker (each with
+        /// its own children cached), up to the row limit, or only the first one when <paramref name="expand"/> is false (the
+        /// snapshot then only shows that there are children). Children that are not read are counted in
+        /// <see cref="ElementNode.OmittedChildren"/>: from the table's row count when it has one, else as an unknown number.
         /// </summary>
         private Items ReadItems(ElementNode node, AutomationElement el, bool expand, int? limit = null)
         {
-            var max = limit ?? (expand ? maxRows : 1);
+            var max = limit ?? (expand ? RowLimit : 1);
+            var skip = limit is null && expand ? skipRows : 0;
             var result = new List<AutomationElement>();
             var walker = el.Automation.TreeWalkerFactory.GetControlViewWalker();
             try
             {
                 using (UiaTimeout.Limit(el.Automation, Left))
                 {
-                    var child = walker.GetFirstChild(el);
+                    node.SkippedChildren = skip;
+                    var child = skip > 0 ? UiaSearch.FirstRow(el, skip, walker, () => Stopped) : walker.GetFirstChild(el);
                     while (child is not null && result.Count < max && !Stopped)
                     {
                         result.Add(child);
                         child = walker.GetNextSibling(child);
                     }
-                    if (child is not null && expand) node.OmittedChildren = Omitted(el, result);
+                    if (child is not null && expand) node.OmittedChildren = Omitted(el, result, skip);
                 }
             }
             catch
@@ -219,17 +224,17 @@ internal static class TreeCapture
         /// The number of rows that were not read, from the GridPattern row count (rows only: header rows and scroll bars
         /// read among the children are not counted), or <see cref="ElementNode.UnknownCount"/>.
         /// </summary>
-        private static int Omitted(AutomationElement table, List<AutomationElement> read)
+        private static int Omitted(AutomationElement table, List<AutomationElement> read, int skipped)
         {
             var rows = Props.Val<int>(table, table.Automation.PropertyLibrary.Grid.RowCount);
             var readRows = read.Count(e => Props.Val<ControlType>(e, e.Automation.PropertyLibrary.Element.ControlType) is not
                 (ControlType.Header or ControlType.HeaderItem or ControlType.ScrollBar));
-            return rows is int total && total > readRows ? total - readRows : ElementNode.UnknownCount;
+            return rows is int total && total - skipped > readRows ? total - skipped - readRows : ElementNode.UnknownCount;
         }
 
         /// <summary>
         /// Reads the tree without caching (for providers that do not support it), within the same limits; the items of a
-        /// table past the row limit are not read.
+        /// table outside the rows asked for are not read.
         /// </summary>
         public ElementNode ElementByElement(AutomationElement el)
         {
@@ -242,8 +247,10 @@ internal static class TreeCapture
                 using (UiaTimeout.Limit(el.Automation, Left))
                 {
                     var walker = el.Automation.TreeWalkerFactory.GetControlViewWalker();
-                    var max = Caps(node) ? maxRows : int.MaxValue;
-                    var child = walker.GetFirstChild(el);
+                    var max = Caps(node) ? RowLimit : int.MaxValue;
+                    var skip = Caps(node) ? skipRows : 0;
+                    node.SkippedChildren = skip;
+                    var child = skip > 0 ? UiaSearch.FirstRow(el, skip, walker, () => Stopped) : walker.GetFirstChild(el);
                     for (var read = 0; child is not null; read++)
                     {
                         if (read >= max || Stopped)

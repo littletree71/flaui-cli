@@ -36,7 +36,8 @@ Action commands print a `### Snapshot` link to a file (`.flaui-cli/snapshot-*.ym
 - State markers: `[disabled]` `[checked]` `[mixed]` `[expanded]` `[collapsed]` `[selected]` `[focused]`.
 - Unnamed containers and off-screen elements are omitted; use `snapshot --all` for the full tree, `--depth N` to limit depth,
   `--root e5` for a subtree, `--boxes` to add bounds (`[box=x,y,w,h]`) and `--filename f.yml` to save to a file.
-- Tables and lists show their first 50 rows and then `- … N more rows`; `--max-rows N` changes that (`0` = all rows).
+- Tables and lists show their first 50 rows and then `- … N more rows`; `--max-rows N` changes that (`0` = all rows), and
+  `--skip-rows N` starts further down.
 
 ## Targeting elements
 
@@ -240,8 +241,14 @@ Scripts can produce documents directly: `flaui-cli run flow.yaml --doc docs/flow
   scoped from the table (`id=grid >> name="Row 5"`), so if a selector for something inside a table finds nothing, you can add
   one of those. Click a cell that cannot be listed by position: `click id=grid --offset x,y`, or `click --at x,y` relative to
   the window (pixels as in a window screenshot).
-  Why: UIA reads table rows one by one, and the application keeps working through thousands of them after the search times
-  out, so later commands fail too. The controls next to the grid are found directly.
+  Why: UIA reads table rows one by one, which is slow on thousands of them. The controls next to the grid are found directly.
+- If `Element not found` says the search stopped at the time limit, you can raise `--timeout`, start further down with
+  `--skip-rows N`, or click the cell by position.
+  Why: a search inside a table reads it row by row until `--timeout`, so it may not have reached the row you want.
+- To read or act on rows far down a large table, you can use `snapshot --root id=grid --skip-rows 5000 --max-rows 20` and then
+  the refs it prints, or `get value "id=grid >> type=dataitem" --skip-rows 5000`.
+  Why: a table with GridPattern jumps to that row directly. Without it (a DataGridView on .NET Framework 2.0, for example),
+  the rows before it are walked, so a row far down may need a longer `--timeout`.
 - If a selector waits out `--timeout` in a large window, you can scope it from a nearby container.
   Why: past about 512 elements UIA3 truncates searches silently, and flaui-cli fills in the rest level by level within
   `--timeout`.

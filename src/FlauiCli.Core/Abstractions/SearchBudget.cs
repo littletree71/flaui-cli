@@ -19,13 +19,42 @@ public static class SearchBudget
     [ThreadStatic]
     private static CancellationToken _cancel;
 
+    [ThreadStatic]
+    private static string? _incomplete;
+
+    [ThreadStatic]
+    private static (int Skip, int Take) _rows;
+
+    /// <summary>
+    /// The rows a search inside a table reads (<c>--skip-rows</c>, <c>--max-rows</c>): rows to skip first, and how many to
+    /// read (0 = until the time runs out). Reset by <see cref="Begin"/>.
+    /// </summary>
+    public static (int Skip, int Take) Rows => _rows;
+
+    /// <summary>Sets <see cref="Rows"/> for the current command.</summary>
+    public static void LimitRows(int skip, int take) => _rows = (skip, take);
+
+    /// <summary>
+    /// Why the last search did not cover everything it should have, or null when it did. A search that stops early returns
+    /// what it found, so callers that need every match, or that report "not found", check this.
+    /// </summary>
+    public static string? Incomplete => _incomplete;
+
+    /// <summary>Called by drivers when a search stops before it has read everything.</summary>
+    public static void ReportIncomplete(string reason) => _incomplete = reason;
+
+    /// <summary>Forgets <see cref="Incomplete"/>, before a new search.</summary>
+    public static void ClearIncomplete() => _incomplete = null;
+
     /// <summary>
     /// Sets the deadline to <paramref name="timeoutMs"/> from now until the returned scope is disposed. When
     /// <paramref name="cancel"/> is cancelled (the client went away), searches stop and <see cref="ThrowIfCancelled"/> throws.
     /// </summary>
     public static IDisposable Begin(int timeoutMs, CancellationToken cancel = default)
     {
-        var previous = (_deadline, _cancel);
+        var previous = (_deadline, _cancel, _rows);
+        _incomplete = null;
+        _rows = default;
         _deadline = DateTime.UtcNow.AddMilliseconds(Math.Max(0, timeoutMs));
         if (cancel.CanBeCanceled) _cancel = cancel;
         return new Scope(previous);
@@ -39,6 +68,9 @@ public static class SearchBudget
         IsCancelled ? TimeSpan.Zero
         : _deadline is { } d ? (d - DateTime.UtcNow is var left && left > Minimum ? left : Minimum) : Default;
 
+    /// <summary>Whether the deadline has passed or the command was cancelled: work that only refines a result should stop.</summary>
+    public static bool IsExpired => IsCancelled || (_deadline is { } d && DateTime.UtcNow >= d);
+
     /// <summary>Whether the current command was cancelled (its client disconnected).</summary>
     public static bool IsCancelled => _cancel.IsCancellationRequested;
 
@@ -48,8 +80,8 @@ public static class SearchBudget
         if (IsCancelled) throw new OperationCanceledException("The command was cancelled because the client disconnected", _cancel);
     }
 
-    private sealed class Scope((DateTime? Deadline, CancellationToken Cancel) previous) : IDisposable
+    private sealed class Scope((DateTime? Deadline, CancellationToken Cancel, (int Skip, int Take) Rows) previous) : IDisposable
     {
-        public void Dispose() => (_deadline, _cancel) = previous;
+        public void Dispose() => (_deadline, _cancel, _rows) = previous;
     }
 }

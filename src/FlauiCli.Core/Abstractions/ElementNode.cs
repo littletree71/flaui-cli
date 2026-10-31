@@ -27,6 +27,9 @@ public sealed class ElementNode
     /// </summary>
     public int OmittedChildren { get; set; }
 
+    /// <summary>Items of a table or list skipped before the first child that was read (<c>--skip-rows</c>).</summary>
+    public int SkippedChildren { get; set; }
+
     /// <summary>Value of <see cref="OmittedChildren"/> when children were left out but their number is unknown.</summary>
     public const int UnknownCount = -1;
 
